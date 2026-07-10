@@ -144,6 +144,24 @@ def logout():
     return redirect(url_for("login"))
 
 
+def _test_paperless(url, token):
+    """Token direkt gegen Paperless testen. Rueckgabe: HTTP-Status (int) oder None (nicht erreichbar).
+
+    Nutzt denselben Endpunkt wie der Generator (/api/documents/) — /api/ (root) liefert bei
+    Paperless ein 302 und wuerde einen gueltigen Token faelschlich abweisen.
+    """
+    try:
+        r = requests.get(
+            url.rstrip("/") + "/api/documents/?page_size=1",
+            headers={"Authorization": "Token " + token} if token else {},
+            timeout=8,
+            allow_redirects=False,
+        )
+        return r.status_code
+    except requests.RequestException:
+        return None
+
+
 @app.route("/settings", methods=["GET", "POST"])
 def settings():
     cfg = load_config()
@@ -176,11 +194,21 @@ def settings():
 
         save_config(cfg)  # Verbindung wird immer gespeichert
         if pw_ok:
-            # Alles gespeichert und Paperless-URL gesetzt -> direkt zum Generator,
-            # kein zusaetzlicher Klick noetig.
             if cfg.get("paperless_url"):
-                return redirect(url_for("index"))
-            msg = "Gespeichert."
+                # Token gleich gegen Paperless testen -> Klartext-Rueckmeldung wie im Generator.
+                code = _test_paperless(cfg["paperless_url"], cfg.get("paperless_token", ""))
+                if code == 200:
+                    return redirect(url_for("index"))       # echt verbunden -> in den Generator
+                elif code in (401, 403):
+                    err = ("✗ Token-Fehler (HTTP %d) – Token in Paperless prüfen "
+                           "(Web-UI → Mein Profil → API-Token) und neu eintragen." % code)
+                elif code is None:
+                    err = ("✗ Paperless nicht erreichbar unter " + cfg["paperless_url"]
+                           + " – URL/Netzwerk prüfen.")
+                else:
+                    err = "✗ Unerwartete Antwort von Paperless: HTTP %d." % code
+            else:
+                msg = "Gespeichert."
         cfg = load_config()
     return render_template(
         "settings.html",
