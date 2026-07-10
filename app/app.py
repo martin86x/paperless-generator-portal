@@ -134,29 +134,34 @@ def settings():
     cfg = load_config()
     msg = err = None
     if request.method == "POST":
-        action = request.form.get("action")
-        if action == "connection":
-            cfg["paperless_url"] = request.form.get("paperless_url", "").strip().rstrip("/")
-            tok = request.form.get("paperless_token", "").strip()
-            if tok:  # leer lassen = alten Token behalten
-                cfg["paperless_token"] = tok
-            save_config(cfg)
-            msg = "Verbindung gespeichert."
-        elif action == "password":
+        # Ein Formular speichert alles zusammen. Leere Felder behalten den alten Wert,
+        # damit nichts versehentlich verloren geht.
+        url = request.form.get("paperless_url", "").strip().rstrip("/")
+        if url:
+            cfg["paperless_url"] = url
+        tok = request.form.get("paperless_token", "").strip()
+        if tok:
+            cfg["paperless_token"] = tok
+
+        # Passwort nur ändern, wenn ein neues eingegeben wurde.
+        new = request.form.get("new", "")
+        pw_ok = True
+        if new:
             cur = request.form.get("current", "")
-            new = request.form.get("new", "")
             rep = request.form.get("repeat", "")
             if not check_password_hash(cfg["admin_pw_hash"], cur):
-                err = "Aktuelles Passwort ist falsch."
+                err = "Aktuelles Passwort ist falsch."; pw_ok = False
             elif len(new) < 4:
-                err = "Neues Passwort muss mindestens 4 Zeichen haben."
+                err = "Neues Passwort muss mindestens 4 Zeichen haben."; pw_ok = False
             elif new != rep:
-                err = "Die neuen Passwoerter stimmen nicht ueberein."
+                err = "Die neuen Passwörter stimmen nicht überein."; pw_ok = False
             else:
                 cfg["admin_pw_hash"] = generate_password_hash(new)
                 cfg["is_default_pw"] = False
-                save_config(cfg)
-                msg = "Passwort geaendert."
+
+        save_config(cfg)  # Verbindung wird immer gespeichert
+        if pw_ok:
+            msg = "Gespeichert."
         cfg = load_config()
     return render_template(
         "settings.html",

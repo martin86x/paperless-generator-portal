@@ -7,34 +7,33 @@
 
   {% if msg %}<div class="msg ok">{{ msg }}</div>{% endif %}
   {% if err %}<div class="msg err">{{ err }}</div>{% endif %}
-  {% if is_default_pw %}<div class="msg err">Es ist noch das Standard-Passwort aktiv. Bitte unten aendern.</div>{% endif %}
+  {% if is_default_pw %}<div class="msg err">Es ist noch das Standard-Passwort aktiv. Bitte unten ändern.</div>{% endif %}
 
-  <form method="post">
-    <input type="hidden" name="action" value="connection">
+  <form method="post" autocomplete="off">
     <h2>Paperless-Verbindung</h2>
     <label for="paperless_url">Paperless-URL</label>
     <input type="url" id="paperless_url" name="paperless_url" value="{{ paperless_url }}"
            placeholder="http://192.168.1.100:8000">
     <p class="hint">Basis-URL deiner Paperless-Instanz inkl. Port, ohne <code>/api</code>.</p>
+
     <label for="paperless_token">API-Token</label>
     <input type="password" id="paperless_token" name="paperless_token"
-           placeholder="{% if has_token %}•••••••• (gespeichert — leer lassen zum Behalten){% else %}Token eintragen{% endif %}">
-    <p class="hint">In Paperless unter <em>Einstellungen → Mein Profil → API-Token</em>. Wird serverseitig gespeichert und automatisch eingespritzt.</p>
-    <button type="submit">Verbindung speichern</button>
-  </form>
+           placeholder="{% if has_token %}✓ gespeichert — leer lassen zum Behalten{% else %}Token eintragen{% endif %}">
+    <p class="hint">In Paperless unter <em>Einstellungen → Mein Profil → API-Token</em>. Wird serverseitig
+      gespeichert und automatisch eingespritzt.</p>
 
-  <hr class="divider">
+    <hr class="divider">
 
-  <form method="post" autocomplete="off">
-    <input type="hidden" name="action" value="password">
-    <h2>Passwort aendern</h2>
+    <h2>Passwort ändern <span style="text-transform:none;letter-spacing:0;font-weight:400">(optional)</span></h2>
+    <p class="hint">Nur ausfüllen, wenn du das Passwort ändern möchtest.</p>
     <label for="current">Aktuelles Passwort</label>
     <input type="password" id="current" name="current">
     <label for="new">Neues Passwort</label>
     <input type="password" id="new" name="new">
     <label for="repeat">Neues Passwort wiederholen</label>
     <input type="password" id="repeat" name="repeat">
-    <button type="submit">Passwort aendern</button>
+
+    <button type="submit">Speichern</button>
   </form>
 </div>
 {% endblock %}

@@ -63,16 +63,29 @@ require_host() {
 ask_config() {
   local nextid
   nextid=$(pvesh get /cluster/nextid 2>/dev/null || echo 200)
+
+  # Container-faehige Storages als Menue-Eintraege (Name + Typ) sammeln.
+  local stor_items=() sname stype srest
+  while read -r sname stype srest; do
+    stor_items+=("$sname" "Typ: $stype")
+  done < <(pvesm status --content rootdir 2>/dev/null | awk 'NR>1{print}')
+
   if command -v whiptail &>/dev/null; then
     CTID=$(whiptail --inputbox "Container-ID" 8 60 "$nextid" --title "LXC anlegen" 3>&1 1>&2 2>&3) || exit 1
     HOSTNAME=$(whiptail --inputbox "Hostname" 8 60 "paperless-generator" --title "LXC anlegen" 3>&1 1>&2 2>&3) || exit 1
-    STORAGE=$(whiptail --inputbox "Storage (rootfs)" 8 60 "local-lvm" --title "LXC anlegen" 3>&1 1>&2 2>&3) || exit 1
+    if [[ ${#stor_items[@]} -gt 0 ]]; then
+      STORAGE=$(whiptail --title "Storage waehlen" --menu "Storage fuer den LXC-Rootfs:" 16 64 7 \
+        "${stor_items[@]}" 3>&1 1>&2 2>&3) || exit 1
+    else
+      STORAGE=$(whiptail --inputbox "Storage (rootfs)" 8 60 "local-lvm" --title "LXC anlegen" 3>&1 1>&2 2>&3) || exit 1
+    fi
     BRIDGE=$(whiptail --inputbox "Netzwerk-Bridge" 8 60 "vmbr0" --title "LXC anlegen" 3>&1 1>&2 2>&3) || exit 1
     DISK=$(whiptail --inputbox "Disk-Groesse (GB)" 8 60 "4" --title "LXC anlegen" 3>&1 1>&2 2>&3) || exit 1
     RAM=$(whiptail --inputbox "RAM (MB)" 8 60 "512" --title "LXC anlegen" 3>&1 1>&2 2>&3) || exit 1
     CORES=$(whiptail --inputbox "CPU-Kerne" 8 60 "1" --title "LXC anlegen" 3>&1 1>&2 2>&3) || exit 1
   else
-    CTID="$nextid"; HOSTNAME="paperless-generator"; STORAGE="local-lvm"
+    CTID="$nextid"; HOSTNAME="paperless-generator"
+    STORAGE="${stor_items[0]:-local-lvm}"
     BRIDGE="vmbr0"; DISK="4"; RAM="512"; CORES="1"
     msg_info "whiptail nicht gefunden — nutze Defaults (CTID $CTID, $STORAGE, $BRIDGE)."
   fi
@@ -133,6 +146,7 @@ install_app() {
   cat > "$inner" <<INNER
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
+export LANG=C.UTF-8 LC_ALL=C.UTF-8
 apt-get update -qq
 apt-get install -y -qq ca-certificates curl git >/dev/null
 install -m 0755 -d /etc/apt/keyrings
