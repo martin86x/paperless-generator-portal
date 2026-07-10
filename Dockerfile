@@ -16,5 +16,7 @@ ENV CONFIG_DIR=/config \
 
 EXPOSE 8080
 
-# 2 Worker; Config wird pro Request aus dem Volume gelesen -> konsistent ueber Worker.
-CMD ["gunicorn", "-w", "2", "-b", "0.0.0.0:8080", "--timeout", "120", "app:app"]
+# 2 Worker mit --preload: die App wird EINMAL im Master importiert und dann geforkt,
+# damit alle Worker denselben session secret_key teilen (sonst Login-Schleife, weil
+# jeder Worker beim Einzel-Import ein eigenes Secret erzeugen wuerde).
+CMD ["gunicorn", "-w", "2", "--preload", "-b", "0.0.0.0:8080", "--timeout", "120", "app:app"]

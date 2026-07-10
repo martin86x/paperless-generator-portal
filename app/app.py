@@ -36,11 +36,26 @@ EXCLUDED_RESP_HEADERS = {
 }
 PROXY_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"]
 
-# Vorkonfig-Zeile: setzt die Verbindung des Generators auf same-origin (location.origin
-# wird im Browser ausgewertet). Token bleibt leer -> der Proxy spritzt ihn ein.
+# Vorkonfig-Injektion: zwingt den Generator auf same-origin (er arbeitet dann ueber /api/,
+# der Proxy spritzt den Token ein -> kein CORS). location.origin wird im Browser ausgewertet.
+#
+# Wichtig: Der Generator stellt ~900 ms nach dem Laden die letzte Sitzung wieder her
+# (LS_KEY 'paperless_gen_cfg_v2') und schreibt dabei die zuletzt genutzte (direkte)
+# Paperless-URL + Token zurueck in die Felder. Damit das die same-origin-Vorkonfig nicht
+# ueberschreibt, patchen wir BEIDE localStorage-Eintraege synchron im <head> (bevor der
+# Generator sie liest) und setzen die Felder nach der Wiederherstellung final auf origin.
 INJECT = (
-    "<script>try{localStorage.setItem('plx_conn_preset',"
-    "JSON.stringify({url:location.origin,token:''}));}catch(e){}</script>"
+    "<script>(function(){"
+    "var o=location.origin;"
+    "try{localStorage.setItem('plx_conn_preset',JSON.stringify({url:o,token:''}));}catch(e){}"
+    "try{var K='paperless_gen_cfg_v2',r=localStorage.getItem(K);"
+    "if(r){var c=JSON.parse(r);c.url=o;c.token='';localStorage.setItem(K,JSON.stringify(c));}}catch(e){}"
+    "window.addEventListener('load',function(){setTimeout(function(){try{"
+    "if(typeof _parseUrlToFields==='function')_parseUrlToFields(o);"
+    "var t=document.getElementById('inp-token');if(t)t.value='';"
+    "if(typeof testConnection==='function')testConnection();"
+    "}catch(e){}},1200);});"
+    "})();</script>"
 )
 
 
@@ -161,6 +176,10 @@ def settings():
 
         save_config(cfg)  # Verbindung wird immer gespeichert
         if pw_ok:
+            # Alles gespeichert und Paperless-URL gesetzt -> direkt zum Generator,
+            # kein zusaetzlicher Klick noetig.
+            if cfg.get("paperless_url"):
+                return redirect(url_for("index"))
             msg = "Gespeichert."
         cfg = load_config()
     return render_template(
