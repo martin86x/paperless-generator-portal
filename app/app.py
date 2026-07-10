@@ -171,6 +171,29 @@ def _test_paperless(url, token):
         return None
 
 
+def _connection_status(cfg):
+    """Live-Status der gespeicherten Paperless-Verbindung -> (kind, text) fuer die UI.
+
+    kind: 'ok' (gruen) | 'err' (rot) | 'warn' (rot, noch nichts konfiguriert).
+    """
+    url = cfg.get("paperless_url")
+    token = cfg.get("paperless_token") or ""
+    if not url:
+        return ("warn", "Noch keine Paperless-URL gesetzt.")
+    if "://" in token:
+        return ("err", "Im Token-Feld steht eine URL statt eines Tokens. Bitte den API-Token "
+                       "aus Paperless (Mein Profil → API-Token) eintragen.")
+    code = _test_paperless(url, token)
+    if code == 200:
+        return ("ok", "Verbindung aktiv – Paperless antwortet und der Token ist gültig.")
+    if code in (401, 403):
+        return ("err", "Token ungültig (HTTP %d). In Paperless unter Mein Profil → API-Token "
+                       "neu erzeugen und hier eintragen." % code)
+    if code is None:
+        return ("err", "Paperless nicht erreichbar unter %s – URL/Netzwerk prüfen." % url)
+    return ("err", "Unerwartete Antwort von Paperless: HTTP %d." % code)
+
+
 @app.route("/settings", methods=["GET", "POST"])
 def settings():
     cfg = load_config()
@@ -219,11 +242,16 @@ def settings():
             else:
                 msg = "Gespeichert."
         cfg = load_config()
+    tok = cfg.get("paperless_token") or ""
+    conn_kind, conn_text = _connection_status(cfg)
     return render_template(
         "settings.html",
         paperless_url=cfg.get("paperless_url", ""),
-        has_token=bool(cfg.get("paperless_token")),
+        has_token=bool(tok),
+        token_tail=(tok[-6:] if tok and "://" not in tok else ""),
+        token_looks_url=("://" in tok),
         is_default_pw=cfg.get("is_default_pw", False),
+        conn_kind=conn_kind, conn_text=conn_text,
         msg=msg, err=err,
     )
 

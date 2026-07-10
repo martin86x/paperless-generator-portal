@@ -5,6 +5,18 @@
   <h1>Einstellungen</h1>
   <p class="sub">Paperless-Verbindung und Zugang verwalten.</p>
 
+  <div class="msg {{ 'ok' if conn_kind == 'ok' else 'err' }}">
+    <strong>{{ '✓ Verbindung' if conn_kind == 'ok' else '✗ Verbindung' }}:</strong>
+    {{ conn_text }}
+    <a class="link" href="{{ url_for('settings') }}" style="float:right">↻ erneut testen</a>
+  </div>
+  <p class="hint">
+    Gespeichert: URL <code>{{ paperless_url or '—' }}</code> · Token
+    {%- if token_looks_url %} <strong style="color:var(--err)">⚠ enthält eine URL (falsch)</strong>
+    {%- elif has_token %} gesetzt (endet auf …{{ token_tail }})
+    {%- else %} nicht gesetzt{% endif %}
+  </p>
+
   {% if msg %}<div class="msg ok">{{ msg }}</div>{% endif %}
   {% if err %}<div class="msg err">{{ err }}</div>{% endif %}
   {% if is_default_pw %}<div class="msg err">Es ist noch das Standard-Passwort aktiv. Bitte unten ändern.</div>{% endif %}
