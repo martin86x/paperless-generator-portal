@@ -1,0 +1,9 @@
+.git
+.gitignore
+config/
+__pycache__/
+*.pyc
+*.md
+Anleitung_*.html
+update.ps1
+proxmox-install.sh

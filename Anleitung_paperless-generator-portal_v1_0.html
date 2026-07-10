@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Paperless Generator Portal — Installation</title>
+<style>
+  :root {
+    --bg: #0f1117; --bg3: #1e2333;
+    --sidebar-bg: #13161f; --border: #2a2f42;
+    --accent: #4f9cf9; --accent2: #7dd3fc;
+    --text: #cdd6f4; --text-dim: #7f849c;
+    --code-bg: #12141c; --code-text: #a6e3a1;
+    --warn-bg: #1e1b2e; --warn-border: #7c3aed;
+    --sidebar-w: 280px;
+    --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+    --font-body: 'IBM Plex Sans', 'Segoe UI', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--font-body); font-size: 15px; line-height: 1.75; display: flex; }
+  #sidebar { position: fixed; top: 0; left: 0; bottom: 0; width: var(--sidebar-w); background: var(--sidebar-bg); border-right: 1px solid var(--border); overflow-y: auto; padding: 24px 0 40px; z-index: 100; }
+  #sidebar h2 { font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--text-dim); padding: 0 20px 12px; border-bottom: 1px solid var(--border); margin-bottom: 12px; }
+  #sidebar ul { list-style: none; }
+  #sidebar ul li a { display: block; padding: 5px 20px; color: var(--text-dim); text-decoration: none; font-size: 13px; transition: color .15s, background .15s; border-left: 2px solid transparent; }
+  #sidebar ul li a:hover, #sidebar ul li a.active { color: var(--accent2); background: rgba(79,156,249,.07); border-left-color: var(--accent); }
+  #sidebar ul li li a { padding-left: 36px; font-size: 12px; }
+  #main { margin-left: var(--sidebar-w); flex: 1; padding: 48px 56px 80px; max-width: 900px; }
+  h1 { font-size: 28px; font-weight: 700; color: #fff; margin-bottom: 8px; line-height: 1.3; }
+  h2 { font-size: 20px; font-weight: 700; color: var(--accent2); margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); }
+  h2:first-of-type { border-top: none; padding-top: 0; }
+  h3 { font-size: 15px; font-weight: 600; color: #e2e8f0; margin: 28px 0 10px; }
+  h4 { font-size: 14px; font-weight: 600; color: var(--text-dim); margin: 20px 0 8px; text-transform: uppercase; letter-spacing: .06em; }
+  p { margin-bottom: 14px; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 13.5px; }
+  th { background: var(--bg3); color: var(--accent2); font-weight: 600; padding: 10px 14px; text-align: left; border-bottom: 2px solid var(--border); }
+  td { padding: 9px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:hover td { background: rgba(255,255,255,.02); }
+  pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 18px 20px; overflow-x: auto; font-family: var(--font-mono); font-size: 13px; line-height: 1.6; margin: 16px 0; position: relative; }
+  code { font-family: var(--font-mono); font-size: 13px; color: var(--code-text); }
+  pre code { background: none; padding: 0; }
+  p code, li code, td code { background: var(--code-bg); color: var(--accent2); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border); font-size: 12.5px; }
+  .copy-btn { position: absolute; top: 10px; right: 10px; background: var(--bg3); border: 1px solid var(--border); color: var(--text-dim); padding: 3px 10px; border-radius: 5px; font-size: 11px; cursor: pointer; opacity: 0; transition: opacity .2s, color .15s; font-family: var(--font-body); }
+  pre:hover .copy-btn { opacity: 1; }
+  .copy-btn:hover { color: var(--accent2); }
+  .copy-btn.copied { color: #a6e3a1; }
+  blockquote { background: var(--warn-bg); border-left: 3px solid var(--warn-border); padding: 14px 18px; margin: 16px 0; border-radius: 0 6px 6px 0; font-size: 13.5px; color: #c4b5fd; }
+  blockquote p { margin-bottom: 6px; }
+  blockquote p:last-child { margin-bottom: 0; }
+  blockquote strong { color: #ddd6fe; }
+  blockquote code { color: #c4b5fd; background: rgba(124,58,237,.15); border-color: rgba(124,58,237,.3); }
+  ul, ol { padding-left: 22px; margin-bottom: 14px; }
+  li { margin-bottom: 4px; }
+  hr { border: none; border-top: 1px solid var(--border); margin: 40px 0; }
+  .copy-val { display: inline-flex; align-items: center; gap: 8px; }
+  .copy-val code { background: var(--code-bg); color: var(--code-text); padding: 2px 8px; border-radius: 4px; border: 1px solid var(--border); font-size: 12.5px; }
+  .copy-val button { background: var(--bg3); border: 1px solid var(--border); color: var(--text-dim); padding: 2px 9px; border-radius: 5px; font-size: 11px; cursor: pointer; font-family: var(--font-body); transition: color .15s, border-color .15s; white-space: nowrap; }
+  .copy-val button:hover { color: var(--accent2); border-color: var(--accent); }
+  .copy-val button.copied { color: var(--code-text); border-color: var(--code-text); }
+  .ok { color: #a6e3a1; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+<nav id="sidebar">
+  <h2>Inhalt</h2>
+  <ul>
+    <li><a href="#ueberblick">Überblick</a></li>
+    <li><a href="#schnellstart">1. Schnellstart (Ein-Zeiler)</a></li>
+    <li><a href="#login">2. Login &amp; Passwort</a></li>
+    <li><a href="#verbindung">3. Paperless-Verbindung</a></li>
+    <li><a href="#nutzen">4. Generator nutzen</a></li>
+    <li><a href="#update">5. Aktualisieren</a></li>
+    <li><a href="#manuell">6. Manueller Betrieb</a></li>
+    <li><a href="#sicherheit">7. Sicherheit</a></li>
+    <li><a href="#homelab">8. Homelab-Integration</a></li>
+    <li><a href="#troubleshooting">Troubleshooting</a></li>
+  </ul>
+</nav>
+<div id="main">
+
+<h1>Paperless Generator Portal</h1>
+<p>Self-hosted Web-App, die den <strong>Paperless-ngx Setup Generator</strong> dauerhaft bereitstellt —
+mit Login, Einstellungsmenü und automatischem API-Proxy. Deployment in <strong>einem Befehl</strong> auf
+einem Proxmox-Host.</p>
+
+<h2 id="ueberblick">Überblick</h2>
+<p>Der Container läuft ein kleines Flask-Backend, das den unveränderten Generator ausliefert, ein
+Login-Gate davorsetzt und die Paperless-API über einen Proxy anspricht:</p>
+<pre><code class="yaml">Browser ──▶ Flask (Port 8080)
+             ├─ /login, /logout   Login-Gate (Standard admin/admin)
+             ├─ /settings         Paperless-URL + Token, Passwort ändern
+             ├─ /                 Generator (unverändert) + Vorkonfig-Zeile
+             └─ /api/*  ──▶ Proxy ──▶ Paperless (Token wird eingespritzt)</code></pre>
+<blockquote><p><strong>Warum kein CORS mehr?</strong> Der Generator ruft <code>/api/…</code> <em>same-origin</em>
+auf; das Backend leitet an das konfigurierte Paperless weiter und spritzt den gespeicherten Token ein.
+Dadurch entfällt jede <code>PAPERLESS_CORS_ALLOWED_HOSTS</code>-Konfiguration in Paperless.</p></blockquote>
+
+<h2 id="schnellstart">1. Schnellstart (Ein-Zeiler)</h2>
+<p>Auf der <strong>Proxmox-Host-Shell</strong> (nicht im Container) ausführen:</p>
+<pre><code class="yaml">bash -c "$(curl -fsSL https://raw.githubusercontent.com/martin86x/paperless-generator-portal/main/proxmox-install.sh)"</code></pre>
+<p>Das Skript fragt ein paar Werte ab (Container-ID, Storage, Bridge, Disk, RAM) — die Defaults passen
+für den Heimgebrauch. Danach läuft es automatisch durch und hakt jeden Schritt grün ab:</p>
+<pre><code class="yaml"> ✓ Proxmox-Host erkannt
+ ✓ Template bereit (debian-12-standard)
+ ✓ LXC 200 erstellt (privileged, Nesting, onboot)
+ ✓ Container gestartet, Netzwerk erreichbar (IP 192.168.10.x)
+ ✓ Docker installiert, Projekt geholt & Container gebaut
+
+── Selbstcheck ──
+ ✓ Container läuft (docker ps)
+ ✓ Healthcheck: healthy
+ ✓ HTTP 200 auf http://192.168.10.x:8080/login
+ ✓ Autostart aktiv (onboot=1, restart=unless-stopped)</code></pre>
+<blockquote><p><strong>Voraussetzung:</strong> Das Skript legt einen <strong>privileged</strong> LXC mit
+<strong>Nesting</strong> an (nötig, damit Docker im Container läuft). Das erledigt es selbst — es sind
+keine Vorarbeiten am LXC nötig.</p></blockquote>
+
+<h2 id="login">2. Login &amp; Passwort ändern</h2>
+<p>Nach dem Durchlauf zeigt das Skript die URL. Im Browser öffnen:</p>
+<table>
+  <tr><th>Feld</th><th>Wert</th></tr>
+  <tr><td>URL</td><td><span class="copy-val"><code>http://&lt;lxc-ip&gt;:8080</code><button>Kopieren</button></span></td></tr>
+  <tr><td>Benutzer</td><td><span class="copy-val"><code>admin</code><button>Kopieren</button></span></td></tr>
+  <tr><td>Passwort</td><td><span class="copy-val"><code>admin</code><button>Kopieren</button></span></td></tr>
+</table>
+<blockquote><p><strong>Wichtig:</strong> Nach dem ersten Login unter <em>Einstellungen → Passwort ändern</em>
+sofort ein eigenes Passwort setzen.</p></blockquote>
+
+<h2 id="verbindung">3. Paperless-Verbindung einrichten</h2>
+<p>In den <strong>Einstellungen</strong> die Verbindung eintragen und speichern:</p>
+<table>
+  <tr><th>Feld</th><th>Beispiel</th><th>Hinweis</th></tr>
+  <tr><td>Paperless-URL</td><td><span class="copy-val"><code>http://192.168.10.200:8000</code><button>Kopieren</button></span></td><td>Basis-URL inkl. Port, ohne <code>/api</code></td></tr>
+  <tr><td>API-Token</td><td><em>dein Token</em></td><td>siehe unten</td></tr>
+</table>
+<p><strong>Token holen:</strong> In Paperless anmelden → <em>Einstellungen → Mein Profil → API-Token</em>
+(bzw. unter <code>/api/token/</code>). Der Token wird serverseitig gespeichert und vom Proxy automatisch
+bei jedem API-Aufruf eingespritzt — im Generator selbst musst du nichts eintragen.</p>
+
+<h2 id="nutzen">4. Generator nutzen</h2>
+<p>Oben im Menü auf <strong>Generator</strong> klicken. Er ist bereits mit deiner Paperless-Instanz
+verbunden (keine Eingabe in der Verbindungsmaske nötig) — alle Werkzeuge wie Health-Check,
+Matching-Audit oder der Direkt-Modus funktionieren sofort.</p>
+
+<h2 id="update">5. Generator aktualisieren</h2>
+<p>Kommt eine neue Generator-Version, im Container das Repo aktualisieren und neu bauen:</p>
+<pre><code>cd /opt/paperless-generator-portal
+git pull
+docker compose up -d --build</code></pre>
+<p>Auf dem Entwicklungsrechner übernimmt <code>update.ps1</code> das neueste <code>dist/index.html</code>
+aus dem Generator-Projekt in <code>site/</code>.</p>
+
+<h2 id="manuell">6. Manueller Betrieb (ohne Proxmox-Skript)</h2>
+<p>Läuft auf jedem Docker-Host. Im Projektordner:</p>
+<pre><code>docker compose up -d --build</code></pre>
+<p>Erreichbar unter <code>http://localhost:8080</code>. Die Konfiguration liegt im Volume
+<code>./config/config.json</code>.</p>
+
+<h2 id="sicherheit">7. Sicherheit</h2>
+<ul>
+  <li>Der Paperless-Token wird im <code>config</code>-Volume gespeichert (Klartext), damit der Proxy ihn
+      einspritzen kann. Gedacht für den Betrieb im eigenen <strong>Heimnetz</strong>.</li>
+  <li>Das Admin-Passwort wird nur als Hash gespeichert; das Standard-Passwort <code>admin</code>
+      unbedingt ändern.</li>
+  <li>Alle Routen außer <code>/login</code> und dem Healthcheck sind login-pflichtig.</li>
+</ul>
+
+<h2 id="homelab">8. Optionale Homelab-Integration</h2>
+<h3>gethomepage-Kachel</h3>
+<pre><code class="yaml">- Paperless Generator:
+    href: http://192.168.10.x:8080
+    description: Setup Generator Portal
+    siteMonitor: http://192.168.10.x:8080/healthz</code></pre>
+<h3>Uptime Kuma</h3>
+<p>Monitor vom Typ <em>HTTP(s)</em> auf <code>http://&lt;lxc-ip&gt;:8080/healthz</code> (erwartet
+Status 200) — meldet, wenn der Container ausfällt.</p>
+<h3>Portainer</h3>
+<p>Der Container erscheint als <code>paperless-generator-portal</code> und lässt sich dort verwalten
+(Logs, Neustart, Update).</p>
+
+<h2 id="troubleshooting">Troubleshooting</h2>
+<table>
+  <tr><th>Symptom</th><th>Ursache / Lösung</th></tr>
+  <tr><td>„Auf dem Proxmox-Host ausführen"</td><td>Der Ein-Zeiler wurde im Container statt auf dem Host gestartet. <code>pct</code> gibt es nur auf dem Proxmox-Host.</td></tr>
+  <tr><td>API-Fehler „Paperless-URL nicht konfiguriert" (503)</td><td>In den Einstellungen noch keine Paperless-URL gesetzt.</td></tr>
+  <tr><td>Generator lädt, aber Daten kommen nicht</td><td>Paperless-URL/Token in den Einstellungen prüfen; ist Paperless vom LXC aus erreichbar? <code>docker logs paperless-generator-portal</code>.</td></tr>
+  <tr><td>Container startet nicht nach Reboot</td><td><code>restart: unless-stopped</code> + <code>onboot=1</code> sind gesetzt; mit <code>pct start &lt;id&gt;</code> prüfen.</td></tr>
+</table>
+
+</div>
+<script>
+document.querySelectorAll('pre').forEach(pre => {
+  const btn = document.createElement('button');
+  btn.className = 'copy-btn'; btn.textContent = 'Kopieren';
+  pre.appendChild(btn);
+  btn.addEventListener('click', () => {
+    const code = pre.querySelector('code') ? pre.querySelector('code').innerText : pre.innerText;
+    navigator.clipboard.writeText(code).then(() => {
+      btn.textContent = '✓ Kopiert'; btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = 'Kopieren'; btn.classList.remove('copied'); }, 2000);
+    });
+  });
+});
+document.querySelectorAll('.copy-val button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const val = btn.parentElement.querySelector('code').innerText;
+    navigator.clipboard.writeText(val).then(() => {
+      btn.textContent = '✓ Kopiert'; btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = 'Kopieren'; btn.classList.remove('copied'); }, 2000);
+    });
+  });
+});
+const links = document.querySelectorAll('#sidebar a');
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      links.forEach(l => l.classList.remove('active'));
+      const active = document.querySelector('#sidebar a[href="#' + e.target.id + '"]');
+      if (active) active.classList.add('active');
+    }
+  });
+}, { rootMargin: '-20% 0px -70% 0px' });
+document.querySelectorAll('h2[id]').forEach(h => observer.observe(h));
+</script>
+</body>
+</html>

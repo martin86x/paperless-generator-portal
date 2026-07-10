@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Login — Paperless Generator Portal{% endblock %}
+{% block header %}{% endblock %}
+{% block content %}
+<form class="card" method="post" autocomplete="off">
+  <h1>Anmelden</h1>
+  <p class="sub">Paperless Generator Portal</p>
+  {% if error %}<div class="msg err">{{ error }}</div>{% endif %}
+  <label for="username">Benutzername</label>
+  <input type="text" id="username" name="username" value="admin" autofocus>
+  <label for="password">Passwort</label>
+  <input type="password" id="password" name="password">
+  <button type="submit">Anmelden</button>
+  <p class="hint">Standard-Zugang: <code>admin</code> / <code>admin</code> — bitte nach dem ersten Login aendern.</p>
+</form>
+{% endblock %}

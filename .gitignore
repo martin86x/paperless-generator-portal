@@ -1,0 +1,5 @@
+# Laufzeit-Konfiguration (Token, Passwort-Hash) — nie committen
+config/
+*.tmp
+__pycache__/
+*.pyc

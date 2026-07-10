@@ -1,0 +1,8 @@
+# Zeilenenden normalisieren: Repo-Blobs = LF.
+* text=auto
+
+# Kritisch: Shell-Skript wird via curl|bash auf Linux ausgefuehrt -> immer LF,
+# sonst schlaegt der Proxmox-Ein-Zeiler mit $'\r'-Fehlern fehl.
+*.sh text eol=lf
+Dockerfile text eol=lf
+*.yml text eol=lf
