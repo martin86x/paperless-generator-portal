@@ -107,13 +107,13 @@ für den Heimgebrauch. Danach läuft es automatisch durch und hakt jeden Schritt
 <pre><code class="yaml"> ✓ Proxmox-Host erkannt
  ✓ Template bereit (debian-12-standard)
  ✓ LXC 200 erstellt (privileged, Nesting, onboot)
- ✓ Container gestartet, Netzwerk erreichbar (IP 192.168.10.x)
+ ✓ Container gestartet, Netzwerk erreichbar (IP 192.168.1.x)
  ✓ Docker installiert, Projekt geholt & Container gebaut
 
 ── Selbstcheck ──
  ✓ Container läuft (docker ps)
  ✓ Healthcheck: healthy
- ✓ HTTP 200 auf http://192.168.10.x:8080/login
+ ✓ HTTP 200 auf http://192.168.1.x:8080/login
  ✓ Autostart aktiv (onboot=1, restart=unless-stopped)</code></pre>
 <blockquote><p><strong>Voraussetzung:</strong> Das Skript legt einen <strong>privileged</strong> LXC mit
 <strong>Nesting</strong> an (nötig, damit Docker im Container läuft). Das erledigt es selbst — es sind
@@ -134,7 +134,7 @@ sofort ein eigenes Passwort setzen.</p></blockquote>
 <p>In den <strong>Einstellungen</strong> die Verbindung eintragen und speichern:</p>
 <table>
   <tr><th>Feld</th><th>Beispiel</th><th>Hinweis</th></tr>
-  <tr><td>Paperless-URL</td><td><span class="copy-val"><code>http://192.168.10.200:8000</code><button>Kopieren</button></span></td><td>Basis-URL inkl. Port, ohne <code>/api</code></td></tr>
+  <tr><td>Paperless-URL</td><td><span class="copy-val"><code>http://192.168.1.200:8000</code><button>Kopieren</button></span></td><td>Basis-URL inkl. Port, ohne <code>/api</code></td></tr>
   <tr><td>API-Token</td><td><em>dein Token</em></td><td>siehe unten</td></tr>
 </table>
 <p><strong>Token holen:</strong> In Paperless anmelden → <em>Einstellungen → Mein Profil → API-Token</em>
@@ -172,9 +172,9 @@ aus dem Generator-Projekt in <code>site/</code>.</p>
 <h2 id="homelab">8. Optionale Homelab-Integration</h2>
 <h3>gethomepage-Kachel</h3>
 <pre><code class="yaml">- Paperless Generator:
-    href: http://192.168.10.x:8080
+    href: http://192.168.1.x:8080
     description: Setup Generator Portal
-    siteMonitor: http://192.168.10.x:8080/healthz</code></pre>
+    siteMonitor: http://192.168.1.x:8080/healthz</code></pre>
 <h3>Uptime Kuma</h3>
 <p>Monitor vom Typ <em>HTTP(s)</em> auf <code>http://&lt;lxc-ip&gt;:8080/healthz</code> (erwartet
 Status 200) — meldet, wenn der Container ausfällt.</p>

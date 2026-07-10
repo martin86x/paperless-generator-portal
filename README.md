@@ -18,7 +18,7 @@ Nach dem Durchlauf zeigt das Skript die URL an. Dann:
 
 1. `http://<lxc-ip>:8080` öffnen → **Login** mit `admin` / `admin`
 2. **Passwort ändern** (Einstellungen)
-3. In den **Einstellungen** die **Paperless-URL** (z. B. `http://192.168.10.200:8000`)
+3. In den **Einstellungen** die **Paperless-URL** (z. B. `http://192.168.1.100:8000`)
    und den **API-Token** eintragen → speichern
 4. Fertig — der Generator ist oben im Menü erreichbar und bereits verbunden.
 
