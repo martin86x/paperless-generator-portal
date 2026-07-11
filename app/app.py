@@ -71,6 +71,13 @@ INJECT = (
     "var st=document.getElementById('setup-steps');if(st){st.style.display='none';}"
     "var tk=document.getElementById('inp-token');if(tk){tk.placeholder='— im Portal nicht nötig (Proxy spritzt den Token ein) —';}"
     "var tw=document.getElementById('token-warn');if(tw){tw.style.display='none';}"
+    # Benachrichtigungs-E-Mail als Pflichtfeld markieren (fuer die Frist-Workflows noetig)
+    "var em=document.getElementById('inp-notify-email');"
+    "if(em){var fg=em.closest('.field-group');"
+    "if(fg){var fl=fg.querySelector('.flabel');"
+    "if(fl&&!fl.querySelector('.plx-req')){var rq=document.createElement('span');rq.className='plx-req';rq.textContent=' * ';rq.style.color='var(--danger)';var sub=fl.querySelector('span');if(sub){fl.insertBefore(rq,sub);}else{fl.appendChild(rq);}}"
+    "var ew=document.getElementById('plx-email-warn');if(!ew){ew=document.createElement('span');ew.id='plx-email-warn';ew.textContent='⚠ E-Mail wird für die Frist-Workflows (Erinnerungen) benötigt';ew.style.cssText='font-size:.7rem;color:var(--danger);margin-top:.2rem';fg.appendChild(ew);}"
+    "var chk=function(){ew.style.display=(em.value.trim()?'none':'block');};em.addEventListener('input',chk);chk();}}"
     "}}catch(e){}"
     "setTimeout(function(){try{"
     "if(typeof _parseUrlToFields==='function')_parseUrlToFields(o);"
