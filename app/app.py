@@ -66,7 +66,7 @@ INJECT = (
     "b.style.cssText='margin:.2rem 0 1rem;padding:.7rem .95rem;background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.4);border-radius:8px;font-size:.82rem;color:#bcd3ff;line-height:1.5';"
     "b.appendChild(document.createTextNode('🔌 Portal-Modus: Die Verbindung zu Paperless läuft automatisch über den Portal-Proxy (same-origin, kein CORS). URL und Token musst du hier nicht eintragen — den Token verwaltest du zentral unter '));"
     "var la=document.createElement('a');la.href=o+'/settings';la.textContent='⚙ Einstellungen';la.style.cssText='color:#60a5fa;font-weight:700;text-decoration:underline';b.appendChild(la);"
-    "b.appendChild(document.createTextNode('. Die Felder unten sind nur für den optionalen Bash-Skript-Export nötig.'));"
+    "b.appendChild(document.createTextNode('. Die übrigen Felder brauchst du nur für einzelne Funktionen — z. B. die Benachrichtigungs-E-Mail für die Frist-Workflows (Erinnerungen) oder IP/Pfade für den optionalen Bash-Skript-Export.'));"
     "var h=sc.querySelector('h2');if(h){sc.insertBefore(b,h.nextSibling);}else{sc.insertBefore(b,sc.firstChild);}"
     "var st=document.getElementById('setup-steps');if(st){st.style.display='none';}"
     "var tk=document.getElementById('inp-token');if(tk){tk.placeholder='— im Portal nicht nötig (Proxy spritzt den Token ein) —';}"
