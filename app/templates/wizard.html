@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Einrichtung — Paperless Generator Portal{% endblock %}
+{% block header %}{% endblock %}
+{% block content %}
+<form class="card" method="post" autocomplete="off">
+  <h1>Willkommen 👋</h1>
+  <p class="sub">Ersteinrichtung in zwei Schritten: Passwort setzen und die erste Paperless-Instanz verbinden. Der Token wird beim Speichern direkt geprüft.</p>
+  {% if err %}<div class="msg err">✗ {{ err }}</div>{% endif %}
+
+  <h2>1 · Neues Passwort</h2>
+  <p class="hint">Ersetzt den Standard-Zugang <code>admin</code>/<code>admin</code>.</p>
+  <label for="new">Neues Passwort</label>
+  <input type="password" id="new" name="new" required>
+  <label for="repeat">Passwort wiederholen</label>
+  <input type="password" id="repeat" name="repeat" required>
+
+  <hr class="divider">
+  <h2>2 · Erste Paperless-Instanz</h2>
+  <label for="name">Name des Profils</label>
+  <input type="text" id="name" name="name" value="{{ name }}" placeholder="z. B. Haushalt">
+  <label for="paperless_url">Paperless-URL</label>
+  <input type="url" id="paperless_url" name="paperless_url" value="{{ url }}" placeholder="http://192.168.1.100:8000" required>
+  <label for="paperless_token">API-Token</label>
+  <input type="password" id="paperless_token" name="paperless_token" required>
+  <p class="hint">In Paperless unter <em>Einstellungen → Mein Profil → API-Token</em>. Wird server­seitig verschlüsselt gespeichert.</p>
+
+  <button type="submit">Einrichten &amp; loslegen →</button>
+</form>
+{% endblock %}

@@ -362,9 +362,9 @@ def login():
             _login_fails.pop(ip, None)
             session.permanent = True
             session["logged_in"] = True
-            # Erstlogin oder noch keine Paperless-URL -> direkt in die Einstellungen.
-            if cfg.get("is_default_pw") or not cfg.get("paperless_url"):
-                return redirect(url_for("settings"))
+            # Erst-Einrichtung (Default-Passwort aktiv) -> gefuehrter Wizard.
+            if cfg.get("is_default_pw"):
+                return redirect(url_for("wizard"))
             return redirect(url_for("index"))
         _login_note_fail(ip)
         error = "Falscher Benutzername oder falsches Passwort."
@@ -441,6 +441,51 @@ def _connection_status(cfg):
     if code is None:
         return ("err", "Paperless nicht erreichbar unter %s – URL/Netzwerk prüfen." % url)
     return ("err", "Unerwartete Antwort von Paperless: HTTP %d." % code)
+
+
+@app.route("/wizard", methods=["GET", "POST"])
+def wizard():
+    """Gefuehrte Erst-Einrichtung: Passwort setzen + erste Instanz (mit Live-Token-Test)."""
+    cfg = load_config()
+    profs = load_profiles()
+    aid = _active_id()
+    prof = profs.get(aid, {})
+    err = None
+    if request.method == "POST":
+        new = request.form.get("new", "")
+        rep = request.form.get("repeat", "")
+        name = request.form.get("name", "").strip() or (prof.get("name") or "Standard")
+        url = request.form.get("paperless_url", "").strip().rstrip("/")
+        tok = request.form.get("paperless_token", "").strip()
+        if len(new) < 4:
+            err = "Neues Passwort muss mindestens 4 Zeichen haben."
+        elif new != rep:
+            err = "Die Passwörter stimmen nicht überein."
+        elif not url:
+            err = "Bitte die Paperless-URL angeben."
+        elif not tok:
+            err = "Bitte den API-Token angeben."
+        else:
+            code = _test_paperless(url, tok)
+            if code == 200:
+                cfg["admin_pw_hash"] = generate_password_hash(new)
+                cfg["is_default_pw"] = False
+                save_config(cfg)
+                if aid in profs:
+                    profs[aid]["name"] = name
+                    profs[aid]["paperless_url"] = url
+                    profs[aid]["paperless_token"] = tok
+                    save_profiles(profs)
+                return redirect(url_for("index"))
+            elif code in (401, 403):
+                err = ("Token ungültig (HTTP %d) – in Paperless unter Mein Profil → "
+                       "API-Token neu erzeugen." % code)
+            elif code is None:
+                err = "Paperless nicht erreichbar unter %s – URL prüfen." % url
+            else:
+                err = "Unerwartete Antwort von Paperless: HTTP %d." % code
+    return render_template("wizard.html", name=(prof.get("name") or "Standard"),
+                           url=prof.get("paperless_url", ""), err=err)
 
 
 @app.route("/settings", methods=["GET", "POST"])
