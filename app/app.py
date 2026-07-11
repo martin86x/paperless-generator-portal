@@ -11,6 +11,8 @@ Aufgaben:
 Der Generator selbst wird nicht veraendert: die Zeile wird nur zur Laufzeit in den
 HTTP-Response eingefuegt (die Datei auf der Platte bleibt Byte-fuer-Byte identisch).
 """
+import base64
+import hashlib
 import json
 import os
 import secrets
@@ -19,6 +21,7 @@ from datetime import datetime, timedelta
 from urllib.parse import urlparse
 
 import requests
+from cryptography.fernet import Fernet, InvalidToken
 from flask import (Flask, Response, jsonify, redirect, render_template, request,
                    session, url_for)
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -85,6 +88,34 @@ def init_config():
     return load_config()
 
 
+# ── Token-Verschluesselung at-rest ───────────────────────────────────────────
+# Tokens liegen in profiles.json (+ Backups) nicht mehr im Klartext. Schluessel wird
+# aus 'secret' abgeleitet. HINWEIS: aendert sich 'secret', sind gespeicherte Tokens nicht
+# mehr entschluesselbar. Der Export (E1) entschluesselt bewusst -> Backup bleibt auf einer
+# anderen Instanz (anderer secret) einspielbar.
+_ENC_PREFIX = "enc:"
+
+
+def _fernet():
+    key = base64.urlsafe_b64encode(hashlib.sha256(_cfg0["secret"].encode()).digest())
+    return Fernet(key)
+
+
+def _enc(tok):
+    if not tok or tok.startswith(_ENC_PREFIX):
+        return tok
+    return _ENC_PREFIX + _fernet().encrypt(tok.encode()).decode()
+
+
+def _dec(val):
+    if not val or not val.startswith(_ENC_PREFIX):
+        return val or ""
+    try:
+        return _fernet().decrypt(val[len(_ENC_PREFIX):].encode()).decode()
+    except InvalidToken:
+        return ""
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # PROFILE — mehrere Paperless-Instanzen, je eigene Verbindung + Generator-Config
 # profiles.json: { "<id>": {name, paperless_url, paperless_token, generator_config} }
@@ -101,6 +132,10 @@ def load_profiles():
 
 def save_profiles(profs):
     os.makedirs(CONFIG_DIR, exist_ok=True)
+    # Tokens verschluesselt ablegen (idempotent: bereits verschluesselte bleiben).
+    for p in profs.values():
+        if isinstance(p, dict) and p.get("paperless_token"):
+            p["paperless_token"] = _enc(p["paperless_token"])
     # Auto-Backup: vorige Version rotierend sichern (letzte 5), damit nie Profile verloren gehen.
     if os.path.exists(PROFILES_PATH):
         try:
@@ -461,7 +496,7 @@ def profiles():
     for pid, p in profs.items():
         kind, text = _connection_status({
             "paperless_url": p.get("paperless_url"),
-            "paperless_token": p.get("paperless_token"),
+            "paperless_token": _dec(p.get("paperless_token")),
         })
         items.append({
             "id": pid,
@@ -524,8 +559,16 @@ def profiles_delete(pid):
 
 @app.route("/profiles/export")
 def profiles_export():
-    """Alle Profile als JSON herunterladen (Disaster-Recovery / Umzug)."""
-    data = json.dumps(load_profiles(), indent=2, ensure_ascii=False)
+    """Alle Profile als JSON herunterladen (Disaster-Recovery / Umzug).
+    Tokens werden entschluesselt exportiert, damit das Backup auf einer anderen
+    Instanz (mit anderem 'secret') einspielbar ist."""
+    out = {}
+    for pid, p in load_profiles().items():
+        q = dict(p)
+        if q.get("paperless_token"):
+            q["paperless_token"] = _dec(q["paperless_token"])
+        out[pid] = q
+    data = json.dumps(out, indent=2, ensure_ascii=False)
     return Response(data, mimetype="application/json", headers={
         "Content-Disposition": "attachment; filename=paperless-portal-profiles.json"})
 
@@ -623,7 +666,7 @@ def portal_profiles_list():
 def proxy(path):  # noqa: ARG001 (path steckt schon in request.path)
     prof = active_profile()
     base = prof.get("paperless_url")
-    token = prof.get("paperless_token")
+    token = _dec(prof.get("paperless_token"))
     if not base:
         return Response(
             "Paperless-URL ist nicht konfiguriert. Bitte in den Einstellungen setzen.",
