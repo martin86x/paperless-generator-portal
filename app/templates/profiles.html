@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Profile — Paperless Generator Portal{% endblock %}
+{% block content %}
+<div style="width:100%;max-width:460px">
+  <div class="card">
+    <h1>Instanz-Profile</h1>
+    <p class="sub">Mehrere Paperless-Instanzen — je eigene Verbindung und komplette Generator-Konfiguration. Das aktive Profil bestimmt, womit der Generator arbeitet.</p>
+    {% if msg %}<div class="msg ok">{{ msg }}</div>{% endif %}
+    {% if err %}<div class="msg err">{{ err }}</div>{% endif %}
+  </div>
+
+  {% for p in profiles %}
+  <div class="card" style="margin-top:14px">
+    <h2 style="margin:0;font-size:16px;color:var(--text)">
+      {{ p.name }}
+      {% if p.active %}<span style="font-size:11px;background:rgba(52,211,153,.15);color:var(--ok);border:1px solid var(--ok);border-radius:6px;padding:1px 7px;margin-left:6px">● aktiv</span>{% endif %}
+    </h2>
+    <div class="msg {{ 'ok' if p.conn_kind == 'ok' else 'err' }}" style="margin-top:10px">
+      {{ '✓' if p.conn_kind == 'ok' else '✗' }} {{ p.conn_text }}
+    </div>
+    <p class="hint">URL <code>{{ p.url or '—' }}</code> · Token {{ 'gesetzt' if p.has_token else 'nicht gesetzt' }} · Config {{ 'gespeichert' if p.has_config else 'leer (Defaults)' }}</p>
+
+    {% if not p.active %}
+    <form method="post" action="{{ url_for('profiles_activate', pid=p.id) }}">
+      <button type="submit">▶ Aktivieren &amp; in den Generator</button>
+    </form>
+    {% endif %}
+
+    <details style="margin-top:12px">
+      <summary style="cursor:pointer;color:var(--text-dim);font-size:13px">Verbindung · Umbenennen · Löschen</summary>
+
+      <form method="post" action="{{ url_for('profiles_connection', pid=p.id) }}">
+        <label>Paperless-URL</label>
+        <input type="url" name="paperless_url" value="{{ p.url }}" placeholder="http://192.168.1.100:8000">
+        <label>API-Token</label>
+        <input type="password" name="paperless_token"
+               placeholder="{% if p.has_token %}✓ gespeichert — leer lassen zum Behalten{% else %}Token eintragen{% endif %}">
+        <button type="submit">Verbindung speichern</button>
+      </form>
+
+      <form method="post" action="{{ url_for('profiles_rename', pid=p.id) }}" style="margin-top:10px">
+        <label>Name ändern</label>
+        <input type="text" name="name" value="{{ p.name }}">
+        <button type="submit">Umbenennen</button>
+      </form>
+
+      <form method="post" action="{{ url_for('profiles_delete', pid=p.id) }}" style="margin-top:10px"
+            onsubmit="return confirm('Profil „{{ p.name }}“ wirklich löschen? Die gespeicherte Konfiguration geht verloren.');">
+        <button type="submit" style="background:var(--err)">Profil löschen</button>
+      </form>
+    </details>
+  </div>
+  {% endfor %}
+
+  <div class="card" style="margin-top:14px">
+    <h2 style="margin:0 0 10px;font-size:15px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px">Neues Profil</h2>
+    <form method="post" action="{{ url_for('profiles_create') }}">
+      <label>Name</label>
+      <input type="text" name="name" placeholder="z. B. Haushalt, Firma, Testinstanz">
+      <button type="submit">+ Profil anlegen</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

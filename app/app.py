@@ -16,12 +16,13 @@ import os
 import secrets
 
 import requests
-from flask import (Flask, Response, redirect, render_template, request,
+from flask import (Flask, Response, jsonify, redirect, render_template, request,
                    session, url_for)
 from werkzeug.security import check_password_hash, generate_password_hash
 
 CONFIG_DIR = os.environ.get("CONFIG_DIR", "/config")
 CONFIG_PATH = os.path.join(CONFIG_DIR, "config.json")
+PROFILES_PATH = os.path.join(CONFIG_DIR, "profiles.json")
 SITE_DIR = os.environ.get("SITE_DIR", os.path.join(os.path.dirname(__file__), "site"))
 
 DEFAULT_ADMIN_USER = "admin"
@@ -36,55 +37,19 @@ EXCLUDED_RESP_HEADERS = {
 }
 PROXY_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"]
 
-# Vorkonfig-Injektion: zwingt den Generator auf same-origin (er arbeitet dann ueber /api/,
-# der Proxy spritzt den Token ein -> kein CORS). location.origin wird im Browser ausgewertet.
-#
-# Wichtig: Der Generator stellt ~900 ms nach dem Laden die letzte Sitzung wieder her
-# (LS_KEY 'paperless_gen_cfg_v2') und schreibt dabei die zuletzt genutzte (direkte)
-# Paperless-URL + Token zurueck in die Felder. Damit das die same-origin-Vorkonfig nicht
-# ueberschreibt, patchen wir BEIDE localStorage-Eintraege synchron im <head> (bevor der
-# Generator sie liest) und setzen die Felder nach der Wiederherstellung final auf origin.
+# Vorkonfig-Injektion (vor </head>):
+#   1. Synchron im <head>: beide localStorage-Keys auf same-origin patchen, BEVOR die
+#      Generator-Skripte sie lesen (sonst schreibt die letzte Sitzung eine direkte URL zurueck
+#      -> CORS). 2. Externe /portal/inject.js laedt die restliche Logik (Nav/Profil-Dropdown/
+#      Speichern/Dirty/Sektion-01/E-Mail-Pflichtfeld/Profil-Config laden) — als echte JS-Datei
+#      wartbar und einzeln testbar (app/inject.js).
 INJECT = (
-    "<script>(function(){"
-    "var o=location.origin;"
+    "<script>(function(){var o=location.origin;"
     "try{localStorage.setItem('plx_conn_preset',JSON.stringify({url:o,token:''}));}catch(e){}"
     "try{var K='paperless_gen_cfg_v2',r=localStorage.getItem(K);"
     "if(r){var c=JSON.parse(r);c.url=o;c.token='';localStorage.setItem(K,JSON.stringify(c));}}catch(e){}"
-    "window.addEventListener('load',function(){"
-    "try{if(!document.getElementById('plx-portal-nav')){"
-    "var n=document.createElement('div');n.id='plx-portal-nav';"
-    "n.style.cssText='position:fixed;top:8px;right:10px;z-index:2147483647;display:flex;gap:6px;font-family:system-ui,sans-serif';"
-    "var mk=function(h,txt,col){var a=document.createElement('a');a.href=h;a.textContent=txt;"
-    "a.style.cssText='background:#1f232c;color:'+col+';border:1px solid #2b303b;border-radius:6px;padding:5px 10px;font-size:12px;text-decoration:none';return a;};"
-    "n.appendChild(mk(o+'/settings','⚙ Einstellungen','#60a5fa'));"
-    "n.appendChild(mk(o+'/logout','Logout','#9aa4b2'));"
-    "document.body.appendChild(n);}}catch(e){}"
-    # Portal-Modus: Sektion 01 entschaerfen (Verbindung laeuft automatisch ueber den Proxy)
-    "try{var sc=document.getElementById('s-conn');"
-    "if(sc&&!document.getElementById('plx-portal-note')){"
-    "var b=document.createElement('div');b.id='plx-portal-note';"
-    "b.style.cssText='margin:.2rem 0 1rem;padding:.7rem .95rem;background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.4);border-radius:8px;font-size:.82rem;color:#bcd3ff;line-height:1.5';"
-    "b.appendChild(document.createTextNode('🔌 Portal-Modus: Die Verbindung zu Paperless läuft automatisch über den Portal-Proxy (same-origin, kein CORS). URL und Token musst du hier nicht eintragen — den Token verwaltest du zentral unter '));"
-    "var la=document.createElement('a');la.href=o+'/settings';la.textContent='⚙ Einstellungen';la.style.cssText='color:#60a5fa;font-weight:700;text-decoration:underline';b.appendChild(la);"
-    "b.appendChild(document.createTextNode('. Die übrigen Felder brauchst du nur für einzelne Funktionen — z. B. die Benachrichtigungs-E-Mail für die Frist-Workflows (Erinnerungen) oder IP/Pfade für den optionalen Bash-Skript-Export.'));"
-    "var h=sc.querySelector('h2');if(h){sc.insertBefore(b,h.nextSibling);}else{sc.insertBefore(b,sc.firstChild);}"
-    "var st=document.getElementById('setup-steps');if(st){st.style.display='none';}"
-    "var tk=document.getElementById('inp-token');if(tk){tk.placeholder='— im Portal nicht nötig (Proxy spritzt den Token ein) —';}"
-    "var tw=document.getElementById('token-warn');if(tw){tw.style.display='none';}"
-    # Benachrichtigungs-E-Mail als Pflichtfeld markieren (fuer die Frist-Workflows noetig)
-    "var em=document.getElementById('inp-notify-email');"
-    "if(em){var fg=em.closest('.field-group');"
-    "if(fg){var fl=fg.querySelector('.flabel');"
-    "if(fl&&!fl.querySelector('.plx-req')){var rq=document.createElement('span');rq.className='plx-req';rq.textContent=' * ';rq.style.color='var(--danger)';var sub=fl.querySelector('span');if(sub){fl.insertBefore(rq,sub);}else{fl.appendChild(rq);}}"
-    "var ew=document.getElementById('plx-email-warn');if(!ew){ew=document.createElement('span');ew.id='plx-email-warn';ew.textContent='⚠ E-Mail wird für die Frist-Workflows (Erinnerungen) benötigt';ew.style.cssText='font-size:.7rem;color:var(--danger);margin-top:.2rem';fg.appendChild(ew);}"
-    "var chk=function(){ew.style.display=(em.value.trim()?'none':'block');};em.addEventListener('input',chk);chk();}}"
-    "}}catch(e){}"
-    "setTimeout(function(){try{"
-    "if(typeof _parseUrlToFields==='function')_parseUrlToFields(o);"
-    "var t=document.getElementById('inp-token');if(t)t.value='';"
-    "if(typeof testConnection==='function')testConnection();"
-    "}catch(e){}},1200);});"
     "})();</script>"
+    "<script src='/portal/inject.js'></script>"
 )
 
 
@@ -115,6 +80,101 @@ def init_config():
     return load_config()
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# PROFILE — mehrere Paperless-Instanzen, je eigene Verbindung + Generator-Config
+# profiles.json: { "<id>": {name, paperless_url, paperless_token, generator_config} }
+# Das AKTIVE Profil steht in der Server-Session (kein Tab-uebergreifender Konflikt);
+# config.json haelt zusaetzlich das zuletzt genutzte als persistenten Default.
+# ─────────────────────────────────────────────────────────────────────────────
+def load_profiles():
+    try:
+        with open(PROFILES_PATH, encoding="utf-8") as fh:
+            return json.load(fh)
+    except (FileNotFoundError, ValueError):
+        return {}
+
+
+def save_profiles(profs):
+    os.makedirs(CONFIG_DIR, exist_ok=True)
+    # Auto-Backup: vorige Version rotierend sichern (letzte 5), damit nie Profile verloren gehen.
+    if os.path.exists(PROFILES_PATH):
+        try:
+            for i in range(4, 0, -1):
+                older = "%s.bak.%d" % (PROFILES_PATH, i)
+                newer = "%s.bak.%d" % (PROFILES_PATH, i + 1)
+                if os.path.exists(older):
+                    os.replace(older, newer)
+            import shutil
+            shutil.copy2(PROFILES_PATH, "%s.bak.1" % PROFILES_PATH)
+        except OSError:
+            pass
+    tmp = PROFILES_PATH + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(profs, fh, indent=2, ensure_ascii=False)
+    os.replace(tmp, PROFILES_PATH)
+
+
+def _new_profile_id():
+    return secrets.token_hex(8)
+
+
+def _strip_conn(gen_cfg):
+    """url/token aus dem Generator-Snapshot entfernen — die echte Verbindung liegt
+    getrennt im Profil (im Portal ist url=origin, token=leer)."""
+    if isinstance(gen_cfg, dict):
+        gen_cfg = dict(gen_cfg)
+        gen_cfg.pop("url", None)
+        gen_cfg.pop("token", None)
+    return gen_cfg
+
+
+def init_profiles():
+    """Nicht-destruktive Migration: gibt es noch keine profiles.json, wird die bestehende
+    Einzel-Verbindung aus config.json in ein Default-Profil 'Standard' gewandelt.
+    config.json behaelt paperless_url/token als Rueckweg."""
+    profs = load_profiles()
+    if not profs:
+        cfg = load_config()
+        pid = _new_profile_id()
+        profs = {pid: {
+            "name": "Standard",
+            "paperless_url": cfg.get("paperless_url", ""),
+            "paperless_token": cfg.get("paperless_token", ""),
+            "generator_config": None,
+        }}
+        save_profiles(profs)
+        if not cfg.get("active_profile"):
+            cfg["active_profile"] = pid
+            save_config(cfg)
+    return profs
+
+
+def _active_id():
+    """Aktives Profil: Session bevorzugt, sonst persistenter Default, sonst erstes Profil."""
+    profs = load_profiles()
+    aid = session.get("active_profile") or load_config().get("active_profile")
+    if aid not in profs:
+        aid = next(iter(profs), None)
+    return aid
+
+
+def active_profile():
+    profs = load_profiles()
+    aid = _active_id()
+    return profs.get(aid, {}) if aid else {}
+
+
+def set_active_profile(pid):
+    profs = load_profiles()
+    if pid in profs:
+        session["active_profile"] = pid
+        cfg = load_config()
+        cfg["active_profile"] = pid
+        save_config(cfg)
+        return True
+    return False
+
+
 def build_index_html():
     """Generator-HTML einlesen und die Vorkonfig-Zeile vor </head> einfuegen."""
     with open(os.path.join(SITE_DIR, "index.html"), encoding="utf-8") as fh:
@@ -126,7 +186,10 @@ def build_index_html():
 
 
 _cfg0 = init_config()
+init_profiles()
 INDEX_HTML = build_index_html()
+with open(os.path.join(os.path.dirname(__file__), "inject.js"), encoding="utf-8") as _fh:
+    INJECT_JS = _fh.read()
 
 app = Flask(__name__)
 app.secret_key = _cfg0["secret"]
@@ -139,7 +202,9 @@ def require_login():
     if request.endpoint in PUBLIC_ENDPOINTS:
         return None
     if not session.get("logged_in"):
-        if request.path.startswith("/api"):
+        # Fetch-Endpunkte (Proxy + portal-interne API) -> 401 statt Redirect,
+        # damit das injizierte JS im Generator es sauber behandeln kann.
+        if request.path.startswith("/api") or request.path.startswith("/portal"):
             return Response("Unauthorized", status=401)
         return redirect(url_for("login"))
     return None
@@ -281,12 +346,135 @@ def index():
     return Response(INDEX_HTML, mimetype="text/html")
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# PROFIL-VERWALTUNG
+# ─────────────────────────────────────────────────────────────────────────────
+@app.route("/profiles")
+def profiles():
+    profs = load_profiles()
+    aid = _active_id()
+    items = []
+    for pid, p in profs.items():
+        kind, text = _connection_status({
+            "paperless_url": p.get("paperless_url"),
+            "paperless_token": p.get("paperless_token"),
+        })
+        items.append({
+            "id": pid,
+            "name": p.get("name") or "(ohne Name)",
+            "url": p.get("paperless_url") or "",
+            "has_token": bool(p.get("paperless_token")),
+            "has_config": p.get("generator_config") is not None,
+            "active": pid == aid,
+            "conn_kind": kind, "conn_text": text,
+        })
+    items.sort(key=lambda x: x["name"].lower())
+    return render_template("profiles.html", profiles=items,
+                           msg=request.args.get("msg"), err=request.args.get("err"))
+
+
+@app.route("/profiles", methods=["POST"])
+def profiles_create():
+    name = request.form.get("name", "").strip() or "Neues Profil"
+    profs = load_profiles()
+    pid = _new_profile_id()
+    profs[pid] = {"name": name, "paperless_url": "", "paperless_token": "",
+                  "generator_config": None}
+    save_profiles(profs)
+    set_active_profile(pid)
+    return redirect(url_for("profiles", msg="Profil angelegt und aktiviert."))
+
+
+@app.route("/profiles/<pid>/activate", methods=["POST"])
+def profiles_activate(pid):
+    if set_active_profile(pid):
+        return redirect(url_for("index"))
+    return redirect(url_for("profiles", err="Profil nicht gefunden."))
+
+
+@app.route("/profiles/<pid>/rename", methods=["POST"])
+def profiles_rename(pid):
+    profs = load_profiles()
+    if pid in profs:
+        new = request.form.get("name", "").strip()
+        if new:
+            profs[pid]["name"] = new
+            save_profiles(profs)
+    return redirect(url_for("profiles"))
+
+
+@app.route("/profiles/<pid>/delete", methods=["POST"])
+def profiles_delete(pid):
+    profs = load_profiles()
+    if pid not in profs:
+        return redirect(url_for("profiles", err="Profil nicht gefunden."))
+    if len(profs) <= 1:
+        return redirect(url_for("profiles", err="Das letzte Profil kann nicht gelöscht werden."))
+    del profs[pid]
+    save_profiles(profs)
+    if _active_id() not in profs:            # war es aktiv -> auf ein anderes umschalten
+        set_active_profile(next(iter(profs)))
+    return redirect(url_for("profiles", msg="Profil gelöscht."))
+
+
+@app.route("/profiles/<pid>/connection", methods=["POST"])
+def profiles_connection(pid):
+    profs = load_profiles()
+    if pid not in profs:
+        return redirect(url_for("profiles", err="Profil nicht gefunden."))
+    url = request.form.get("paperless_url", "").strip().rstrip("/")
+    tok = request.form.get("paperless_token", "").strip()
+    if url:
+        profs[pid]["paperless_url"] = url
+    if tok:
+        profs[pid]["paperless_token"] = tok
+    save_profiles(profs)
+    return redirect(url_for("profiles", msg="Verbindung gespeichert."))
+
+
+# ─── Generator-Config des aktiven Profils laden/speichern (vom injizierten JS genutzt) ──
+@app.route("/portal/config", methods=["GET"])
+def portal_config_get():
+    return jsonify(active_profile().get("generator_config"))
+
+
+@app.route("/portal/config", methods=["POST"])
+def portal_config_post():
+    data = request.get_json(silent=True)
+    if data is None:
+        return jsonify({"ok": False, "error": "kein JSON"}), 400
+    profs = load_profiles()
+    aid = _active_id()
+    if not aid or aid not in profs:
+        return jsonify({"ok": False, "error": "kein aktives Profil"}), 400
+    profs[aid]["generator_config"] = _strip_conn(data)
+    save_profiles(profs)
+    return jsonify({"ok": True, "name": profs[aid].get("name")})
+
+
+@app.route("/portal/inject.js")
+def portal_inject_js():
+    return Response(INJECT_JS, mimetype="application/javascript")
+
+
+@app.route("/portal/profiles.json", methods=["GET"])
+def portal_profiles_list():
+    """Leichte Profil-Liste fuer den Dropdown im Generator (ohne Tokens/Config)."""
+    profs = load_profiles()
+    aid = _active_id()
+    return jsonify({
+        "active": aid,
+        "profiles": [{"id": pid, "name": p.get("name") or "(ohne Name)"}
+                     for pid, p in profs.items()],
+    })
+
+
 @app.route("/api/", defaults={"path": ""}, methods=PROXY_METHODS)
 @app.route("/api/<path:path>", methods=PROXY_METHODS)
 def proxy(path):  # noqa: ARG001 (path steckt schon in request.path)
-    cfg = load_config()
-    base = cfg.get("paperless_url")
-    token = cfg.get("paperless_token")
+    prof = active_profile()
+    base = prof.get("paperless_url")
+    token = prof.get("paperless_token")
     if not base:
         return Response(
             "Paperless-URL ist nicht konfiguriert. Bitte in den Einstellungen setzen.",
