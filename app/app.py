@@ -14,7 +14,9 @@ HTTP-Response eingefuegt (die Datei auf der Platte bleibt Byte-fuer-Byte identis
 import json
 import os
 import secrets
-from datetime import datetime
+import time
+from datetime import datetime, timedelta
+from urllib.parse import urlparse
 
 import requests
 from flask import (Flask, Response, jsonify, redirect, render_template, request,
@@ -241,8 +243,55 @@ with open(os.path.join(os.path.dirname(__file__), "inject.js"), encoding="utf-8"
 
 app = Flask(__name__)
 app.secret_key = _cfg0["secret"]
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",          # bremst Cross-Site-Requests -> CSRF-Grundschutz
+    PERMANENT_SESSION_LIFETIME=timedelta(hours=8),
+    SESSION_REFRESH_EACH_REQUEST=True,       # gleitend: aktive Nutzung haelt die Session am Leben
+)
 
 PUBLIC_ENDPOINTS = {"login", "healthz", "static"}
+
+# ── Login-Rate-Limit (in-memory, pro IP) ──────────────────────────────────────
+_login_fails = {}
+LOGIN_MAX = 5
+LOGIN_WINDOW = 300  # Sekunden
+
+
+def _login_blocked(ip):
+    now = time.time()
+    fails = [t for t in _login_fails.get(ip, []) if now - t < LOGIN_WINDOW]
+    _login_fails[ip] = fails
+    return len(fails) >= LOGIN_MAX
+
+
+def _login_note_fail(ip):
+    _login_fails.setdefault(ip, []).append(time.time())
+
+
+def _same_host(url_value):
+    try:
+        return urlparse(url_value).netloc == request.host
+    except ValueError:
+        return False
+
+
+@app.before_request
+def csrf_origin_check():
+    """CSRF-Grundschutz per Origin/Referer-Abgleich fuer zustandsaendernde Requests.
+    Der /api/-Proxy ist ausgenommen: der Generator feuert dort legitim viele POSTs/Bursts
+    (Direkt-Lauf) — die duerfen NICHT geblockt werden."""
+    if request.method in ("POST", "PUT", "PATCH", "DELETE") and not request.path.startswith("/api"):
+        origin = request.headers.get("Origin")
+        referer = request.headers.get("Referer")
+        if origin is not None:
+            if not _same_host(origin):
+                return Response("CSRF: Origin stimmt nicht", status=403)
+        elif referer is not None:
+            if not _same_host(referer):
+                return Response("CSRF: Referer stimmt nicht", status=403)
+        # Fehlen beide Header -> durchlassen (der Angriffs-Vektor sendet einen fremden Origin).
+    return None
 
 
 @app.before_request
@@ -267,15 +316,22 @@ def healthz():
 def login():
     error = None
     if request.method == "POST":
+        ip = request.remote_addr or "?"
+        if _login_blocked(ip):
+            error = "Zu viele Fehlversuche. Bitte einige Minuten warten."
+            return render_template("login.html", error=error), 429
         cfg = load_config()
         user = request.form.get("username", "")
         pw = request.form.get("password", "")
         if user == cfg.get("admin_user") and check_password_hash(cfg["admin_pw_hash"], pw):
+            _login_fails.pop(ip, None)
+            session.permanent = True
             session["logged_in"] = True
             # Erstlogin oder noch keine Paperless-URL -> direkt in die Einstellungen.
             if cfg.get("is_default_pw") or not cfg.get("paperless_url"):
                 return redirect(url_for("settings"))
             return redirect(url_for("index"))
+        _login_note_fail(ip)
         error = "Falscher Benutzername oder falsches Passwort."
     return render_template("login.html", error=error)
 
