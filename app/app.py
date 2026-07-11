@@ -36,6 +36,9 @@ SITE_DIR = os.environ.get("SITE_DIR", os.path.join(os.path.dirname(__file__), "s
 DEFAULT_ADMIN_USER = "admin"
 DEFAULT_ADMIN_PASS = "admin"
 
+PORTAL_VERSION = "1.0"                       # Portal-Release (Profil-System)
+GITHUB_REPO = "martin86x/paperless-generator-portal"
+
 # Hop-by-hop-Header + solche, die requests bereits aufloest (Content-Encoding/-Length),
 # duerfen nicht 1:1 an den Browser durchgereicht werden.
 EXCLUDED_RESP_HEADERS = {
@@ -581,6 +584,38 @@ def profiles():
     items.sort(key=lambda x: x["name"].lower())
     return render_template("profiles.html", profiles=items,
                            msg=request.args.get("msg"), err=request.args.get("err"))
+
+
+@app.route("/update")
+def update_page():
+    """Versions-Anzeige + Update-Pruefung gegen GitHub + Rebuild-Befehl.
+
+    Ein echter 1-Klick-Self-Rebuild ist bewusst NICHT umgesetzt: der Container
+    (python:slim) hat kein git/docker und das Repo liegt auf dem LXC-Host — ein
+    Self-Rebuild braeuchte den Docker-Socket (root-aequivalent). Daher: Update
+    ANZEIGEN, Rebuild-Befehl zum Kopieren. (Self-Rebuild -> Roadmap.)
+    """
+    latest = None
+    gh_err = None
+    try:
+        r = requests.get("https://api.github.com/repos/%s/commits/main" % GITHUB_REPO,
+                         headers={"Accept": "application/vnd.github+json"}, timeout=8)
+        if r.status_code == 200:
+            j = r.json()
+            latest = {
+                "sha": j["sha"][:7],
+                "date": (j["commit"]["committer"]["date"] or "")[:10],
+                "message": (j["commit"]["message"] or "").splitlines()[0],
+                "url": j.get("html_url", ""),
+            }
+        else:
+            gh_err = "GitHub antwortete mit HTTP %d." % r.status_code
+    except (requests.RequestException, ValueError, KeyError):
+        gh_err = "GitHub nicht erreichbar."
+    rebuild_cmd = ("cd /opt/paperless-generator-portal && git fetch origin main && "
+                   "git reset --hard origin/main && docker compose up -d --build")
+    return render_template("update.html", version=PORTAL_VERSION, latest=latest,
+                           gh_err=gh_err, rebuild_cmd=rebuild_cmd, repo=GITHUB_REPO)
 
 
 @app.route("/dashboard")

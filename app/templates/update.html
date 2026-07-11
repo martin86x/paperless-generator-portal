@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Version & Update — Paperless Generator Portal{% endblock %}
+{% block content %}
+<div style="width:100%;max-width:480px">
+  <div class="card">
+    <h1>Version &amp; Update</h1>
+    <p class="sub">Aktueller Portal-Stand und Abgleich mit GitHub.</p>
+    <p class="hint">Installierte Version: <strong style="color:var(--accent2)">v{{ version }}</strong></p>
+
+    <h2>Auf GitHub</h2>
+    {% if gh_err %}
+      <div class="msg err">✗ {{ gh_err }}</div>
+    {% elif latest %}
+      <div class="msg ok">Neuester Commit: <code>{{ latest.sha }}</code> · {{ latest.date }}<br>{{ latest.message }}</div>
+      <p class="hint">
+        <a class="link" href="{{ latest.url }}" target="_blank" rel="noopener">Commit ansehen →</a> ·
+        <a class="link" href="https://github.com/{{ repo }}/commits/main" target="_blank" rel="noopener">alle Änderungen</a>
+      </p>
+    {% endif %}
+
+    <hr class="divider">
+    <h2>Aktualisieren</h2>
+    <p class="hint">Auf dem <strong>Proxmox-Host</strong> ausführen (<code>&lt;CTID&gt;</code> = deine Container-ID, z. B. 230):</p>
+    <code id="cmd" style="display:block;padding:10px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;font-size:12px;white-space:pre-wrap;word-break:break-all;color:var(--text)">pct exec &lt;CTID&gt; -- bash -c '{{ rebuild_cmd }}'</code>
+    <button onclick="var b=this;navigator.clipboard.writeText(document.getElementById('cmd').innerText).then(function(){b.textContent='✓ kopiert';});"
+            style="margin-top:8px;width:auto;padding:6px 12px;font-size:12px">Befehl kopieren</button>
+    <p class="hint">Ein Ein-Klick-Update aus dem Portal ist bewusst nicht aktiv — der Container bräuchte dafür Docker-Vollzugriff (Sicherheit). Config &amp; Profile im <code>/config</code>-Volume überstehen den Rebuild.</p>
+  </div>
+</div>
+{% endblock %}
