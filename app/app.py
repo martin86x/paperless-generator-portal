@@ -14,6 +14,7 @@ HTTP-Response eingefuegt (die Datei auf der Platte bleibt Byte-fuer-Byte identis
 import json
 import os
 import secrets
+from datetime import datetime
 
 import requests
 from flask import (Flask, Response, jsonify, redirect, render_template, request,
@@ -23,6 +24,8 @@ from werkzeug.security import check_password_hash, generate_password_hash
 CONFIG_DIR = os.environ.get("CONFIG_DIR", "/config")
 CONFIG_PATH = os.path.join(CONFIG_DIR, "config.json")
 PROFILES_PATH = os.path.join(CONFIG_DIR, "profiles.json")
+HISTORY_DIR = os.path.join(CONFIG_DIR, "history")
+HISTORY_MAX = 20
 SITE_DIR = os.environ.get("SITE_DIR", os.path.join(os.path.dirname(__file__), "site"))
 
 DEFAULT_ADMIN_USER = "admin"
@@ -173,6 +176,51 @@ def set_active_profile(pid):
         save_config(cfg)
         return True
     return False
+
+
+# ─── Config-Historie pro Profil (bei jedem Speichern wird der vorige Stand gesichert) ──
+def _history_dir(pid):
+    return os.path.join(HISTORY_DIR, pid)
+
+
+def _snapshot_history(pid, gen_cfg):
+    """Vorige generator_config als Zeitstempel-Snapshot ablegen (gekappt auf HISTORY_MAX)."""
+    if not gen_cfg:
+        return
+    d = _history_dir(pid)
+    os.makedirs(d, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%dT%H%M%S")
+    path = os.path.join(d, ts + ".json")
+    i = 1
+    while os.path.exists(path):
+        path = os.path.join(d, "%s-%d.json" % (ts, i))
+        i += 1
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(gen_cfg, fh, ensure_ascii=False)
+    files = sorted(f for f in os.listdir(d) if f.endswith(".json"))
+    while len(files) > HISTORY_MAX:
+        try:
+            os.remove(os.path.join(d, files.pop(0)))
+        except OSError:
+            break
+
+
+def _list_history(pid):
+    try:
+        return sorted((f[:-5] for f in os.listdir(_history_dir(pid)) if f.endswith(".json")),
+                      reverse=True)
+    except FileNotFoundError:
+        return []
+
+
+def _fmt_ts(ts):
+    """20260711T093015 -> 11.07.2026 09:30:15 (Anzeige)."""
+    base = ts.split("-")[0]
+    try:
+        d = datetime.strptime(base, "%Y%m%dT%H%M%S")
+        return d.strftime("%d.%m.%Y %H:%M:%S")
+    except ValueError:
+        return ts
 
 
 def build_index_html():
@@ -367,6 +415,7 @@ def profiles():
             "has_config": p.get("generator_config") is not None,
             "active": pid == aid,
             "conn_kind": kind, "conn_text": text,
+            "history": [{"ts": ts, "label": _fmt_ts(ts)} for ts in _list_history(pid)],
         })
     items.sort(key=lambda x: x["name"].lower())
     return render_template("profiles.html", profiles=items,
@@ -417,6 +466,49 @@ def profiles_delete(pid):
     return redirect(url_for("profiles", msg="Profil gelöscht."))
 
 
+@app.route("/profiles/export")
+def profiles_export():
+    """Alle Profile als JSON herunterladen (Disaster-Recovery / Umzug)."""
+    data = json.dumps(load_profiles(), indent=2, ensure_ascii=False)
+    return Response(data, mimetype="application/json", headers={
+        "Content-Disposition": "attachment; filename=paperless-portal-profiles.json"})
+
+
+@app.route("/profiles/import", methods=["POST"])
+def profiles_import():
+    """Profile aus hochgeladener JSON wiederherstellen (ersetzt alle; vorige werden gesichert)."""
+    f = request.files.get("file")
+    if not f:
+        return redirect(url_for("profiles", err="Keine Datei ausgewählt."))
+    try:
+        data = json.load(f.stream)
+    except ValueError:
+        return redirect(url_for("profiles", err="Ungültige JSON-Datei."))
+    if not isinstance(data, dict) or not data or \
+            any(not isinstance(v, dict) or "name" not in v for v in data.values()):
+        return redirect(url_for("profiles", err="Datei enthält keine gültigen Profile."))
+    save_profiles(data)  # sichert die vorige Version automatisch (rotierendes Backup)
+    if _active_id() not in data:
+        set_active_profile(next(iter(data)))
+    return redirect(url_for("profiles", msg="Profile importiert (vorheriger Stand gesichert)."))
+
+
+@app.route("/profiles/<pid>/history/<ts>/restore", methods=["POST"])
+def profiles_history_restore(pid, ts):
+    profs = load_profiles()
+    if pid not in profs:
+        return redirect(url_for("profiles", err="Profil nicht gefunden."))
+    path = os.path.join(_history_dir(pid), ts + ".json")
+    if not os.path.exists(path):
+        return redirect(url_for("profiles", err="Snapshot nicht gefunden."))
+    with open(path, encoding="utf-8") as fh:
+        cfg = json.load(fh)
+    _snapshot_history(pid, profs[pid].get("generator_config"))  # aktuellen Stand sichern
+    profs[pid]["generator_config"] = cfg
+    save_profiles(profs)
+    return redirect(url_for("profiles", msg="Snapshot vom %s wiederhergestellt." % _fmt_ts(ts)))
+
+
 @app.route("/profiles/<pid>/connection", methods=["POST"])
 def profiles_connection(pid):
     profs = load_profiles()
@@ -447,6 +539,7 @@ def portal_config_post():
     aid = _active_id()
     if not aid or aid not in profs:
         return jsonify({"ok": False, "error": "kein aktives Profil"}), 400
+    _snapshot_history(aid, profs[aid].get("generator_config"))  # vorigen Stand sichern
     profs[aid]["generator_config"] = _strip_conn(data)
     save_profiles(profs)
     return jsonify({"ok": True, "name": profs[aid].get("name")})

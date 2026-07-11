@@ -1,12 +1,24 @@
 {% extends "base.html" %}
 {% block title %}Profile — Paperless Generator Portal{% endblock %}
 {% block content %}
-<div style="width:100%;max-width:460px">
+<div style="width:100%;max-width:480px">
   <div class="card">
     <h1>Instanz-Profile</h1>
     <p class="sub">Mehrere Paperless-Instanzen — je eigene Verbindung und komplette Generator-Konfiguration. Das aktive Profil bestimmt, womit der Generator arbeitet.</p>
     {% if msg %}<div class="msg ok">{{ msg }}</div>{% endif %}
     {% if err %}<div class="msg err">{{ err }}</div>{% endif %}
+    <p class="hint">📦 Alle Profile werden <strong>lokal im Container</strong> gespeichert (<code>/config/profiles.json</code>) und überstehen Neustarts &amp; Updates. Vor jedem Schreiben wird automatisch ein rotierendes Backup angelegt.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+      <a class="link" href="{{ url_for('profiles_export') }}"
+         style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px">⬇ Alle Profile sichern</a>
+      <form method="post" action="{{ url_for('profiles_import') }}" enctype="multipart/form-data"
+            style="display:flex;gap:6px;align-items:center;margin:0"
+            onsubmit="return confirm('Import ersetzt ALLE vorhandenen Profile (der aktuelle Stand wird vorher gesichert). Fortfahren?');">
+        <input type="file" name="file" accept=".json" required
+               style="font-size:12px;max-width:150px;color:var(--text-dim)">
+        <button type="submit" style="width:auto;margin:0;padding:8px 12px;font-size:13px">⬆ Wiederherstellen</button>
+      </form>
+    </div>
   </div>
 
   {% for p in profiles %}
@@ -49,6 +61,21 @@
         <button type="submit" style="background:var(--err)">Profil löschen</button>
       </form>
     </details>
+
+    {% if p.history %}
+    <details style="margin-top:8px">
+      <summary style="cursor:pointer;color:var(--text-dim);font-size:13px">Versionshistorie ({{ p.history|length }})</summary>
+      <p class="hint">Bei jedem „Profil speichern" wird der vorige Stand gesichert. Wiederherstellen sichert den aktuellen Stand vorher.</p>
+      {% for h in p.history %}
+      <form method="post" action="{{ url_for('profiles_history_restore', pid=p.id, ts=h.ts) }}"
+            style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:4px 0"
+            onsubmit="return confirm('Konfiguration auf den Stand vom {{ h.label }} zurücksetzen?');">
+        <span style="font-size:12.5px;color:var(--text-dim);font-family:monospace">{{ h.label }}</span>
+        <button type="submit" style="width:auto;margin:0;padding:5px 10px;font-size:12px;background:var(--bg3);border:1px solid var(--border)">↩ Wiederherstellen</button>
+      </form>
+      {% endfor %}
+    </details>
+    {% endif %}
   </div>
   {% endfor %}
 
