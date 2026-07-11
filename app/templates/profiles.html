@@ -56,6 +56,18 @@
         <button type="submit">Umbenennen</button>
       </form>
 
+      <form method="post" action="{{ url_for('profiles_flags', pid=p.id) }}" style="margin-top:10px">
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);margin:8px 0">
+          <input type="checkbox" name="productive" value="1" {% if p.productive %}checked{% endif %} style="width:auto"> Produktivsystem — dauerhaften Warnbalken zeigen
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);margin:8px 0">
+          <input type="checkbox" name="readonly" value="1" {% if p.readonly %}checked{% endif %} style="width:auto"> Nur lesen — jeden Schreibzugriff sperren
+        </label>
+        <label>Farbe des Warnbalkens (optional)</label>
+        <input type="text" name="color" value="{{ p.color }}" placeholder="#b91c1c">
+        <button type="submit">Sicherheits-Einstellungen speichern</button>
+      </form>
+
       <form method="post" action="{{ url_for('profiles_delete', pid=p.id) }}" style="margin-top:10px"
             onsubmit="return confirm('Profil „{{ p.name }}“ wirklich löschen? Die gespeicherte Konfiguration geht verloren.');">
         <button type="submit" style="background:var(--err)">Profil löschen</button>

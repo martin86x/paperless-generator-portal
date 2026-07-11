@@ -73,18 +73,32 @@
       .catch(function () { location.href = '/'; });
   }
 
+  function showProductiveBanner(name, color, readonly) {
+    var b = document.getElementById('plx-prod-banner');
+    if (!b) { b = document.createElement('div'); b.id = 'plx-prod-banner'; document.body.insertBefore(b, document.body.firstChild); }
+    b.style.cssText = 'position:sticky;top:0;z-index:2147483646;background:' + (color || '#b91c1c') + ';color:#fff;text-align:center;padding:6px 12px;font-size:13px;font-weight:600;letter-spacing:.3px;font-family:system-ui,sans-serif;';
+    b.textContent = '⚠ PRODUKTIV: ' + (name || '') + ' — Änderungen wirken auf das Live-System' + (readonly ? ' · nur lesen' : '');
+  }
+  function removeProductiveBanner() {
+    var b = document.getElementById('plx-prod-banner'); if (b) b.remove();
+  }
+
   function loadProfilesIntoDropdown() {
     fetch('/portal/profiles.json')
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (d) {
-        if (!d || !_dropdown) return;
-        _dropdown.innerHTML = '';
-        d.profiles.forEach(function (p) {
-          var op = document.createElement('option');
-          op.value = p.id; op.textContent = p.name;
-          if (p.id === d.active) op.selected = true;
-          _dropdown.appendChild(op);
-        });
+        if (!d) return;
+        if (_dropdown) {
+          _dropdown.innerHTML = '';
+          d.profiles.forEach(function (p) {
+            var op = document.createElement('option');
+            op.value = p.id; op.textContent = p.name;
+            if (p.id === d.active) op.selected = true;
+            _dropdown.appendChild(op);
+          });
+        }
+        if (d.active_productive) showProductiveBanner(d.active_name, d.active_color, d.active_readonly);
+        else removeProductiveBanner();
       }).catch(function () {});
   }
 

@@ -53,6 +53,11 @@
 </head>
 <body>
 {% block header %}
+{% if active_prof and active_prof.productive %}
+<div style="background:{{ active_prof.color or '#b91c1c' }};color:#fff;text-align:center;padding:6px 12px;font-size:13px;font-weight:500;letter-spacing:.3px;">
+  &#9888; PRODUKTIV: {{ active_prof.name }} — Änderungen wirken auf das Live-System{% if active_prof.readonly %} · nur lesen{% endif %}
+</div>
+{% endif %}
 <header>
   <div class="brand">Paperless <span>Generator Portal</span></div>
   <nav>

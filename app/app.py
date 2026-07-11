@@ -31,6 +31,7 @@ CONFIG_PATH = os.path.join(CONFIG_DIR, "config.json")
 PROFILES_PATH = os.path.join(CONFIG_DIR, "profiles.json")
 HISTORY_DIR = os.path.join(CONFIG_DIR, "history")
 HISTORY_MAX = 20
+ACTIVITY_PATH = os.path.join(CONFIG_DIR, "activity.log")
 SITE_DIR = os.environ.get("SITE_DIR", os.path.join(os.path.dirname(__file__), "site"))
 
 DEFAULT_ADMIN_USER = "admin"
@@ -47,6 +48,7 @@ EXCLUDED_RESP_HEADERS = {
     "content-encoding", "content-length",
 }
 PROXY_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"]
+WRITE_METHODS = ("POST", "PUT", "PATCH", "DELETE")
 
 # Vorkonfig-Injektion (vor </head>):
 #   1. Synchron im <head>: beide localStorage-Keys auf same-origin patchen, BEVOR die
@@ -75,6 +77,33 @@ def save_config(cfg):
     with open(tmp, "w", encoding="utf-8") as fh:
         json.dump(cfg, fh, indent=2)
     os.replace(tmp, CONFIG_PATH)
+
+
+def _log_activity(kind, message):
+    """Append-only Aktivitaetsprotokoll (wann/was/Ergebnis) in /config/activity.log."""
+    try:
+        os.makedirs(CONFIG_DIR, exist_ok=True)
+        line = json.dumps({"ts": datetime.now().isoformat(timespec="seconds"),
+                           "kind": kind, "msg": message}, ensure_ascii=False)
+        with open(ACTIVITY_PATH, "a", encoding="utf-8") as fh:
+            fh.write(line + "\n")
+    except OSError:
+        pass
+
+
+def _read_activity(limit=150):
+    try:
+        with open(ACTIVITY_PATH, encoding="utf-8") as fh:
+            lines = fh.readlines()[-limit:]
+    except FileNotFoundError:
+        return []
+    out = []
+    for ln in reversed(lines):
+        try:
+            out.append(json.loads(ln))
+        except ValueError:
+            pass
+    return out
 
 
 def init_config():
@@ -184,6 +213,9 @@ def init_profiles():
             "paperless_url": cfg.get("paperless_url", ""),
             "paperless_token": cfg.get("paperless_token", ""),
             "generator_config": None,
+            "productive": False,
+            "readonly": False,
+            "color": "",
         }}
         save_profiles(profs)
         if not cfg.get("active_profile"):
@@ -330,6 +362,23 @@ def csrf_origin_check():
                 return Response("CSRF: Referer stimmt nicht", status=403)
         # Fehlen beide Header -> durchlassen (der Angriffs-Vektor sendet einen fremden Origin).
     return None
+
+
+@app.context_processor
+def _inject_active_profile():
+    """Aktives Profil (Name/Produktiv/Farbe) allen Templates bereitstellen — fuer den Warnbalken."""
+    try:
+        if not session.get("logged_in"):
+            return {"active_prof": None}
+        p = active_profile()
+        return {"active_prof": {
+            "name": p.get("name") or "",
+            "productive": bool(p.get("productive")),
+            "readonly": bool(p.get("readonly")),
+            "color": p.get("color") or "",
+        }}
+    except Exception:
+        return {"active_prof": None}
 
 
 @app.before_request
@@ -544,6 +593,9 @@ def profiles():
             "has_config": p.get("generator_config") is not None,
             "active": pid == aid,
             "conn_kind": kind, "conn_text": text,
+            "productive": bool(p.get("productive")),
+            "readonly": bool(p.get("readonly")),
+            "color": p.get("color") or "",
             "history": [{"ts": ts, "label": _fmt_ts(ts)} for ts in _list_history(pid)],
         })
     items.sort(key=lambda x: x["name"].lower())
@@ -625,9 +677,10 @@ def profiles_create():
     profs = load_profiles()
     pid = _new_profile_id()
     profs[pid] = {"name": name, "paperless_url": "", "paperless_token": "",
-                  "generator_config": None}
+                  "generator_config": None, "productive": False, "readonly": False, "color": ""}
     save_profiles(profs)
     set_active_profile(pid)
+    _log_activity("profile", "Profil angelegt: %s" % name)
     return redirect(url_for("profiles", msg="Profil angelegt und aktiviert."))
 
 
@@ -714,6 +767,20 @@ def profiles_history_restore(pid, ts):
     return redirect(url_for("profiles", msg="Snapshot vom %s wiederhergestellt." % _fmt_ts(ts)))
 
 
+@app.route("/profiles/<pid>/flags", methods=["POST"])
+def profiles_flags(pid):
+    profs = load_profiles()
+    if pid not in profs:
+        return redirect(url_for("profiles", err="Profil nicht gefunden."))
+    profs[pid]["productive"] = bool(request.form.get("productive"))
+    profs[pid]["readonly"] = bool(request.form.get("readonly"))
+    profs[pid]["color"] = request.form.get("color", "").strip()[:16]
+    save_profiles(profs)
+    _log_activity("profile", "Flags geaendert (%s): produktiv=%s, readonly=%s"
+                  % (profs[pid].get("name"), profs[pid]["productive"], profs[pid]["readonly"]))
+    return redirect(url_for("profiles", msg="Profil-Einstellungen gespeichert."))
+
+
 @app.route("/profiles/<pid>/connection", methods=["POST"])
 def profiles_connection(pid):
     profs = load_profiles()
@@ -726,6 +793,7 @@ def profiles_connection(pid):
     if tok:
         profs[pid]["paperless_token"] = tok
     save_profiles(profs)
+    _log_activity("connection", "Verbindung geaendert: %s" % (profs[pid].get("name") or pid))
     return redirect(url_for("profiles", msg="Verbindung gespeichert."))
 
 
@@ -747,6 +815,7 @@ def portal_config_post():
     _snapshot_history(aid, profs[aid].get("generator_config"))  # vorigen Stand sichern
     profs[aid]["generator_config"] = _strip_conn(data)
     save_profiles(profs)
+    _log_activity("save", "Profil-Konfiguration gespeichert: %s" % (profs[aid].get("name") or aid))
     return jsonify({"ok": True, "name": profs[aid].get("name")})
 
 
@@ -760,17 +829,39 @@ def portal_profiles_list():
     """Leichte Profil-Liste fuer den Dropdown im Generator (ohne Tokens/Config)."""
     profs = load_profiles()
     aid = _active_id()
+    act = profs.get(aid, {})
     return jsonify({
         "active": aid,
+        "active_name": act.get("name") or "",
+        "active_productive": bool(act.get("productive")),
+        "active_readonly": bool(act.get("readonly")),
+        "active_color": act.get("color") or "",
         "profiles": [{"id": pid, "name": p.get("name") or "(ohne Name)"}
                      for pid, p in profs.items()],
     })
+
+
+def _is_document_delete():
+    """True, wenn der Request ein Dokument loeschen wuerde — harter Sicherheits-Riegel."""
+    if request.method == "DELETE" and request.path.startswith("/api/documents/"):
+        return True
+    if request.method == "POST" and request.path.rstrip("/") == "/api/documents/bulk_edit":
+        body = request.get_json(silent=True) or {}
+        if str(body.get("method", "")).lower() in ("delete", "delete_documents"):
+            return True
+    return False
 
 
 @app.route("/api/", defaults={"path": ""}, methods=PROXY_METHODS)
 @app.route("/api/<path:path>", methods=PROXY_METHODS)
 def proxy(path):  # noqa: ARG001 (path steckt schon in request.path)
     prof = active_profile()
+    # ── Sicherheits-Riegel (unabhaengig vom Client) ──
+    if _is_document_delete():
+        _log_activity("blocked", "Dokument-Loeschung geblockt: %s %s" % (request.method, request.path))
+        return Response("Gesperrt: Dokument-Loeschung ist im Portal nicht erlaubt.", status=403)
+    if prof.get("readonly") and request.method in WRITE_METHODS:
+        return Response("Profil ist auf 'nur lesen' gesetzt — Schreibzugriff gesperrt.", status=403)
     base = prof.get("paperless_url")
     token = _dec(prof.get("paperless_token"))
     if not base:
