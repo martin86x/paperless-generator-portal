@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Paperless Generator Portal{% endblock %}
+{% block content %}
+<div style="width:100%;max-width:520px">
+  <div class="card">
+    <h1>Dashboard</h1>
+    <p class="sub">Live-Kennzahlen jeder Instanz und Abgleich der gespeicherten Konfiguration mit der echten Instanz (Drift).</p>
+  </div>
+
+  {% for c in cards %}
+  <div class="card" style="margin-top:14px">
+    <h2 style="margin:0;font-size:16px;color:var(--text)">
+      {{ c.name }}
+      {% if c.active %}<span style="font-size:11px;background:rgba(52,211,153,.15);color:var(--ok);border:1px solid var(--ok);border-radius:6px;padding:1px 7px;margin-left:6px">● aktiv</span>{% endif %}
+    </h2>
+
+    {% if not c.url %}
+      <div class="msg err" style="margin-top:10px">✗ Keine Paperless-URL — unter <a class="link" href="{{ url_for('profiles') }}">Profile</a> setzen.</div>
+    {% elif not c.online %}
+      <div class="msg err" style="margin-top:10px">✗ Nicht erreichbar / Token ungültig (<code>{{ c.url }}</code>).</div>
+    {% else %}
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px;text-align:center">
+        {% set tiles = [('Dokumente', c.stats.total, 'var(--text)'),
+                        ('Posteingang', c.stats.inbox, '#f59e0b'),
+                        ('ohne Typ', c.stats.no_type, 'var(--err)'),
+                        ('ohne Korresp.', c.stats.no_corr, 'var(--err)')] %}
+        {% for label, val, col in tiles %}
+        <div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 4px">
+          <div style="font-size:20px;font-weight:700;color:{{ col }}">{{ '—' if val is none else val }}</div>
+          <div style="font-size:11px;color:var(--text-dim)">{{ label }}</div>
+        </div>
+        {% endfor %}
+      </div>
+
+      {% if c.drift %}
+      <h3 style="margin:16px 0 6px;font-size:12px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px">Drift · Config ↔ Instanz</h3>
+      <div style="display:flex;flex-direction:column;gap:3px">
+        {% for d in c.drift %}
+        <div style="display:flex;align-items:center;justify-content:space-between;font-size:13px;padding:3px 0;border-bottom:1px solid var(--border)">
+          <span style="color:var(--text-dim)">{{ d.label }}</span>
+          <span style="font-family:monospace">
+            Config {{ d.cfg }} · Instanz {{ '—' if d.inst is none else d.inst }}
+            {% if d.diff is none %}
+              <span style="color:var(--text-dim)"> ?</span>
+            {% elif d.diff == 0 %}
+              <span style="color:var(--ok)"> ✓</span>
+            {% elif d.diff > 0 %}
+              <span style="color:#f59e0b"> +{{ d.diff }} nicht angelegt</span>
+            {% else %}
+              <span style="color:#60a5fa"> {{ d.diff }} extra in Instanz</span>
+            {% endif %}
+          </span>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="hint">Noch keine Config in diesem Profil gespeichert — kein Drift-Abgleich möglich.</p>
+      {% endif %}
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

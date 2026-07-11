@@ -395,6 +395,31 @@ def _test_paperless(url, token):
         return None
 
 
+def _api_count(url, token, query, timeout=5):
+    """count-Feld eines Paperless-Listen-Endpunkts holen (oder None wenn nicht erreichbar)."""
+    try:
+        r = requests.get(
+            url.rstrip("/") + "/api/" + query,
+            headers={"Authorization": "Token " + token} if token else {},
+            timeout=timeout, allow_redirects=False,
+        )
+        if r.status_code == 200:
+            return r.json().get("count")
+    except (requests.RequestException, ValueError):
+        pass
+    return None
+
+
+# Kennzahlen + Drift-Kategorien fuer das Dashboard (E3)
+_DRIFT_CATS = [
+    ("Tags", "tags", "tags/"),
+    ("Typen", "types", "document_types/"),
+    ("Felder", "fields", "custom_fields/"),
+    ("Korrespondenten", "correspondents", "correspondents/"),
+    ("Speicherpfade", "storagePaths", "storage_paths/"),
+]
+
+
 def _connection_status(cfg):
     """Live-Status der gespeicherten Paperless-Verbindung -> (kind, text) fuer die UI.
 
@@ -511,6 +536,42 @@ def profiles():
     items.sort(key=lambda x: x["name"].lower())
     return render_template("profiles.html", profiles=items,
                            msg=request.args.get("msg"), err=request.args.get("err"))
+
+
+@app.route("/dashboard")
+def dashboard():
+    """Live-Kennzahlen + Drift (Config vs. Instanz) pro Profil."""
+    profs = load_profiles()
+    aid = _active_id()
+    cards = []
+    for pid, p in profs.items():
+        url = p.get("paperless_url")
+        token = _dec(p.get("paperless_token"))
+        card = {"id": pid, "name": p.get("name") or "(ohne Name)", "active": pid == aid,
+                "url": url or "", "online": False, "stats": None, "drift": None,
+                "has_config": p.get("generator_config") is not None}
+        if url:
+            total = _api_count(url, token, "documents/?page_size=1")
+            if total is not None:
+                card["online"] = True
+                card["stats"] = {
+                    "total": total,
+                    "inbox": _api_count(url, token, "documents/?is_in_inbox=true&page_size=1"),
+                    "no_type": _api_count(url, token, "documents/?document_type__isnull=true&page_size=1"),
+                    "no_corr": _api_count(url, token, "documents/?correspondent__isnull=true&page_size=1"),
+                }
+                gc = p.get("generator_config") or {}
+                if card["has_config"]:
+                    drift = []
+                    for label, key, ep in _DRIFT_CATS:
+                        cfg_n = len(gc.get(key) or [])
+                        inst_n = _api_count(url, token, ep + "?page_size=1")
+                        drift.append({"label": label, "cfg": cfg_n, "inst": inst_n,
+                                      "diff": (cfg_n - inst_n) if inst_n is not None else None})
+                    card["drift"] = drift
+        cards.append(card)
+    cards.sort(key=lambda c: c["name"].lower())
+    return render_template("dashboard.html", cards=cards)
 
 
 @app.route("/profiles", methods=["POST"])
