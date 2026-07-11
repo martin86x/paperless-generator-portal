@@ -2,50 +2,25 @@
 {% block title %}Einstellungen — Paperless Generator Portal{% endblock %}
 {% block content %}
 <div class="card">
-  <h1>Einstellungen</h1>
-  <p class="sub">Paperless-Verbindung und Zugang verwalten.</p>
-
-  <div class="msg {{ 'ok' if conn_kind == 'ok' else 'err' }}">
-    <strong>{{ '✓ Verbindung' if conn_kind == 'ok' else '✗ Verbindung' }}:</strong>
-    {{ conn_text }}
-    <a class="link" href="{{ url_for('settings') }}" style="float:right">↻ erneut testen</a>
-  </div>
-  <p class="hint">
-    Gespeichert: URL <code>{{ paperless_url or '—' }}</code> · Token
-    {%- if token_looks_url %} <strong style="color:var(--err)">⚠ enthält eine URL (falsch)</strong>
-    {%- elif has_token %} gesetzt (endet auf …{{ token_tail }})
-    {%- else %} nicht gesetzt{% endif %}
-  </p>
+  <h1>Konto &amp; Passwort</h1>
+  <p class="sub">Zugang zum Portal verwalten.</p>
 
   {% if msg %}<div class="msg ok">{{ msg }}</div>{% endif %}
   {% if err %}<div class="msg err">{{ err }}</div>{% endif %}
   {% if is_default_pw %}<div class="msg err">Es ist noch das Standard-Passwort aktiv. Bitte unten ändern.</div>{% endif %}
 
+  <p class="hint">🔌 Paperless-Verbindungen (URL &amp; Token) verwaltest du pro Instanz unter
+    <a class="link" href="{{ url_for('profiles') }}">Profile</a>.</p>
+
   <form method="post" autocomplete="off">
-    <h2>Paperless-Verbindung</h2>
-    <label for="paperless_url">Paperless-URL</label>
-    <input type="url" id="paperless_url" name="paperless_url" value="{{ paperless_url }}"
-           placeholder="http://192.168.1.100:8000">
-    <p class="hint">Basis-URL deiner Paperless-Instanz inkl. Port, ohne <code>/api</code>.</p>
-
-    <label for="paperless_token">API-Token</label>
-    <input type="password" id="paperless_token" name="paperless_token"
-           placeholder="{% if has_token %}✓ gespeichert — leer lassen zum Behalten{% else %}Token eintragen{% endif %}">
-    <p class="hint">In Paperless unter <em>Einstellungen → Mein Profil → API-Token</em>. Wird serverseitig
-      gespeichert und automatisch eingespritzt.</p>
-
-    <hr class="divider">
-
-    <h2>Passwort ändern <span style="text-transform:none;letter-spacing:0;font-weight:400">(optional)</span></h2>
-    <p class="hint">Nur ausfüllen, wenn du das Passwort ändern möchtest.</p>
+    <h2>Passwort ändern</h2>
     <label for="current">Aktuelles Passwort</label>
     <input type="password" id="current" name="current">
     <label for="new">Neues Passwort</label>
     <input type="password" id="new" name="new">
     <label for="repeat">Neues Passwort wiederholen</label>
     <input type="password" id="repeat" name="repeat">
-
-    <button type="submit">Speichern</button>
+    <button type="submit">Passwort ändern</button>
   </form>
 </div>
 {% endblock %}

@@ -496,61 +496,26 @@ def settings():
     cfg = load_config()
     msg = err = None
     if request.method == "POST":
-        # Ein Formular speichert alles zusammen. Leere Felder behalten den alten Wert,
-        # damit nichts versehentlich verloren geht.
-        url = request.form.get("paperless_url", "").strip().rstrip("/")
-        if url:
-            cfg["paperless_url"] = url
-        tok = request.form.get("paperless_token", "").strip()
-        if tok:
-            cfg["paperless_token"] = tok
-
-        # Passwort nur ändern, wenn ein neues eingegeben wurde.
+        # Nur noch Passwort — Paperless-Verbindungen laufen ueber Profile (/profiles).
         new = request.form.get("new", "")
-        pw_ok = True
-        if new:
+        if not new:
+            err = "Bitte ein neues Passwort eingeben."
+        else:
             cur = request.form.get("current", "")
             rep = request.form.get("repeat", "")
             if not check_password_hash(cfg["admin_pw_hash"], cur):
-                err = "Aktuelles Passwort ist falsch."; pw_ok = False
+                err = "Aktuelles Passwort ist falsch."
             elif len(new) < 4:
-                err = "Neues Passwort muss mindestens 4 Zeichen haben."; pw_ok = False
+                err = "Neues Passwort muss mindestens 4 Zeichen haben."
             elif new != rep:
-                err = "Die neuen Passwörter stimmen nicht überein."; pw_ok = False
+                err = "Die neuen Passwörter stimmen nicht überein."
             else:
                 cfg["admin_pw_hash"] = generate_password_hash(new)
                 cfg["is_default_pw"] = False
-
-        save_config(cfg)  # Verbindung wird immer gespeichert
-        if pw_ok:
-            if cfg.get("paperless_url"):
-                # Token gleich gegen Paperless testen -> Klartext-Rueckmeldung wie im Generator.
-                code = _test_paperless(cfg["paperless_url"], cfg.get("paperless_token", ""))
-                if code == 200:
-                    return redirect(url_for("index"))       # echt verbunden -> in den Generator
-                elif code in (401, 403):
-                    err = ("✗ Token-Fehler (HTTP %d) – Token in Paperless prüfen "
-                           "(Web-UI → Mein Profil → API-Token) und neu eintragen." % code)
-                elif code is None:
-                    err = ("✗ Paperless nicht erreichbar unter " + cfg["paperless_url"]
-                           + " – URL/Netzwerk prüfen.")
-                else:
-                    err = "✗ Unerwartete Antwort von Paperless: HTTP %d." % code
-            else:
-                msg = "Gespeichert."
-        cfg = load_config()
-    tok = cfg.get("paperless_token") or ""
-    conn_kind, conn_text = _connection_status(cfg)
-    return render_template(
-        "settings.html",
-        paperless_url=cfg.get("paperless_url", ""),
-        has_token=bool(tok),
-        token_tail=(tok[-6:] if tok and "://" not in tok else ""),
-        token_looks_url=("://" in tok),
-        is_default_pw=cfg.get("is_default_pw", False),
-        conn_kind=conn_kind, conn_text=conn_text,
-        msg=msg, err=err,
-    )
+                save_config(cfg)
+                msg = "Passwort geändert."
+    return render_template("settings.html", is_default_pw=cfg.get("is_default_pw", False),
+                           msg=msg, err=err)
 
 
 @app.route("/")
