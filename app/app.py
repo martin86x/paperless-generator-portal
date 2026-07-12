@@ -799,6 +799,7 @@ _VERW_TABS = [
     ("profiles", "Profile", "profiles"),
     ("kennzahlen", "Kennzahlen", "dashboard"),
     ("trends", "Trends", "trends"),
+    ("werkzeuge", "Werkzeuge", "werkzeuge"),
     ("waechter", "Wächter", "waechter"),
     ("benachrichtigungen", "Benachrichtigungen", "notifications"),
     ("konto", "Konto", "settings"),
@@ -1619,6 +1620,52 @@ def _line_svg(values, color="#3b82f6", w=440, h=110, pad=16):
           'stroke-linecap="round" points="%s"/>' % (color, " ".join(pts))
         + '<circle cx="%s" cy="%s" r="3" fill="%s"/></svg>' % (last[0], last[1], color)
     )
+
+
+@app.route("/verwaltung/werkzeuge")
+def werkzeuge():
+    """Read-only Instanz-Werkzeuge fuer das AKTIVE Profil: Dokumente ohne Typ/Korrespondent/
+    ASN, ASN-Luecken, moegliche Duplikate (Titel-Kollision) — jeweils mit Direktlink nach
+    Paperless. Reine GETs, kein Schreibzugriff."""
+    profs = load_profiles()
+    p = profs.get(_active_id(), {})
+    url = p.get("paperless_url")
+    token = _dec(p.get("paperless_token"))
+    d = {"name": p.get("name") or "", "url": (url or "").rstrip("/"), "online": False,
+         "counts": None, "asn": None, "dups": None}
+    if url and _test_paperless(url, token) == 200:
+        d["online"] = True
+        d["counts"] = {
+            "no_type": _api_count(url, token, "documents/?document_type__isnull=true&page_size=1"),
+            "no_corr": _api_count(url, token, "documents/?correspondent__isnull=true&page_size=1"),
+            "no_asn": _api_count(url, token, "documents/?archive_serial_number__isnull=true&page_size=1"),
+            "inbox": _api_count(url, token, "documents/?is_in_inbox=true&page_size=1"),
+        }
+        try:
+            rows = _asn_pages(url, token, "archive_serial_number")
+            asns = sorted({int(r["archive_serial_number"]) for r in rows if r.get("archive_serial_number")})
+            if asns:
+                have = set(asns)
+                gaps = [i for i in range(asns[0], asns[-1] + 1) if i not in have]
+                d["asn"] = {"min": asns[0], "max": asns[-1], "count": len(asns),
+                            "gaps": gaps[:120], "gap_count": len(gaps), "next_free": asns[-1] + 1}
+            else:
+                d["asn"] = {"min": None, "max": None, "count": 0, "gaps": [], "gap_count": 0, "next_free": 1}
+        except (requests.RequestException, ValueError, TypeError):
+            d["asn"] = None
+        try:
+            rows = _asn_pages(url, token, "title")
+            seen = {}
+            for r in rows:
+                t = (r.get("title") or "").strip()
+                if t:
+                    seen[t] = seen.get(t, 0) + 1
+            dups = sorted([(t, n) for t, n in seen.items() if n > 1], key=lambda x: -x[1])
+            d["dups"] = {"list": dups[:60], "count": len(dups)}
+        except (requests.RequestException, ValueError, TypeError):
+            d["dups"] = None
+    return render_template("werkzeuge.html", d=d,
+                           msg=request.args.get("msg"), err=request.args.get("err"))
 
 
 @app.route("/verwaltung/trends", methods=["GET", "POST"])
