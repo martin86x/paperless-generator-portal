@@ -131,7 +131,7 @@
       a.style.cssText = 'background:#1f232c;color:' + col + ';border:1px solid #2b303b;border-radius:6px;padding:5px 10px;font-size:12px;text-decoration:none';
       return a;
     };
-    n.appendChild(mk(o + '/settings', '⚙', '#60a5fa'));
+    n.appendChild(mk(o + '/verwaltung', '⚙ Verwaltung', '#60a5fa'));
     n.appendChild(mk(o + '/logout', 'Logout', '#9aa4b2'));
     document.body.appendChild(n);
   }

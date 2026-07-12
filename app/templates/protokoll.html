@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Protokoll — Paperless Generator Portal{% endblock %}
+{% block content %}
+{% include "_subnav.html" %}
+<div style="width:100%;max-width:520px">
+  <div class="card">
+    <h1>Aktivitätsprotokoll</h1>
+    <p class="sub">Die letzten Aktionen im Portal (neueste zuerst) — inkl. geblockter Schreibversuche.</p>
+    {% if not entries %}<p class="hint">Noch keine Einträge.</p>{% endif %}
+    {% for e in entries %}
+    <div style="display:flex;gap:10px;align-items:baseline;padding:6px 0;border-top:1px solid var(--border);font-size:13px">
+      <span style="color:var(--text-dim);font-family:monospace;white-space:nowrap;font-size:12px">{{ e.ts.replace('T',' ') }}</span>
+      <span style="color:var(--accent2);font-size:11px;white-space:nowrap">{{ e.kind }}</span>
+      <span>{{ e.msg }}</span>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

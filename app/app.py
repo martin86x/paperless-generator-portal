@@ -635,6 +635,69 @@ def update_page():
                            gh_err=gh_err, rebuild_cmd=rebuild_cmd, repo=GITHUB_REPO)
 
 
+def _dir_size(path):
+    total = 0
+    for root, _dirs, files in os.walk(path):
+        for f in files:
+            try:
+                total += os.path.getsize(os.path.join(root, f))
+            except OSError:
+                pass
+    return total
+
+
+def _fmt_size(n):
+    for unit in ("B", "KB", "MB", "GB"):
+        if n < 1024:
+            return ("%d %s" % (n, unit)) if unit == "B" else ("%.1f %s" % (n, unit))
+        n /= 1024.0
+    return "%.1f TB" % n
+
+
+@app.route("/verwaltung")
+def verwaltung():
+    """Cockpit-Startseite: Status des aktiven Profils, Kennzahlen, Profilliste, Portal-Selbststatus."""
+    profs = load_profiles()
+    aid = _active_id()
+    act = profs.get(aid, {})
+    url = act.get("paperless_url")
+    token = _dec(act.get("paperless_token"))
+    kind, text = _connection_status({"paperless_url": url, "paperless_token": token})
+    stats = None
+    if url and kind == "ok":
+        stats = {
+            "total": _api_count(url, token, "documents/?page_size=1"),
+            "inbox": _api_count(url, token, "documents/?is_in_inbox=true&page_size=1"),
+            "no_type": _api_count(url, token, "documents/?document_type__isnull=true&page_size=1"),
+            "no_corr": _api_count(url, token, "documents/?correspondent__isnull=true&page_size=1"),
+        }
+    plist = []
+    for pid, p in profs.items():
+        pk, _t = _connection_status({"paperless_url": p.get("paperless_url"),
+                                     "paperless_token": _dec(p.get("paperless_token"))})
+        plist.append({"id": pid, "name": p.get("name") or "(ohne Name)",
+                      "active": pid == aid, "kind": pk})
+    plist.sort(key=lambda x: x["name"].lower())
+    ref = PROFILES_PATH + ".bak.1"
+    if not os.path.exists(ref):
+        ref = PROFILES_PATH if os.path.exists(PROFILES_PATH) else None
+    last_backup = datetime.fromtimestamp(os.path.getmtime(ref)).strftime("%d.%m.%Y %H:%M") if ref else "—"
+    portal = {"version": PORTAL_VERSION, "config_size": _fmt_size(_dir_size(CONFIG_DIR)),
+              "last_backup": last_backup}
+    return render_template(
+        "cockpit.html",
+        active={"id": aid, "name": act.get("name") or "", "url": url or "",
+                "productive": bool(act.get("productive")), "readonly": bool(act.get("readonly")),
+                "conn_kind": kind, "conn_text": text,
+                "has_config": act.get("generator_config") is not None},
+        stats=stats, profiles=plist, portal=portal)
+
+
+@app.route("/protokoll")
+def protokoll():
+    return render_template("protokoll.html", entries=_read_activity(200))
+
+
 @app.route("/dashboard")
 def dashboard():
     """Live-Kennzahlen + Drift (Config vs. Instanz) pro Profil."""

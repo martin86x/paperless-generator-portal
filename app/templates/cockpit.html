@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Verwaltung — Paperless Generator Portal{% endblock %}
+{% block content %}
+{% include "_subnav.html" %}
+<div style="width:100%;max-width:520px">
+
+  <div class="card">
+    <h1 style="margin:0;font-size:18px">
+      {{ active.name or 'Kein Profil' }}
+      {% if active.productive %}<span style="font-size:11px;background:#b91c1c;color:#fff;border-radius:6px;padding:1px 7px;margin-left:6px">PRODUKTIV</span>{% endif %}
+      {% if active.readonly %}<span style="font-size:11px;background:var(--bg3);color:var(--text-dim);border:1px solid var(--border);border-radius:6px;padding:1px 7px;margin-left:4px">nur lesen</span>{% endif %}
+    </h1>
+    <div class="msg {{ 'ok' if active.conn_kind == 'ok' else 'err' }}" style="margin-top:10px">
+      {{ '✓' if active.conn_kind == 'ok' else '✗' }} {{ active.conn_text }}
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+      <a class="link" href="{{ url_for('index') }}" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px">▶ Generator öffnen</a>
+      {% if active.url %}<a class="link" href="{{ active.url }}" target="_blank" rel="noopener" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px">↗ Paperless öffnen</a>{% endif %}
+      <a class="link" href="{{ url_for('profiles_export') }}" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px">⬇ Profile sichern</a>
+    </div>
+  </div>
+
+  {% if stats %}
+  <div class="card" style="margin-top:14px">
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;text-align:center">
+      {% set tiles = [('Dokumente', stats.total, 'var(--text)'), ('Posteingang', stats.inbox, '#f59e0b'), ('ohne Typ', stats.no_type, 'var(--err)'), ('ohne Korresp.', stats.no_corr, 'var(--err)')] %}
+      {% for label, val, col in tiles %}
+      <div style="background:var(--bg3);border-radius:8px;padding:10px 4px"><div style="font-size:20px;font-weight:600;color:{{ col }}">{{ '—' if val is none else val }}</div><div style="font-size:11px;color:var(--text-dim)">{{ label }}</div></div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="card" style="margin-top:14px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+      <span style="font-size:12px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px">Profile</span>
+      <a class="link" href="{{ url_for('profiles') }}">verwalten →</a>
+    </div>
+    {% for p in profiles %}
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-top:1px solid var(--border)">
+      <span style="font-size:14px"><span style="color:{{ 'var(--ok)' if p.kind == 'ok' else 'var(--err)' }}">●</span> {{ p.name }}{% if p.active %} <span style="font-size:11px;color:var(--ok)">aktiv</span>{% endif %}</span>
+      {% if not p.active %}<form method="post" action="{{ url_for('profiles_activate', pid=p.id) }}" style="margin:0"><button type="submit" style="width:auto;margin:0;padding:4px 10px;font-size:12px;background:var(--bg3)">aktivieren</button></form>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="card" style="margin-top:14px">
+    <div style="display:flex;align-items:center;justify-content:space-between;font-size:12.5px;color:var(--text-dim);flex-wrap:wrap;gap:6px">
+      <span>Portal v{{ portal.version }} · Container läuft</span>
+      <span>/config {{ portal.config_size }} · letzte Sicherung {{ portal.last_backup }}</span>
+    </div>
+    <div style="margin-top:8px"><a class="link" href="{{ url_for('update_page') }}">Auf Updates prüfen →</a></div>
+  </div>
+</div>
+{% endblock %}
