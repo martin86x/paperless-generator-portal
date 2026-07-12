@@ -462,6 +462,31 @@ def _api_count(url, token, query, timeout=5):
     return None
 
 
+def _instance_info(url, token):
+    """Paperless-Version + Anzahl offener Verarbeitungs-Tasks (best-effort, read-only)."""
+    hdr = {"Authorization": "Token " + token} if token else {}
+    ver = None
+    try:
+        r = requests.get(url.rstrip("/") + "/api/status/", headers=hdr, timeout=5, allow_redirects=False)
+        if r.status_code == 200:
+            ver = (r.json() or {}).get("pngx_version")
+        if ver is None:
+            ver = r.headers.get("X-Version")
+    except (requests.RequestException, ValueError):
+        pass
+    open_tasks = None
+    try:
+        r = requests.get(url.rstrip("/") + "/api/tasks/", headers=hdr, timeout=5, allow_redirects=False)
+        if r.status_code == 200:
+            data = r.json()
+            rows = data.get("results", data) if isinstance(data, dict) else data
+            if isinstance(rows, list):
+                open_tasks = sum(1 for t in rows if str(t.get("status", "")).upper() in ("PENDING", "STARTED", "RETRY"))
+    except (requests.RequestException, ValueError):
+        pass
+    return {"version": ver, "open_tasks": open_tasks}
+
+
 # Kennzahlen + Drift-Kategorien fuer das Dashboard (E3)
 _DRIFT_CATS = [
     ("Tags", "tags", "tags/"),
@@ -708,12 +733,13 @@ def dashboard():
         url = p.get("paperless_url")
         token = _dec(p.get("paperless_token"))
         card = {"id": pid, "name": p.get("name") or "(ohne Name)", "active": pid == aid,
-                "url": url or "", "online": False, "stats": None, "drift": None,
+                "url": url or "", "online": False, "stats": None, "drift": None, "info": None,
                 "has_config": p.get("generator_config") is not None}
         if url:
             total = _api_count(url, token, "documents/?page_size=1")
             if total is not None:
                 card["online"] = True
+                card["info"] = _instance_info(url, token)
                 card["stats"] = {
                     "total": total,
                     "inbox": _api_count(url, token, "documents/?is_in_inbox=true&page_size=1"),

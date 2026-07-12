@@ -22,8 +22,12 @@
     </div>
   </div>
 
+  {% if profiles|length > 3 %}
+  <input id="plx-search" type="text" placeholder="Profil suchen…" oninput="plxFilter(this.value)" style="margin:14px 0 0">
+  {% endif %}
+
   {% for p in profiles %}
-  <div class="card" style="margin-top:14px">
+  <div class="card plx-profile-card" data-pname="{{ p.name|lower }}" style="margin-top:14px">
     <h2 style="margin:0;font-size:16px;color:var(--text)">
       {{ p.name }}
       {% if p.active %}<span style="font-size:11px;background:rgba(52,211,153,.15);color:var(--ok);border:1px solid var(--ok);border-radius:6px;padding:1px 7px;margin-left:6px">● aktiv</span>{% endif %}
@@ -101,4 +105,7 @@
     </form>
   </div>
 </div>
+<script>
+function plxFilter(q){q=(q||'').toLowerCase();document.querySelectorAll('.plx-profile-card').forEach(function(c){c.style.display=(c.getAttribute('data-pname')||'').indexOf(q)>=0?'':'none';});}
+</script>
 {% endblock %}

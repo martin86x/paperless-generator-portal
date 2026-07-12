@@ -20,6 +20,9 @@
     {% elif not c.online %}
       <div class="msg err" style="margin-top:10px">✗ Nicht erreichbar / Token ungültig (<code>{{ c.url }}</code>).</div>
     {% else %}
+      {% if c.info and (c.info.version or c.info.open_tasks is not none) %}
+      <p class="hint" style="margin-top:8px">Paperless {{ c.info.version or '?' }}{% if c.info.open_tasks is not none %} · {{ c.info.open_tasks }} offene Task(s){% endif %}</p>
+      {% endif %}
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px;text-align:center">
         {% set tiles = [('Dokumente', c.stats.total, 'var(--text)'),
                         ('Posteingang', c.stats.inbox, '#f59e0b'),
