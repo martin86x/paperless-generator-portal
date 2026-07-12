@@ -81,6 +81,19 @@
         <button type="submit" name="action" value="heartbeat_now" style="width:auto;padding:8px 14px;font-size:13px;background:var(--bg3);border:1px solid var(--border)">Heartbeat jetzt pingen</button>
       </div>
     </div>
+
+    <!-- Webhook / n8n -->
+    <div class="card" style="margin-top:14px">
+      <h2 style="margin-top:0">Webhook / n8n</h2>
+      <label style="display:flex;align-items:center;gap:8px;margin:0;font-size:14px;color:var(--text)">
+        <input type="checkbox" name="webhook_enabled" value="1" style="width:auto"{% if wh.enabled %} checked{% endif %}> Webhook aktiv
+      </label>
+      <div style="font-size:12px;color:var(--text-dim);margin:4px 0 0 26px">Bei Alarm <em>und</em> Entwarnung wird ein JSON an die URL geschickt (z. B. an einen n8n-Webhook-Node) — für eigene Automationen.</div>
+      <label>Webhook-URL</label>
+      <input type="url" name="webhook_url" value="{{ wh.url }}" placeholder="https://n8n.example.com/webhook/paperless">
+      <p class="hint">Payload: <code>{source, event, profile, status, detail, ts, portal_version}</code>.</p>
+      <button type="submit" name="action" value="webhook_now" style="width:auto;padding:8px 14px;font-size:13px;background:var(--bg3);border:1px solid var(--border)">Webhook testen</button>
+    </div>
   </form>
 
   <!-- Ergebnisse -->

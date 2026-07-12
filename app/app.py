@@ -1310,16 +1310,18 @@ def _maybe_alert(prof, pid, c):
     """Nur bei Zustandswechsel melden: ok->bad sendet, bad->ok entwarnt (kein Spam)."""
     key = (pid, c["event"])
     active = _watcher_state["alerts_active"]
+    name = prof.get("name") or pid
     if c["status"] == "bad":
         if key not in active:
             active.add(key)
-            title = "Paperless-Wächter: %s (%s)" % (c["label"], prof.get("name") or pid)
+            title = "Paperless-Wächter: %s (%s)" % (c["label"], name)
             _dispatch_notification(prof, c["event"], title, c["detail"])
-            _log_activity("watcher", "Alarm %s/%s: %s"
-                          % (prof.get("name") or pid, c["event"], c["detail"]))
+            _fire_webhook(c["event"], name, "bad", c["detail"])
+            _log_activity("watcher", "Alarm %s/%s: %s" % (name, c["event"], c["detail"]))
     elif c["status"] == "ok" and key in active:
         active.discard(key)
-        _log_activity("watcher", "Entwarnung %s/%s" % (prof.get("name") or pid, c["event"]))
+        _fire_webhook(c["event"], name, "ok", "Entwarnung: " + c["detail"])
+        _log_activity("watcher", "Entwarnung %s/%s" % (name, c["event"]))
 
 
 def _metrics_path(pid):
@@ -1462,6 +1464,34 @@ def _ping_heartbeat(url):
         pass
 
 
+def _webhook_cfg():
+    """Globale Webhook-/n8n-Konfiguration aus config.json['webhook']."""
+    try:
+        w = load_config().get("webhook") or {}
+    except (OSError, ValueError):
+        w = {}
+    return {"enabled": bool(w.get("enabled", False)), "url": (w.get("url") or "").strip()}
+
+
+def _fire_webhook(event, profile, status, detail, wc=None):
+    """Bei Ereignissen ein JSON an die konfigurierte Webhook-/n8n-URL POSTen.
+    Fire-and-forget, read-only gegenueber der Instanz."""
+    wc = wc or _webhook_cfg()
+    if not (wc["enabled"] and wc["url"]):
+        return False, "Webhook nicht konfiguriert"
+    payload = {
+        "source": "paperless-generator-portal",
+        "portal_version": PORTAL_VERSION,
+        "event": event, "profile": profile, "status": status, "detail": detail,
+        "ts": datetime.now().isoformat(timespec="seconds"),
+    }
+    try:
+        r = requests.post(wc["url"], json=payload, timeout=10)
+        return (r.status_code < 400), "HTTP %d" % r.status_code
+    except requests.RequestException as exc:
+        return False, str(exc)
+
+
 def _watcher_loop():
     """Hintergrund-Schleife: alle interval_min Minuten ein Prueflauf, wenn aktiviert.
     Zusaetzlich: Heartbeat je Zyklus + Tages-Digest zur eingestellten Stunde.
@@ -1562,8 +1592,16 @@ def waechter():
         }
         cfg = load_config()
         cfg["watcher"] = w
+        cfg["webhook"] = {"enabled": bool(f.get("webhook_enabled")),
+                          "url": (f.get("webhook_url", "") or "").strip()}
         save_config(cfg)
         _watcher_state["next_run"] = None  # Aenderung sofort wirksam
+        if action == "webhook_now":
+            ok, detail = _fire_webhook("test", "Portal", "test",
+                                       "Test-Webhook vom Paperless-Portal.")
+            if ok:
+                return redirect(url_for("verwaltung", tab="waechter", msg="Webhook gesendet (%s)." % detail))
+            return redirect(url_for("verwaltung", tab="waechter", err="Webhook fehlgeschlagen: %s" % detail))
         if action == "run_now":
             _run_watch_cycle(_watcher_cfg(), dispatch=True)
             _log_activity("watcher", "Manueller Prüflauf")
@@ -1595,7 +1633,8 @@ def waechter():
         "last_digest": _watcher_state.get("last_digest") or "—",
     }
     return render_template(
-        "waechter.html", w=wc, events=_NOTIFY_EVENTS, results=results, status=status,
+        "waechter.html", w=wc, wh=_webhook_cfg(), events=_NOTIFY_EVENTS,
+        results=results, status=status,
         msg=request.args.get("msg"), err=request.args.get("err"))
 
 
