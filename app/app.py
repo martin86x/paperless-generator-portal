@@ -13,11 +13,13 @@ HTTP-Response eingefuegt (die Datei auf der Platte bleibt Byte-fuer-Byte identis
 """
 import base64
 import hashlib
+import io
 import json
 import os
 import secrets
 import threading
 import time
+import zipfile
 from datetime import datetime, timedelta
 from urllib.parse import urlparse
 
@@ -711,6 +713,67 @@ def update_page():
                            msg=request.args.get("msg"), err=request.args.get("err"))
 
 
+_BACKUP_SKIP = {"watcher.lock"}  # transiente Dateien nicht mitsichern
+
+
+@app.route("/verwaltung/config-backup")
+def config_backup():
+    """Komplettes /config als ZIP herunterladen (Profile, Einstellungen, Historie, Metriken,
+    Protokoll). ACHTUNG: enthaelt config.json mit secret+Passwort-Hash und die
+    verschluesselten Tokens -> vertraulich behandeln."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for root, _dirs, files in os.walk(CONFIG_DIR):
+            for f in files:
+                if f in _BACKUP_SKIP or f.endswith(".tmp"):
+                    continue
+                full = os.path.join(root, f)
+                arc = os.path.relpath(full, CONFIG_DIR)
+                try:
+                    zf.write(full, arc)
+                except OSError:
+                    pass
+    buf.seek(0)
+    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+    _log_activity("backup", "Voll-Backup heruntergeladen")
+    return Response(buf.read(), mimetype="application/zip",
+                    headers={"Content-Disposition": "attachment; filename=portal-config-%s.zip" % ts})
+
+
+@app.route("/verwaltung/config-restore", methods=["POST"])
+def config_restore():
+    """Voll-Backup einspielen: ZIP nach /config entpacken (ueberschreibt). Mit
+    Pfad-Traversal-Schutz. Danach ist ein Neustart/Reload noetig (evtl. neuer secret ->
+    Sessions ungueltig -> Neu-Login)."""
+    file = request.files.get("file")
+    if not file or not file.filename:
+        return redirect(url_for("verwaltung", tab="version", err="Keine Datei ausgewählt."))
+    try:
+        data = file.read()
+        zf = zipfile.ZipFile(io.BytesIO(data))
+    except (zipfile.BadZipFile, OSError):
+        return redirect(url_for("verwaltung", tab="version", err="Keine gültige ZIP-Datei."))
+    base = os.path.abspath(CONFIG_DIR)
+    restored = 0
+    for name in zf.namelist():
+        if name.endswith("/") or name in _BACKUP_SKIP:
+            continue
+        dest = os.path.abspath(os.path.join(CONFIG_DIR, name))
+        # Pfad-Traversal-Schutz: Ziel MUSS unter CONFIG_DIR liegen
+        if not (dest == base or dest.startswith(base + os.sep)):
+            continue
+        try:
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            with zf.open(name) as src, open(dest, "wb") as out:
+                out.write(src.read())
+            restored += 1
+        except OSError:
+            pass
+    _log_activity("restore", "Voll-Backup eingespielt (%d Dateien)" % restored)
+    return redirect(url_for("verwaltung", tab="version",
+                            msg="Backup eingespielt (%d Dateien). Bitte neu anmelden, falls die Sitzung endet." % restored))
+
+
 def _dir_size(path):
     total = 0
     for root, _dirs, files in os.walk(path):
@@ -807,7 +870,17 @@ def verwaltung_overview():
 
 @app.route("/protokoll")
 def protokoll():
-    return render_template("protokoll.html", entries=_read_activity(200))
+    if request.args.get("download"):
+        try:
+            with open(ACTIVITY_PATH, encoding="utf-8") as fh:
+                data = fh.read()
+        except FileNotFoundError:
+            data = ""
+        return Response(data, mimetype="text/plain; charset=utf-8",
+                        headers={"Content-Disposition": "attachment; filename=activity.log"})
+    entries = _read_activity(500)
+    kinds = sorted({e.get("kind", "") for e in entries if e.get("kind")})
+    return render_template("protokoll.html", entries=entries, kinds=kinds)
 
 
 @app.route("/dashboard")

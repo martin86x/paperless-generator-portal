@@ -56,6 +56,25 @@
 
     <p class="hint" style="margin-top:14px">Ein Ein-Klick-Update aus dem Portal ist bewusst nicht aktiv — der Container bräuchte dafür Docker-Vollzugriff (Sicherheit). Config &amp; Profile im <code>/config</code>-Volume überstehen den Rebuild.</p>
   </div>
+
+  <!-- Voll-Backup -->
+  <div class="card" style="margin-top:14px">
+    <h2 style="margin-top:0">Portal-Sicherung (komplett)</h2>
+    <p class="hint" style="margin-top:0">Sichert das gesamte <code>/config</code> als ZIP: alle Profile, Benachrichtigungen, Wächter-Einstellungen, Kennzahl-Historie und Protokoll. Ideal vor einem Update oder Host-Umzug.</p>
+    <a class="link" href="{{ url_for('config_backup') }}"
+       style="display:inline-block;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:9px 14px;font-size:13px">⬇ Voll-Backup herunterladen</a>
+    <div class="msg err" style="margin:12px 0 0;color:var(--text)">⚠ Das ZIP enthält Zugangs-Geheimnisse (Passwort-Hash, Schlüssel, verschlüsselte Tokens) — vertraulich aufbewahren.</div>
+
+    <form method="post" action="{{ url_for('config_restore') }}" enctype="multipart/form-data" style="margin-top:14px"
+          onsubmit="return confirm('Backup einspielen? Das überschreibt die aktuelle Konfiguration (Profile, Einstellungen, Passwort). Danach musst du dich evtl. neu anmelden.');">
+      <label style="margin-top:0">Backup wiederherstellen (ZIP)</label>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input type="file" name="file" accept=".zip" required style="font-size:12px;max-width:190px;color:var(--text-dim)">
+        <button type="submit" style="width:auto;margin:0;padding:9px 14px;font-size:13px;background:var(--err)">⬆ Einspielen</button>
+      </div>
+      <p class="hint">Überschreibt <code>/config</code>. Ein Neustart/Reload kann nötig sein (neuer Schlüssel → neue Anmeldung).</p>
+    </form>
+  </div>
 </div>
 <script>
 function plxCopy(id,b){var t=document.getElementById(id).innerText;navigator.clipboard.writeText(t).then(function(){var o=b.textContent;b.textContent='✓ kopiert';setTimeout(function(){b.textContent=o;},1500);});}

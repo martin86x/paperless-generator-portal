@@ -6,14 +6,47 @@
   <div class="card">
     <h1>Aktivitätsprotokoll</h1>
     <p class="sub">Die letzten Aktionen im Portal (neueste zuerst) — inkl. geblockter Schreibversuche.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin:10px 0 4px">
+      <div style="flex:1;min-width:120px">
+        <label style="margin-top:0">Suche</label>
+        <input type="text" id="plog-q" oninput="plogFilter()" placeholder="Text…">
+      </div>
+      <div>
+        <label style="margin-top:0">Art</label>
+        <select id="plog-kind" onchange="plogFilter()" style="width:auto;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:14px">
+          <option value="">alle</option>
+          {% for k in kinds %}<option value="{{ k }}">{{ k }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+    <p class="hint" style="margin-top:6px">
+      <span id="plog-count">{{ entries|length }}</span> Einträge · <a class="link" href="{{ url_for('protokoll', download=1) }}">⬇ Log herunterladen</a>
+    </p>
     {% if not entries %}<p class="hint">Noch keine Einträge.</p>{% endif %}
+    <div id="plog-list">
     {% for e in entries %}
-    <div style="display:flex;gap:10px;align-items:baseline;padding:6px 0;border-top:1px solid var(--border);font-size:13px">
+    <div class="plog-row" data-kind="{{ e.kind }}" data-text="{{ (e.kind ~ ' ' ~ e.msg)|lower }}"
+         style="display:flex;gap:10px;align-items:baseline;padding:6px 0;border-top:1px solid var(--border);font-size:13px">
       <span style="color:var(--text-dim);font-family:monospace;white-space:nowrap;font-size:12px">{{ e.ts.replace('T',' ') }}</span>
       <span style="color:var(--accent2);font-size:11px;white-space:nowrap">{{ e.kind }}</span>
       <span>{{ e.msg }}</span>
     </div>
     {% endfor %}
+    </div>
+    <p id="plog-empty" class="hint" style="display:none">Keine passenden Einträge.</p>
   </div>
 </div>
+<script>
+function plogFilter(){
+  var q=(document.getElementById('plog-q').value||'').toLowerCase();
+  var k=document.getElementById('plog-kind').value;
+  var rows=document.querySelectorAll('#plog-list .plog-row'), n=0;
+  rows.forEach(function(r){
+    var ok=(!k || r.getAttribute('data-kind')===k) && (!q || (r.getAttribute('data-text')||'').indexOf(q)>=0);
+    r.style.display=ok?'':'none'; if(ok) n++;
+  });
+  document.getElementById('plog-count').textContent=n;
+  document.getElementById('plog-empty').style.display=n?'none':'';
+}
+</script>
 {% endblock %}
