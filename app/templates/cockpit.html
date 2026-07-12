@@ -18,6 +18,7 @@
       {% if active.has_config and not active.readonly %}<a class="link" href="{{ url_for('anwenden') }}" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px">✓ Konfiguration anwenden</a>{% endif %}
       {% if active.url %}<a class="link" href="{{ active.url }}" target="_blank" rel="noopener" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px">↗ Paperless öffnen</a>{% endif %}
       <a class="link" href="{{ url_for('notifications') }}" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px">🔔 Benachrichtigungen</a>
+      <a class="link" href="{{ url_for('waechter') }}" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px">🛡 Wächter</a>
       <a class="link" href="{{ url_for('profiles_export') }}" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px">⬇ Profile sichern</a>
     </div>
   </div>
@@ -50,6 +51,10 @@
     <div style="display:flex;align-items:center;justify-content:space-between;font-size:12.5px;color:var(--text-dim);flex-wrap:wrap;gap:6px">
       <span>Portal v{{ portal.version }} · Container läuft</span>
       <span>/config {{ portal.config_size }} · letzte Sicherung {{ portal.last_backup }}</span>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;font-size:12.5px;color:var(--text-dim);flex-wrap:wrap;gap:6px;margin-top:6px">
+      <span>Wächter: {% if portal.watcher_on %}<span style="color:var(--ok)">aktiv</span>, letzter Lauf {{ portal.watcher_last }}{% if portal.watcher_alerts %} · <span style="color:var(--err)">{{ portal.watcher_alerts }} Alarm(e)</span>{% endif %}{% else %}aus{% endif %}</span>
+      <a class="link" href="{{ url_for('waechter') }}">Wächter →</a>
     </div>
     <div style="margin-top:8px"><a class="link" href="{{ url_for('update_page') }}">Auf Updates prüfen →</a></div>
   </div>

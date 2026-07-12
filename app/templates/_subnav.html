@@ -1,5 +1,5 @@
 <div style="width:100%;max-width:520px;margin:0 auto 14px;display:flex;gap:4px;flex-wrap:wrap;font-size:13px;">
-  {% set items = [('verwaltung','Übersicht'),('profiles','Profile'),('dashboard','Dashboard'),('notifications','Benachrichtigungen'),('settings','Konto'),('update_page','Version'),('protokoll','Protokoll')] %}
+  {% set items = [('verwaltung','Übersicht'),('profiles','Profile'),('dashboard','Dashboard'),('notifications','Benachrichtigungen'),('waechter','Wächter'),('settings','Konto'),('update_page','Version'),('protokoll','Protokoll')] %}
   {% for ep, label in items %}
   <a href="{{ url_for(ep) }}" style="padding:6px 12px;border-radius:8px;text-decoration:none;{% if request.endpoint == ep %}background:var(--bg3);color:var(--text);border:0.5px solid var(--border){% else %}color:var(--text-dim);border:0.5px solid transparent{% endif %}">{{ label }}</a>
   {% endfor %}

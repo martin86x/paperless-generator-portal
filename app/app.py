@@ -16,9 +16,15 @@ import hashlib
 import json
 import os
 import secrets
+import threading
 import time
 from datetime import datetime, timedelta
 from urllib.parse import urlparse
+
+try:
+    import fcntl  # POSIX-Dateisperre fuer den Single-Worker-Waechter (fehlt unter Windows/Tests)
+except ImportError:  # pragma: no cover - nur relevant im lokalen Windows-Test
+    fcntl = None
 
 import requests
 from cryptography.fernet import Fernet, InvalidToken
@@ -34,6 +40,7 @@ HISTORY_MAX = 20
 ACTIVITY_PATH = os.path.join(CONFIG_DIR, "activity.log")
 UNDO_DIR = os.path.join(CONFIG_DIR, "undo")
 SNAP_DIR = os.path.join(CONFIG_DIR, "instance-snapshots")
+WATCHER_LOCK_PATH = os.path.join(CONFIG_DIR, "watcher.lock")
 SITE_DIR = os.environ.get("SITE_DIR", os.path.join(os.path.dirname(__file__), "site"))
 
 DEFAULT_ADMIN_USER = "admin"
@@ -727,8 +734,11 @@ def verwaltung():
     if not os.path.exists(ref):
         ref = PROFILES_PATH if os.path.exists(PROFILES_PATH) else None
     last_backup = datetime.fromtimestamp(os.path.getmtime(ref)).strftime("%d.%m.%Y %H:%M") if ref else "—"
+    _wc = _watcher_cfg()
     portal = {"version": PORTAL_VERSION, "config_size": _fmt_size(_dir_size(CONFIG_DIR)),
-              "last_backup": last_backup}
+              "last_backup": last_backup,
+              "watcher_on": _wc["enabled"], "watcher_last": _fmt_rel_ts(_watcher_state.get("last_run")),
+              "watcher_alerts": len(_watcher_state.get("alerts_active") or ())}
     return render_template(
         "cockpit.html",
         active={"id": aid, "name": act.get("name") or "", "url": url or "",
@@ -999,6 +1009,322 @@ def _clamp_port(val):
         return max(1, min(65535, int(str(val).strip())))
     except (TypeError, ValueError):
         return 587
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# WÄCHTER (P4) — periodische, STRIKT READ-ONLY Checks je Profil. Bei Auffaelligkeit
+# Benachrichtigung ueber die P3-Kanaele. Kein Instanz-Schreibvorgang, niemals.
+# Genau EIN Worker fuehrt die Schleife aus (POSIX-Dateisperre in /config, da
+# gunicorn mit -w 2 --preload laeuft). Zeitplan + Checks konfigurierbar.
+# ─────────────────────────────────────────────────────────────────────────────
+_WATCHER_DEFAULTS = {
+    "enabled": False,
+    "interval_min": 60,
+    "checks": {"downtime": True, "drift": True, "asn_gap": False, "duplicate": False},
+    "asn_gap_threshold": 1,
+}
+# Laufzeit-Zustand des Waechters (nur im Prozess, der die Sperre haelt). Fuer die UI +
+# Alarm-Entprellung (nur bei Zustandswechsel ok->schlecht senden, nicht jede Runde).
+_watcher_state = {
+    "owner": False,      # haelt dieser Prozess die Sperre / fuehrt die Schleife aus?
+    "last_run": None,    # Unix-ts des letzten Prueflaufs
+    "next_run": None,    # Unix-ts des naechsten faelligen Laufs
+    "results": {},       # pid -> {name, ts, checks:[{event,label,status,detail}]}
+    "alerts_active": set(),   # {(pid, event)} — aktuell gemeldete Auffaelligkeiten
+    "last_error": None,
+}
+_watcher_started = False
+_watcher_lock_fh = None
+
+
+def _watch_int(val, default):
+    try:
+        return int(str(val).strip())
+    except (TypeError, ValueError, AttributeError):
+        return default
+
+
+def _watcher_cfg():
+    """Normalisierte Waechter-Konfiguration (global, in config.json unter 'watcher')."""
+    w = {}
+    try:
+        w = load_config().get("watcher") or {}
+    except (OSError, ValueError):
+        pass
+    ch = w.get("checks") or {}
+    return {
+        "enabled": bool(w.get("enabled", False)),
+        "interval_min": max(5, _watch_int(w.get("interval_min"), 60)),
+        "checks": {k: bool(ch.get(k, _WATCHER_DEFAULTS["checks"][k]))
+                   for k in _WATCHER_DEFAULTS["checks"]},
+        "asn_gap_threshold": max(1, _watch_int(w.get("asn_gap_threshold"), 1)),
+    }
+
+
+def _chk_downtime(url, token):
+    """Erreichbarkeit + Token-Gueltigkeit (deckt Token-Ablauf/-Widerruf via 401/403)."""
+    code = _test_paperless(url, token)
+    if code == 200:
+        return {"event": "downtime", "label": "Erreichbarkeit", "status": "ok",
+                "detail": "Erreichbar, Token gültig."}
+    if code is None:
+        return {"event": "downtime", "label": "Erreichbarkeit", "status": "bad",
+                "detail": "Paperless nicht erreichbar unter %s." % url}
+    if code in (401, 403):
+        return {"event": "downtime", "label": "Erreichbarkeit", "status": "bad",
+                "detail": "Token ungültig (HTTP %d) — evtl. abgelaufen/widerrufen." % code}
+    return {"event": "downtime", "label": "Erreichbarkeit", "status": "bad",
+            "detail": "Unerwartete Antwort HTTP %d." % code}
+
+
+def _chk_drift(url, token, gc):
+    """Config vs. Instanz: fehlende Eintraege (Config hat mehr als die Instanz)."""
+    if not gc:
+        return {"event": "drift", "label": "Konfig-Drift", "status": "unknown",
+                "detail": "Keine gespeicherte Profil-Config."}
+    missing, parts, unreachable = 0, [], False
+    for label, key, ep in _DRIFT_CATS:
+        cfg_n = len(gc.get(key) or [])
+        inst_n = _api_count(url, token, ep + "?page_size=1")
+        if inst_n is None:
+            unreachable = True
+            continue
+        if cfg_n - inst_n > 0:
+            missing += cfg_n - inst_n
+            parts.append("%s: %d fehlen" % (label, cfg_n - inst_n))
+    if not parts and unreachable:
+        return {"event": "drift", "label": "Konfig-Drift", "status": "unknown",
+                "detail": "Instanz nicht erreichbar."}
+    if missing > 0:
+        return {"event": "drift", "label": "Konfig-Drift", "status": "bad",
+                "detail": "; ".join(parts)}
+    return {"event": "drift", "label": "Konfig-Drift", "status": "ok",
+            "detail": "Config deckt sich mit der Instanz."}
+
+
+def _asn_pages(url, token, fields):
+    """Alle Dokumentwerte eines Feldes einsammeln (max. 40 Seiten = read-only, gedeckelt)."""
+    hdr = {"Authorization": "Token " + token} if token else {}
+    rows, pages = [], 0
+    nexturl = (url.rstrip("/") + "/api/documents/?page_size=250&fields=" + fields
+               + "&ordering=" + fields)
+    while nexturl and pages < 40:
+        r = requests.get(nexturl, headers=hdr, timeout=10, allow_redirects=False)
+        if r.status_code != 200:
+            raise ValueError("HTTP %d" % r.status_code)
+        j = r.json()
+        rows.extend(j.get("results", []))
+        nexturl = j.get("next")
+        pages += 1
+    return rows
+
+
+def _chk_asn_gap(url, token, threshold):
+    """Luecken im vergebenen ASN-Bereich (min..max) — Semantik wie ASN-Luecken-Finder."""
+    try:
+        rows = _asn_pages(url, token, "archive_serial_number")
+    except (requests.RequestException, ValueError, TypeError):
+        return {"event": "asn_gap", "label": "ASN-Lücken", "status": "unknown",
+                "detail": "Nicht abrufbar."}
+    asns = set()
+    for d in rows:
+        a = d.get("archive_serial_number")
+        if a:
+            asns.add(int(a))
+    if not asns:
+        return {"event": "asn_gap", "label": "ASN-Lücken", "status": "ok",
+                "detail": "Keine ASN vergeben."}
+    lo, hi = min(asns), max(asns)
+    gaps = (hi - lo + 1) - len(asns)
+    if gaps >= threshold:
+        return {"event": "asn_gap", "label": "ASN-Lücken", "status": "bad",
+                "detail": "%d Lücke(n) im ASN-Bereich %d–%d." % (gaps, lo, hi)}
+    return {"event": "asn_gap", "label": "ASN-Lücken", "status": "ok",
+            "detail": "Lückenlos (%d–%d)." % (lo, hi)}
+
+
+def _chk_duplicate(url, token):
+    """Best-effort: identische Dokumenttitel (moegliche Duplikate). Heuristik, default aus."""
+    try:
+        rows = _asn_pages(url, token, "title")
+    except (requests.RequestException, ValueError, TypeError):
+        return {"event": "duplicate", "label": "Duplikate", "status": "unknown",
+                "detail": "Nicht abrufbar."}
+    seen, dups = {}, 0
+    for d in rows:
+        t = (d.get("title") or "").strip().lower()
+        if not t:
+            continue
+        seen[t] = seen.get(t, 0) + 1
+        if seen[t] == 2:
+            dups += 1
+    if dups > 0:
+        return {"event": "duplicate", "label": "Duplikate", "status": "bad",
+                "detail": "%d Titel mehrfach vergeben (mögliche Duplikate)." % dups}
+    return {"event": "duplicate", "label": "Duplikate", "status": "ok",
+            "detail": "Keine gleichlautenden Titel."}
+
+
+def _maybe_alert(prof, pid, c):
+    """Nur bei Zustandswechsel melden: ok->bad sendet, bad->ok entwarnt (kein Spam)."""
+    key = (pid, c["event"])
+    active = _watcher_state["alerts_active"]
+    if c["status"] == "bad":
+        if key not in active:
+            active.add(key)
+            title = "Paperless-Wächter: %s (%s)" % (c["label"], prof.get("name") or pid)
+            _dispatch_notification(prof, c["event"], title, c["detail"])
+            _log_activity("watcher", "Alarm %s/%s: %s"
+                          % (prof.get("name") or pid, c["event"], c["detail"]))
+    elif c["status"] == "ok" and key in active:
+        active.discard(key)
+        _log_activity("watcher", "Entwarnung %s/%s" % (prof.get("name") or pid, c["event"]))
+
+
+def _run_watch_cycle(wc, dispatch=True):
+    """Ein Prueflauf ueber alle Profile mit URL. STRIKT read-only. Rueckgabe: results-Dict."""
+    results = {}
+    try:
+        profs = load_profiles()
+    except (OSError, ValueError):
+        return results
+    for pid, p in profs.items():
+        url = p.get("paperless_url")
+        if not url:
+            continue
+        token = _dec(p.get("paperless_token"))
+        checks = []
+        if wc["checks"]["downtime"]:
+            checks.append(_chk_downtime(url, token))
+        if wc["checks"]["drift"]:
+            checks.append(_chk_drift(url, token, p.get("generator_config") or {}))
+        if wc["checks"]["asn_gap"]:
+            checks.append(_chk_asn_gap(url, token, wc["asn_gap_threshold"]))
+        if wc["checks"]["duplicate"]:
+            checks.append(_chk_duplicate(url, token))
+        results[pid] = {"name": p.get("name") or pid, "ts": time.time(), "checks": checks}
+        if dispatch:
+            for c in checks:
+                _maybe_alert(p, pid, c)
+    _watcher_state["results"] = results
+    _watcher_state["last_run"] = time.time()
+    return results
+
+
+def _watcher_loop():
+    """Hintergrund-Schleife: alle interval_min Minuten ein Prueflauf, wenn aktiviert.
+    Laeuft nur im Prozess, der die Dateisperre haelt. Faengt alle Fehler ab, damit der
+    Thread nie stirbt."""
+    poll = 20  # Sekunden — feiner Takt, damit Enable/Intervall-Aenderungen zeitnah greifen
+    while True:
+        try:
+            wc = _watcher_cfg()
+            if wc["enabled"]:
+                now = time.time()
+                if not _watcher_state.get("next_run") or now >= _watcher_state["next_run"]:
+                    _run_watch_cycle(wc, dispatch=True)
+                    _watcher_state["next_run"] = time.time() + wc["interval_min"] * 60
+            else:
+                _watcher_state["next_run"] = None
+            _watcher_state["last_error"] = None
+        except Exception as exc:  # Schleife muss alles ueberleben
+            _watcher_state["last_error"] = str(exc)
+        time.sleep(poll)
+
+
+def _acquire_watcher_lock():
+    """Exklusive, nicht-blockierende POSIX-Sperre — nur EIN Worker gewinnt sie.
+    Ohne fcntl (Windows/Tests) wird ohne Sperre gestartet (dort laeuft nur ein Prozess)."""
+    global _watcher_lock_fh
+    if fcntl is None:
+        return True
+    try:
+        os.makedirs(CONFIG_DIR, exist_ok=True)
+        fh = open(WATCHER_LOCK_PATH, "w")
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fh.write(str(os.getpid()))
+        fh.flush()
+        _watcher_lock_fh = fh  # Referenz halten -> Sperre bleibt fuer die Prozesslebensdauer
+        return True
+    except OSError:
+        return False
+
+
+def _ensure_watcher():
+    """Startet den Waechter-Thread einmal pro Prozess — aber nur, wenn dieser Prozess die
+    Sperre gewinnt. Traege ueber before_request angestossen (nach dem Fork der Worker)."""
+    global _watcher_started
+    if _watcher_started:
+        return
+    _watcher_started = True  # egal wie es ausgeht: nicht erneut versuchen
+    if os.environ.get("PORTAL_WATCHER", "1") != "1":
+        return  # in Tests deaktivierbar
+    if not _acquire_watcher_lock():
+        return  # anderer Worker fuehrt die Schleife
+    _watcher_state["owner"] = True
+    threading.Thread(target=_watcher_loop, name="paperless-watcher", daemon=True).start()
+
+
+@app.before_request
+def _watcher_boot():
+    # Traeger Start nach dem Worker-Fork (unter --preload laeuft Modul-Code nur im Master).
+    # Der Docker-Healthcheck trifft /healthz alle 30 s -> Waechter startet auch ohne Login.
+    _ensure_watcher()
+    return None
+
+
+def _fmt_rel_ts(ts):
+    """Unix-ts -> 'vor X' / '—' fuer die Waechter-Statusanzeige."""
+    if not ts:
+        return "—"
+    delta = int(time.time() - ts)
+    if delta < 60:
+        return "vor %d s" % delta
+    if delta < 3600:
+        return "vor %d min" % (delta // 60)
+    if delta < 86400:
+        return "vor %d h" % (delta // 3600)
+    return datetime.fromtimestamp(ts).strftime("%d.%m. %H:%M")
+
+
+@app.route("/verwaltung/waechter", methods=["GET", "POST"])
+def waechter():
+    if request.method == "POST":
+        action = request.form.get("action", "save")
+        f = request.form
+        w = {
+            "enabled": bool(f.get("enabled")),
+            "interval_min": max(5, _watch_int(f.get("interval_min"), 60)),
+            "checks": {k: bool(f.get("chk_" + k)) for k in _WATCHER_DEFAULTS["checks"]},
+            "asn_gap_threshold": max(1, _watch_int(f.get("asn_gap_threshold"), 1)),
+        }
+        cfg = load_config()
+        cfg["watcher"] = w
+        save_config(cfg)
+        _watcher_state["next_run"] = None  # Aenderung sofort wirksam
+        if action == "run_now":
+            _run_watch_cycle(_watcher_cfg(), dispatch=True)
+            _log_activity("watcher", "Manueller Prüflauf")
+            return redirect(url_for("waechter", msg="Prüflauf ausgeführt — Ergebnis unten."))
+        return redirect(url_for("waechter", msg="Wächter-Einstellungen gespeichert."))
+
+    wc = _watcher_cfg()
+    results = []
+    for pid, r in _watcher_state.get("results", {}).items():
+        results.append({"name": r.get("name") or pid, "ts": _fmt_rel_ts(r.get("ts")),
+                        "checks": r.get("checks", [])})
+    results.sort(key=lambda x: x["name"].lower())
+    status = {
+        "owner": bool(_watcher_state.get("owner")),
+        "last_run": _fmt_rel_ts(_watcher_state.get("last_run")),
+        "next_run": (_fmt_rel_ts(_watcher_state["next_run"])
+                     if _watcher_state.get("next_run") else "—"),
+        "active_alerts": len(_watcher_state.get("alerts_active") or ()),
+        "error": _watcher_state.get("last_error"),
+    }
+    return render_template(
+        "waechter.html", w=wc, events=_NOTIFY_EVENTS, results=results, status=status,
+        msg=request.args.get("msg"), err=request.args.get("err"))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
