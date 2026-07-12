@@ -655,15 +655,26 @@ def profiles():
                            msg=request.args.get("msg"), err=request.args.get("err"))
 
 
-@app.route("/update")
+@app.route("/update", methods=["GET", "POST"])
 def update_page():
-    """Versions-Anzeige + Update-Pruefung gegen GitHub + Rebuild-Befehl.
+    """Versions-Anzeige + Update-Pruefung gegen GitHub + fertiger Rebuild-Befehl.
 
-    Ein echter 1-Klick-Self-Rebuild ist bewusst NICHT umgesetzt: der Container
+    Die Container-ID (LXC/CTID) wird gespeichert (config.json['lxc_id']) und in den
+    kompletten `pct exec …`-Befehl eingesetzt, sodass er ohne Nacharbeit kopiert werden
+    kann. Ein echter 1-Klick-Self-Rebuild ist bewusst NICHT umgesetzt: der Container
     (python:slim) hat kein git/docker und das Repo liegt auf dem LXC-Host — ein
-    Self-Rebuild braeuchte den Docker-Socket (root-aequivalent). Daher: Update
-    ANZEIGEN, Rebuild-Befehl zum Kopieren. (Self-Rebuild -> Roadmap.)
+    Self-Rebuild braeuchte den Docker-Socket (root-aequivalent). (Self-Rebuild -> Roadmap.)
     """
+    cfg = load_config()
+    if request.method == "POST":
+        lxc = request.form.get("lxc_id", "").strip()
+        cfg["lxc_id"] = lxc if lxc.isdigit() else ""   # nur eine Ziffern-CTID zulassen
+        save_config(cfg)
+        if lxc and not lxc.isdigit():
+            return redirect(url_for("update_page", err="Container-ID muss eine Zahl sein (z. B. 230)."))
+        return redirect(url_for("update_page", msg="Container-ID gespeichert." if lxc else "Container-ID entfernt."))
+
+    lxc_id = str(cfg.get("lxc_id") or "").strip()
     latest = None
     gh_err = None
     try:
@@ -681,10 +692,15 @@ def update_page():
             gh_err = "GitHub antwortete mit HTTP %d." % r.status_code
     except (requests.RequestException, ValueError, KeyError):
         gh_err = "GitHub nicht erreichbar."
-    rebuild_cmd = ("cd /opt/paperless-generator-portal && git fetch origin main && "
-                   "git reset --hard origin/main && docker compose up -d --build")
+    # Der „innere" Befehl laeuft direkt auf der LXC-Shell; der volle wickelt ihn in
+    # `pct exec <CTID> -- bash -c '…'` fuer die Proxmox-Host-Shell.
+    inner_cmd = ("cd /opt/paperless-generator-portal && git fetch origin main && "
+                 "git reset --hard origin/main && docker compose up -d --build")
+    full_cmd = "pct exec %s -- bash -c '%s'" % (lxc_id or "<CTID>", inner_cmd)
     return render_template("update.html", version=PORTAL_VERSION, latest=latest,
-                           gh_err=gh_err, rebuild_cmd=rebuild_cmd, repo=GITHUB_REPO)
+                           gh_err=gh_err, inner_cmd=inner_cmd, full_cmd=full_cmd,
+                           lxc_id=lxc_id, repo=GITHUB_REPO,
+                           msg=request.args.get("msg"), err=request.args.get("err"))
 
 
 def _dir_size(path):

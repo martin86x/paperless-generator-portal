@@ -22,6 +22,41 @@
     </div>
   </div>
 
+  <!-- Erklärung -->
+  <div class="card" style="margin-top:14px">
+    <details>
+      <summary style="cursor:pointer;font-size:14px;color:var(--text)">❓ Wie funktionieren Profile? (einmal lesen)</summary>
+      <div style="margin-top:12px;font-size:13px;color:var(--text-dim);line-height:1.55">
+        <p style="margin:0 0 10px"><strong style="color:var(--text)">Ein Profil = eine Paperless-Instanz.</strong> Es bündelt zwei Dinge: die <strong>Verbindung</strong> (URL + API-Token) und die komplette <strong>Generator-Konfiguration</strong> (Tags, Dokumenttypen, Felder, Korrespondenten, Speicherpfade, Workflows). So verwaltest du mehrere Instanzen — z. B. Haushalt, Firma, Testsystem — sauber getrennt.</p>
+
+        <p style="margin:0 0 6px"><strong style="color:var(--text)">Das „aktive" Profil steuert alles.</strong> Genau ein Profil ist aktiv (grünes ● aktiv). Es bestimmt:</p>
+        <ul style="margin:0 0 10px;padding-left:18px">
+          <li>womit der <strong>Generator</strong> arbeitet (er lädt die Config des aktiven Profils),</li>
+          <li>an welche Instanz der <strong>Proxy</strong> alle <code>/api/</code>-Aufrufe weiterleitet.</li>
+        </ul>
+        <p style="margin:0 0 10px">Mit <strong>▶ Aktivieren</strong> wechselst du und landest direkt im Generator mit den Daten dieses Profils.</p>
+
+        <div class="msg err" style="margin:10px 0;color:var(--text)">
+          <strong>⚠ Wichtig — Token gehört hierher, nicht in den Generator.</strong><br>
+          Der Generator hat eine eigene <em>Sektion 01 „Verbindung"</em>. Im Portal-Betrieb ist die <strong>wirkungslos</strong>: der Proxy verwirft einen dort eingetippten Token und spritzt den aus dem Profil ein. Den API-Token also <strong>immer hier</strong> beim Profil unter „Verbindung" eintragen. (Steht im Token-Feld eine URL statt eines Tokens → roter Status / HTTP 401.)
+        </div>
+
+        <p style="margin:0 0 4px"><strong style="color:var(--text)">Die Aktionen je Profil</strong> (unter „Verbindung · Umbenennen · Löschen"):</p>
+        <ul style="margin:0 0 10px;padding-left:18px">
+          <li><strong>Verbindung</strong> — URL + API-Token setzen. Leeres Token-Feld = bestehendes behalten. Der Status oben zeigt live grün/rot.</li>
+          <li><strong>Umbenennen</strong> — nur die Anzeige, ändert nichts an den Daten.</li>
+          <li><strong>Produktivsystem</strong> — blendet überall einen auffälligen Warnbalken ein, damit du nie versehentlich die Live-Instanz bearbeitest.</li>
+          <li><strong>Nur lesen</strong> — der Proxy blockt <em>jeden</em> Schreibzugriff (POST/PUT/PATCH/DELETE) auf diese Instanz. Härtester Schutz.</li>
+          <li><strong>Löschen</strong> — entfernt das Profil samt gespeicherter Config (Dokumente in Paperless bleiben unberührt).</li>
+        </ul>
+
+        <p style="margin:0 0 10px"><strong style="color:var(--text)">Speichern &amp; Historie.</strong> Im Generator speicherst du Änderungen mit „💾 Profil speichern". Der vorige Stand landet automatisch in der <strong>Versionshistorie</strong> — jederzeit per „↩ Wiederherstellen" zurückholbar. Ein neues, leeres Profil hat noch keine Config → der Generator startet mit seinen Standard-Daten.</p>
+
+        <p style="margin:0"><strong style="color:var(--text)">Sichern.</strong> „⬇ Alle Profile sichern" lädt eine JSON mit allen Profilen (Tokens entschlüsselt → auf anderem Host einspielbar). „⬆ Wiederherstellen" ersetzt alle Profile (vorher wird automatisch gesichert).</p>
+      </div>
+    </details>
+  </div>
+
   {% if profiles|length > 3 %}
   <input id="plx-search" type="text" placeholder="Profil suchen…" oninput="plxFilter(this.value)" style="margin:14px 0 0">
   {% endif %}

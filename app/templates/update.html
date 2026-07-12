@@ -5,7 +5,9 @@
 <div style="width:100%;max-width:480px">
   <div class="card">
     <h1>Version &amp; Update</h1>
-    <p class="sub">Aktueller Portal-Stand und Abgleich mit GitHub.</p>
+    <p class="sub">Aktueller Portal-Stand, Abgleich mit GitHub und der fertige Update-Befehl für deinen Container.</p>
+    {% if msg %}<div class="msg ok">{{ msg }}</div>{% endif %}
+    {% if err %}<div class="msg err">{{ err }}</div>{% endif %}
     <p class="hint">Installierte Version: <strong style="color:var(--accent2)">v{{ version }}</strong></p>
 
     <h2>Auf GitHub</h2>
@@ -18,14 +20,44 @@
         <a class="link" href="https://github.com/{{ repo }}/commits/main" target="_blank" rel="noopener">alle Änderungen</a>
       </p>
     {% endif %}
+  </div>
 
-    <hr class="divider">
-    <h2>Aktualisieren</h2>
-    <p class="hint">Auf dem <strong>Proxmox-Host</strong> ausführen (<code>&lt;CTID&gt;</code> = deine Container-ID, z. B. 230):</p>
-    <code id="cmd" style="display:block;padding:10px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;font-size:12px;white-space:pre-wrap;word-break:break-all;color:var(--text)">pct exec &lt;CTID&gt; -- bash -c '{{ rebuild_cmd }}'</code>
-    <button onclick="var b=this;navigator.clipboard.writeText(document.getElementById('cmd').innerText).then(function(){b.textContent='✓ kopiert';});"
-            style="margin-top:8px;width:auto;padding:6px 12px;font-size:12px">Befehl kopieren</button>
-    <p class="hint">Ein Ein-Klick-Update aus dem Portal ist bewusst nicht aktiv — der Container bräuchte dafür Docker-Vollzugriff (Sicherheit). Config &amp; Profile im <code>/config</code>-Volume überstehen den Rebuild.</p>
+  <!-- Container-ID -->
+  <div class="card" style="margin-top:14px">
+    <h2 style="margin-top:0">Container</h2>
+    <p class="hint" style="margin-top:0">Die <strong>ID des LXC-Containers</strong>, in dem das Portal läuft (auf Proxmox mit <code>pct list</code> zu sehen). Wird gespeichert und in den Befehl unten eingesetzt.</p>
+    <form method="post" action="{{ url_for('update_page') }}" style="display:flex;gap:8px;align-items:flex-end">
+      <div style="flex:1">
+        <label style="margin-top:0">Container-ID (CTID)</label>
+        <input type="text" name="lxc_id" value="{{ lxc_id }}" inputmode="numeric" placeholder="z. B. 230">
+      </div>
+      <button type="submit" style="width:auto;margin:0;padding:10px 16px">Speichern</button>
+    </form>
+    {% if lxc_id %}
+      <p class="hint">✓ Gespeichert: Container <code>{{ lxc_id }}</code> — der Befehl unten ist fertig zum Kopieren.</p>
+    {% else %}
+      <p class="hint">Noch keine ID gespeichert — im Befehl steht dann der Platzhalter <code>&lt;CTID&gt;</code>.</p>
+    {% endif %}
+  </div>
+
+  <!-- Update-Befehl -->
+  <div class="card" style="margin-top:14px">
+    <h2 style="margin-top:0">Aktualisieren</h2>
+    <p class="hint" style="margin-top:0">Holt den neuesten Stand von GitHub und baut den Container neu. <strong>Auf der Proxmox-Host-Shell</strong> ausführen:</p>
+    <code id="cmd-full" style="display:block;padding:10px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;font-size:12px;white-space:pre-wrap;word-break:break-all;color:var(--text)">{{ full_cmd }}</code>
+    <button onclick="plxCopy('cmd-full',this)" style="margin-top:8px;width:auto;padding:6px 12px;font-size:12px">Befehl kopieren</button>
+
+    <details style="margin-top:14px">
+      <summary style="cursor:pointer;color:var(--text-dim);font-size:13px">Alternative: schon in der Container-Shell?</summary>
+      <p class="hint">Wenn du bereits <em>im</em> LXC bist (<code>pct enter {{ lxc_id or '&lt;CTID&gt;' }}</code>), reicht der innere Teil:</p>
+      <code id="cmd-inner" style="display:block;padding:10px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;font-size:12px;white-space:pre-wrap;word-break:break-all;color:var(--text)">{{ inner_cmd }}</code>
+      <button onclick="plxCopy('cmd-inner',this)" style="margin-top:8px;width:auto;padding:6px 12px;font-size:12px">Kopieren</button>
+    </details>
+
+    <p class="hint" style="margin-top:14px">Ein Ein-Klick-Update aus dem Portal ist bewusst nicht aktiv — der Container bräuchte dafür Docker-Vollzugriff (Sicherheit). Config &amp; Profile im <code>/config</code>-Volume überstehen den Rebuild.</p>
   </div>
 </div>
+<script>
+function plxCopy(id,b){var t=document.getElementById(id).innerText;navigator.clipboard.writeText(t).then(function(){var o=b.textContent;b.textContent='✓ kopiert';setTimeout(function(){b.textContent=o;},1500);});}
+</script>
 {% endblock %}
