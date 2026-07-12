@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Benachrichtigungen — Paperless Generator Portal{% endblock %}
+{% block content %}
+{% include "_subnav.html" %}
+<div style="width:100%;max-width:520px">
+
+  <div class="card">
+    <h1 style="margin:0;font-size:18px">Benachrichtigungen</h1>
+    <p class="sub" style="margin:8px 0 0">Kanäle für Profil <strong>{{ prof_name or '—' }}</strong>. Der Wächter (später) meldet Ereignisse über die aktivierten Kanäle; jetzt schon testbar.</p>
+    {% if msg %}<div class="msg ok">{{ msg }}</div>{% endif %}
+    {% if err %}<div class="msg err">{{ err }}</div>{% endif %}
+    <p class="hint" style="margin-top:10px">Zum Testen: ausfüllen → der Test-Knopf speichert und sendet sofort. Gesetzte Passwörter/Keys bleiben erhalten, wenn das Feld leer bleibt.</p>
+  </div>
+
+  <form method="post" action="{{ url_for('notifications') }}">
+
+    <!-- Pushover -->
+    <div class="card" style="margin-top:14px">
+      <label style="display:flex;align-items:center;gap:8px;margin:0;font-size:14px;color:var(--text)">
+        <input type="checkbox" name="pushover_enabled" value="1" style="width:auto"{% if n.pushover.enabled %} checked{% endif %}> Pushover aktiv
+      </label>
+      <label>API-Token (App){% if has_pushover_token %} <span class="hint" style="display:inline">· gesetzt</span>{% endif %}</label>
+      <input type="password" name="pushover_token" autocomplete="off" placeholder="{{ '•••••••• (gesetzt, leer = behalten)' if has_pushover_token else 'azGD…' }}">
+      <label>User-Key{% if has_pushover_user %} <span class="hint" style="display:inline">· gesetzt</span>{% endif %}</label>
+      <input type="password" name="pushover_user" autocomplete="off" placeholder="{{ '•••••••• (gesetzt, leer = behalten)' if has_pushover_user else 'uQi…' }}">
+      <button type="submit" name="action" value="test_pushover" style="background:var(--bg3);border:1px solid var(--border);width:auto;padding:8px 14px;font-size:13px">Pushover testen</button>
+    </div>
+
+    <!-- ntfy -->
+    <div class="card" style="margin-top:14px">
+      <label style="display:flex;align-items:center;gap:8px;margin:0;font-size:14px;color:var(--text)">
+        <input type="checkbox" name="ntfy_enabled" value="1" style="width:auto"{% if n.ntfy.enabled %} checked{% endif %}> ntfy aktiv
+      </label>
+      <label>Server</label>
+      <input type="url" name="ntfy_server" value="{{ n.ntfy.server }}" placeholder="https://ntfy.sh">
+      <label>Topic</label>
+      <input type="text" name="ntfy_topic" value="{{ n.ntfy.topic }}" placeholder="mein-paperless-alarm">
+      <p class="hint">Wer das Topic kennt, sieht die Meldungen — ein schwer zu erratendes Topic wählen.</p>
+      <button type="submit" name="action" value="test_ntfy" style="background:var(--bg3);border:1px solid var(--border);width:auto;padding:8px 14px;font-size:13px">ntfy testen</button>
+    </div>
+
+    <!-- E-Mail -->
+    <div class="card" style="margin-top:14px">
+      <label style="display:flex;align-items:center;gap:8px;margin:0;font-size:14px;color:var(--text)">
+        <input type="checkbox" name="email_enabled" value="1" style="width:auto"{% if n.email.enabled %} checked{% endif %}> E-Mail (SMTP) aktiv
+      </label>
+      <div style="display:grid;grid-template-columns:2fr 1fr;gap:10px">
+        <div><label>SMTP-Host</label><input type="text" name="email_host" value="{{ n.email.host }}" placeholder="smtp.example.com"></div>
+        <div><label>Port</label><input type="text" name="email_port" value="{{ n.email.port }}" placeholder="587"></div>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px">
+        <input type="checkbox" name="email_tls" value="1" style="width:auto"{% if n.email.tls %} checked{% endif %}> STARTTLS (Port 465 = implizites SSL)
+      </label>
+      <label>Benutzer</label>
+      <input type="text" name="email_user" value="{{ n.email.user }}" autocomplete="off" placeholder="postmaster@example.com">
+      <label>Passwort{% if has_email_password %} <span class="hint" style="display:inline">· gesetzt</span>{% endif %}</label>
+      <input type="password" name="email_password" autocomplete="new-password" placeholder="{{ '•••••••• (gesetzt, leer = behalten)' if has_email_password else '' }}">
+      <label>Absender (From)</label>
+      <input type="text" name="email_from" value="{{ n.email.from }}" placeholder="paperless-portal@example.com">
+      <label>Empfänger (To)</label>
+      <input type="text" name="email_to" value="{{ n.email.to }}" placeholder="ich@example.com">
+      <button type="submit" name="action" value="test_email" style="background:var(--bg3);border:1px solid var(--border);width:auto;padding:8px 14px;font-size:13px">E-Mail testen</button>
+    </div>
+
+    <!-- Prioritäten je Ereignis -->
+    <div class="card" style="margin-top:14px">
+      <h2 style="margin-top:0">Priorität je Ereignis</h2>
+      <p class="hint" style="margin-top:0">Pushover-Skala −2…2 (wird für ntfy 1…5 abgeleitet). Greift, sobald der Wächter Ereignisse meldet.</p>
+      {% for ev, label in events %}
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 0;border-top:1px solid var(--border)">
+        <span style="font-size:13.5px">{{ label }}</span>
+        <select name="prio_{{ ev }}" style="width:auto;padding:6px 8px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:13px">
+          {% for p in [-2,-1,0,1,2] %}
+          <option value="{{ p }}"{% if n.priorities[ev] == p %} selected{% endif %}>{{ prio_labels[p] }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% endfor %}
+    </div>
+
+    <div style="margin-top:14px">
+      <button type="submit" name="action" value="save">Speichern</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

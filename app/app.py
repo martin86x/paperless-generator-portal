@@ -150,6 +150,25 @@ def _dec(val):
         return ""
 
 
+# Geheime Felder eines Profils (werden verschluesselt abgelegt): Paperless-Token +
+# Benachrichtigungs-Zugangsdaten (Pushover-Token/User-Key, SMTP-Passwort).
+_NOTIFY_SECRETS = [("pushover", "token"), ("pushover", "user"), ("email", "password")]
+
+
+def _enc_profile_secrets(p):
+    """Alle Secrets eines Profils idempotent verschluesseln (bereits verschluesselte bleiben)."""
+    if not isinstance(p, dict):
+        return
+    if p.get("paperless_token"):
+        p["paperless_token"] = _enc(p["paperless_token"])
+    n = p.get("notifications")
+    if isinstance(n, dict):
+        for ch, field in _NOTIFY_SECRETS:
+            c = n.get(ch)
+            if isinstance(c, dict) and c.get(field):
+                c[field] = _enc(c[field])
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # PROFILE — mehrere Paperless-Instanzen, je eigene Verbindung + Generator-Config
 # profiles.json: { "<id>": {name, paperless_url, paperless_token, generator_config} }
@@ -166,10 +185,9 @@ def load_profiles():
 
 def save_profiles(profs):
     os.makedirs(CONFIG_DIR, exist_ok=True)
-    # Tokens verschluesselt ablegen (idempotent: bereits verschluesselte bleiben).
+    # Secrets verschluesselt ablegen (idempotent: bereits verschluesselte bleiben).
     for p in profs.values():
-        if isinstance(p, dict) and p.get("paperless_token"):
-            p["paperless_token"] = _enc(p["paperless_token"])
+        _enc_profile_secrets(p)
     # Auto-Backup: vorige Version rotierend sichern (letzte 5), damit nie Profile verloren gehen.
     if os.path.exists(PROFILES_PATH):
         try:
@@ -763,6 +781,227 @@ def dashboard():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# BENACHRICHTIGUNGEN — Pushover / ntfy / E-Mail, je Profil konfigurierbar.
+# Prioritaet wird auf der Pushover-Skala −2…2 je Ereignis gepflegt und fuer ntfy
+# abgeleitet. Versand nur auf explizite Aktion (Testknopf) bzw. spaeter durch den
+# Waechter (P4); das Portal schreibt damit nichts in die Instanz.
+# ─────────────────────────────────────────────────────────────────────────────
+_NOTIFY_EVENTS = [
+    ("downtime", "Instanz nicht erreichbar / Token ungültig"),
+    ("drift", "Konfigurations-Drift (fehlende Einträge)"),
+    ("asn_gap", "ASN-Lücken"),
+    ("duplicate", "Duplikate gefunden"),
+    ("update", "Portal-Update verfügbar"),
+    ("error", "Fehler im Portal / Wächter"),
+]
+_NOTIFY_DEFAULT_PRIO = {"downtime": 1, "drift": 0, "asn_gap": -1,
+                        "duplicate": -1, "update": 0, "error": 1}
+_PRIO_LABELS = {-2: "−2 Stumm", -1: "−1 Leise", 0: "0 Normal", 1: "1 Hoch", 2: "2 Notfall"}
+# Pushover-Prioritaet −2…2  ->  ntfy-Prioritaet 1…5.
+_NTFY_PRIO = {-2: "1", -1: "2", 0: "3", 1: "4", 2: "5"}
+
+
+def _clamp_prio(val, default=0):
+    try:
+        return max(-2, min(2, int(val)))
+    except (TypeError, ValueError):
+        return default
+
+
+def _notif_of(prof):
+    """Benachrichtigungs-Konfig eines Profils mit gefuellten Defaults (fuer Anzeige/Versand)."""
+    n = prof.get("notifications") if isinstance(prof.get("notifications"), dict) else {}
+    prios = n.get("priorities") if isinstance(n.get("priorities"), dict) else {}
+    return {
+        "pushover": {"enabled": bool((n.get("pushover") or {}).get("enabled")),
+                     "token": (n.get("pushover") or {}).get("token") or "",
+                     "user": (n.get("pushover") or {}).get("user") or ""},
+        "ntfy": {"enabled": bool((n.get("ntfy") or {}).get("enabled")),
+                 "server": (n.get("ntfy") or {}).get("server") or "https://ntfy.sh",
+                 "topic": (n.get("ntfy") or {}).get("topic") or ""},
+        "email": {"enabled": bool((n.get("email") or {}).get("enabled")),
+                  "host": (n.get("email") or {}).get("host") or "",
+                  "port": (n.get("email") or {}).get("port") or 587,
+                  "user": (n.get("email") or {}).get("user") or "",
+                  "password": (n.get("email") or {}).get("password") or "",
+                  "from": (n.get("email") or {}).get("from") or "",
+                  "to": (n.get("email") or {}).get("to") or "",
+                  "tls": (n.get("email") or {}).get("tls", True)},
+        "priorities": {ev: _clamp_prio(prios.get(ev, _NOTIFY_DEFAULT_PRIO[ev]),
+                                       _NOTIFY_DEFAULT_PRIO[ev]) for ev, _ in _NOTIFY_EVENTS},
+    }
+
+
+def _hdr_safe(text):
+    """HTTP-Header sind latin-1 — nicht darstellbare Zeichen (z. B. Emoji) entfernen."""
+    return (text or "").encode("latin-1", "ignore").decode("latin-1")
+
+
+def _notify_pushover(c, title, message, priority):
+    if not c.get("token") or not c.get("user"):
+        return False, "Token oder User-Key fehlt"
+    data = {"token": c["token"], "user": c["user"],
+            "title": (title or "")[:250], "message": (message or "")[:1024],
+            "priority": priority}
+    if priority >= 2:  # Notfall-Prioritaet verlangt retry/expire
+        data.update({"retry": 60, "expire": 3600})
+    try:
+        r = requests.post("https://api.pushover.net/1/messages.json", data=data, timeout=10)
+        if r.status_code == 200:
+            return True, "gesendet"
+        return False, "HTTP %d: %s" % (r.status_code, r.text[:160])
+    except requests.RequestException as exc:
+        return False, str(exc)
+
+
+def _notify_ntfy(c, title, message, priority):
+    topic = (c.get("topic") or "").strip()
+    if not topic:
+        return False, "Topic fehlt"
+    server = (c.get("server") or "https://ntfy.sh").rstrip("/")
+    try:
+        r = requests.post(server + "/" + topic,
+                          data=(message or "").encode("utf-8"),
+                          headers={"Title": _hdr_safe(title),
+                                   "Priority": _NTFY_PRIO.get(priority, "3")},
+                          timeout=10)
+        if r.status_code in (200, 201):
+            return True, "gesendet"
+        return False, "HTTP %d" % r.status_code
+    except requests.RequestException as exc:
+        return False, str(exc)
+
+
+def _notify_email(c, subject, body):
+    import smtplib
+    from email.message import EmailMessage
+    host = (c.get("host") or "").strip()
+    to = (c.get("to") or "").strip()
+    if not host or not to:
+        return False, "SMTP-Host oder Empfänger fehlt"
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = c.get("from") or c.get("user") or "paperless-portal@localhost"
+    msg["To"] = to
+    msg.set_content(body)
+    try:
+        port = int(c.get("port") or 587)
+    except (TypeError, ValueError):
+        port = 587
+    try:
+        if port == 465:
+            srv = smtplib.SMTP_SSL(host, port, timeout=15)
+        else:
+            srv = smtplib.SMTP(host, port, timeout=15)
+            if c.get("tls", True):
+                srv.starttls()
+        try:
+            if c.get("user"):
+                srv.login(c["user"], c.get("password") or "")
+            srv.send_message(msg)
+        finally:
+            srv.quit()
+        return True, "gesendet"
+    except Exception as exc:  # smtplib wirft diverse Fehlerklassen
+        return False, str(exc)
+
+
+def _dispatch_notification(prof, event, title, message, only=None):
+    """An alle aktivierten (bzw. mit ``only`` gewaehlten) Kanaele senden.
+    Rueckgabe: (priority, [(kanal, ok, detail), ...]). Entschluesselt Secrets hier zentral."""
+    n = _notif_of(prof)
+    prio = _clamp_prio(n["priorities"].get(event, _NOTIFY_DEFAULT_PRIO.get(event, 0)))
+    results = []
+    if (only in (None, "pushover")) and n["pushover"]["enabled"]:
+        c = {"token": _dec(n["pushover"]["token"]), "user": _dec(n["pushover"]["user"])}
+        ok, detail = _notify_pushover(c, title, message, prio)
+        results.append(("Pushover", ok, detail))
+    if (only in (None, "ntfy")) and n["ntfy"]["enabled"]:
+        ok, detail = _notify_ntfy(n["ntfy"], title, message, prio)
+        results.append(("ntfy", ok, detail))
+    if (only in (None, "email")) and n["email"]["enabled"]:
+        c = dict(n["email"])
+        c["password"] = _dec(n["email"]["password"])
+        ok, detail = _notify_email(c, title, message)
+        results.append(("E-Mail", ok, detail))
+    return prio, results
+
+
+@app.route("/verwaltung/benachrichtigungen", methods=["GET", "POST"])
+def notifications():
+    profs = load_profiles()
+    aid = _active_id()
+    if not aid or aid not in profs:
+        return redirect(url_for("profiles", err="Kein aktives Profil."))
+    prof = profs[aid]
+
+    if request.method == "POST":
+        f = request.form
+        action = f.get("action", "save")
+        cur = _notif_of(prof)  # bestehende (ggf. verschluesselte) Secrets als Ausgangswert
+        n = {
+            "pushover": {
+                "enabled": bool(f.get("pushover_enabled")),
+                # Secrets: leeres Feld = bestehenden Wert behalten (write-only-UI)
+                "token": f.get("pushover_token", "").strip() or cur["pushover"]["token"],
+                "user": f.get("pushover_user", "").strip() or cur["pushover"]["user"],
+            },
+            "ntfy": {
+                "enabled": bool(f.get("ntfy_enabled")),
+                "server": f.get("ntfy_server", "").strip() or "https://ntfy.sh",
+                "topic": f.get("ntfy_topic", "").strip(),
+            },
+            "email": {
+                "enabled": bool(f.get("email_enabled")),
+                "host": f.get("email_host", "").strip(),
+                "port": _clamp_port(f.get("email_port")),
+                "user": f.get("email_user", "").strip(),
+                "password": f.get("email_password", "") or cur["email"]["password"],
+                "from": f.get("email_from", "").strip(),
+                "to": f.get("email_to", "").strip(),
+                "tls": bool(f.get("email_tls")),
+            },
+            "priorities": {ev: _clamp_prio(f.get("prio_" + ev), _NOTIFY_DEFAULT_PRIO[ev])
+                           for ev, _ in _NOTIFY_EVENTS},
+        }
+        profs[aid]["notifications"] = n
+        save_profiles(profs)  # verschluesselt Secrets at-rest
+        if action.startswith("test_"):
+            channel = action[len("test_"):]
+            title = "Paperless Portal — Testbenachrichtigung"
+            body = ("Test von Profil %s. Wenn du das liest, funktioniert der Kanal."
+                    % (prof.get("name") or "?"))
+            _prio, res = _dispatch_notification(profs[aid], "update", title, body, only=channel)
+            if not res:
+                return redirect(url_for("notifications", err="Kanal ist nicht aktiviert."))
+            name, ok, detail = res[0]
+            _log_activity("notify", "Test %s (%s): %s" % (name, prof.get("name"),
+                                                          "ok" if ok else detail))
+            if ok:
+                return redirect(url_for("notifications", msg="%s: Testnachricht gesendet." % name))
+            return redirect(url_for("notifications", err="%s fehlgeschlagen: %s" % (name, detail)))
+        return redirect(url_for("notifications", msg="Benachrichtigungen gespeichert."))
+
+    view = _notif_of(prof)
+    return render_template(
+        "notifications.html", prof_name=prof.get("name") or "",
+        n=view,
+        # Secrets nie im Klartext ins Formular — nur „gesetzt/leer" anzeigen.
+        has_pushover_token=bool(view["pushover"]["token"]),
+        has_pushover_user=bool(view["pushover"]["user"]),
+        has_email_password=bool(view["email"]["password"]),
+        events=_NOTIFY_EVENTS, prio_labels=_PRIO_LABELS,
+        msg=request.args.get("msg"), err=request.args.get("err"))
+
+
+def _clamp_port(val):
+    try:
+        return max(1, min(65535, int(str(val).strip())))
+    except (TypeError, ValueError):
+        return 587
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # DRIFT „ANWENDEN" — sicher: Einzel-Haekchen, Passwort-Re-Auth, Instanz-Snapshot,
 # nur create/update (nie Dokumente/DELETE), Undo, Protokoll.
 # Kategorien mit klarem Namensfeld (Custom Fields bewusst NICHT — Typ-Mapping
@@ -1067,9 +1306,15 @@ def profiles_export():
     Instanz (mit anderem 'secret') einspielbar ist."""
     out = {}
     for pid, p in load_profiles().items():
-        q = dict(p)
+        q = json.loads(json.dumps(p))  # tiefe Kopie, damit die Entschluesselung nicht durchschlaegt
         if q.get("paperless_token"):
             q["paperless_token"] = _dec(q["paperless_token"])
+        n = q.get("notifications")
+        if isinstance(n, dict):
+            for ch, field in _NOTIFY_SECRETS:
+                c = n.get(ch)
+                if isinstance(c, dict) and c.get(field):
+                    c[field] = _dec(c[field])
         out[pid] = q
     data = json.dumps(out, indent=2, ensure_ascii=False)
     return Response(data, mimetype="application/json", headers={
