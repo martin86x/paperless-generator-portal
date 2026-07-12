@@ -858,11 +858,12 @@ _NOTIFY_EVENTS = [
     ("drift", "Konfigurations-Drift (fehlende Einträge)"),
     ("asn_gap", "ASN-Lücken"),
     ("duplicate", "Duplikate gefunden"),
+    ("digest", "Täglicher Status-Digest"),
     ("update", "Portal-Update verfügbar"),
     ("error", "Fehler im Portal / Wächter"),
 ]
 _NOTIFY_DEFAULT_PRIO = {"downtime": 1, "drift": 0, "asn_gap": -1,
-                        "duplicate": -1, "update": 0, "error": 1}
+                        "duplicate": -1, "digest": -1, "update": 0, "error": 1}
 _PRIO_LABELS = {-2: "−2 Stumm", -1: "−1 Leise", 0: "0 Normal", 1: "1 Hoch", 2: "2 Notfall"}
 # Pushover-Prioritaet −2…2  ->  ntfy-Prioritaet 1…5.
 _NTFY_PRIO = {-2: "1", -1: "2", 0: "3", 1: "4", 2: "5"}
@@ -1079,6 +1080,9 @@ _WATCHER_DEFAULTS = {
     "interval_min": 60,
     "checks": {"downtime": True, "drift": True, "asn_gap": False, "duplicate": False},
     "asn_gap_threshold": 1,
+    "digest_enabled": False,
+    "digest_hour": 8,          # Ortszeit-Stunde fuer den taeglichen Status-Digest
+    "heartbeat_url": "",       # Dead-Man's-Switch: URL wird nach jedem Zyklus gepingt
 }
 # Laufzeit-Zustand des Waechters (nur im Prozess, der die Sperre haelt). Fuer die UI +
 # Alarm-Entprellung (nur bei Zustandswechsel ok->schlecht senden, nicht jede Runde).
@@ -1090,6 +1094,8 @@ _watcher_state = {
     "alerts_active": set(),   # {(pid, event)} — aktuell gemeldete Auffaelligkeiten
     "last_error": None,
     "last_metrics": None,  # Unix-ts der letzten Kennzahl-Erfassung (Trends, gedrosselt)
+    "last_digest": None,   # 'YYYY-MM-DD' des zuletzt gesendeten Tages-Digests
+    "last_heartbeat": None,  # Unix-ts des letzten Heartbeat-Pings
 }
 _watcher_started = False
 _watcher_lock_fh = None
@@ -1116,6 +1122,9 @@ def _watcher_cfg():
         "checks": {k: bool(ch.get(k, _WATCHER_DEFAULTS["checks"][k]))
                    for k in _WATCHER_DEFAULTS["checks"]},
         "asn_gap_threshold": max(1, _watch_int(w.get("asn_gap_threshold"), 1)),
+        "digest_enabled": bool(w.get("digest_enabled", False)),
+        "digest_hour": max(0, min(23, _watch_int(w.get("digest_hour"), 8))),
+        "heartbeat_url": (w.get("heartbeat_url") or "").strip(),
     }
 
 
@@ -1329,10 +1338,60 @@ def _run_watch_cycle(wc, dispatch=True):
     return results
 
 
+def _profile_digest_line(url, token, gc):
+    """Einzeilige Statuszusammenfassung eines Profils fuer den Tages-Digest."""
+    d = _chk_downtime(url, token)
+    if d["status"] != "ok":
+        return "⚠ " + d["detail"]
+    parts = []
+    total = _api_count(url, token, "documents/?page_size=1")
+    if total is not None:
+        parts.append("%s Dokumente" % total)
+    inbox = _api_count(url, token, "documents/?is_in_inbox=true&page_size=1")
+    if inbox:
+        parts.append("%s im Posteingang" % inbox)
+    dr = _chk_drift(url, token, gc)
+    parts.append("keine Drift" if dr["status"] == "ok" else dr["detail"])
+    return "✓ " + ", ".join(parts)
+
+
+def _send_digest():
+    """Pro Profil mit aktivem Kanal eine Kurz-Statusmeldung senden (Ereignis 'digest')."""
+    try:
+        profs = load_profiles()
+    except (OSError, ValueError):
+        return
+    sent = 0
+    for pid, p in profs.items():
+        url = p.get("paperless_url")
+        if not url:
+            continue
+        n = _notif_of(p)
+        if not (n["pushover"]["enabled"] or n["ntfy"]["enabled"] or n["email"]["enabled"]):
+            continue
+        token = _dec(p.get("paperless_token"))
+        line = _profile_digest_line(url, token, p.get("generator_config") or {})
+        _dispatch_notification(p, "digest", "Paperless-Digest: %s" % (p.get("name") or pid), line)
+        sent += 1
+    if sent:
+        _log_activity("watcher", "Täglicher Digest gesendet (%d Profil(e))" % sent)
+
+
+def _ping_heartbeat(url):
+    """Dead-Man's-Switch: externen Ping-Dienst (z. B. healthchecks.io) anstossen.
+    Bleibt der Ping aus (Portal tot), alarmiert der Dienst — deckt genau den Fall ab,
+    in dem das Portal selbst nicht mehr ueber Downtime warnen kann."""
+    try:
+        requests.get(url, timeout=8)
+        _watcher_state["last_heartbeat"] = time.time()
+    except requests.RequestException:
+        pass
+
+
 def _watcher_loop():
     """Hintergrund-Schleife: alle interval_min Minuten ein Prueflauf, wenn aktiviert.
-    Laeuft nur im Prozess, der die Dateisperre haelt. Faengt alle Fehler ab, damit der
-    Thread nie stirbt."""
+    Zusaetzlich: Heartbeat je Zyklus + Tages-Digest zur eingestellten Stunde.
+    Laeuft nur im Prozess mit der Dateisperre; faengt alle Fehler ab (Thread stirbt nie)."""
     poll = 20  # Sekunden — feiner Takt, damit Enable/Intervall-Aenderungen zeitnah greifen
     while True:
         try:
@@ -1342,6 +1401,14 @@ def _watcher_loop():
                 if not _watcher_state.get("next_run") or now >= _watcher_state["next_run"]:
                     _run_watch_cycle(wc, dispatch=True)
                     _watcher_state["next_run"] = time.time() + wc["interval_min"] * 60
+                    if wc["heartbeat_url"]:
+                        _ping_heartbeat(wc["heartbeat_url"])
+                if wc["digest_enabled"]:
+                    lt = datetime.now()
+                    today = lt.strftime("%Y-%m-%d")
+                    if lt.hour == wc["digest_hour"] and _watcher_state.get("last_digest") != today:
+                        _watcher_state["last_digest"] = today
+                        _send_digest()
             else:
                 _watcher_state["next_run"] = None
             _watcher_state["last_error"] = None
@@ -1415,6 +1482,9 @@ def waechter():
             "interval_min": max(5, _watch_int(f.get("interval_min"), 60)),
             "checks": {k: bool(f.get("chk_" + k)) for k in _WATCHER_DEFAULTS["checks"]},
             "asn_gap_threshold": max(1, _watch_int(f.get("asn_gap_threshold"), 1)),
+            "digest_enabled": bool(f.get("digest_enabled")),
+            "digest_hour": max(0, min(23, _watch_int(f.get("digest_hour"), 8))),
+            "heartbeat_url": (f.get("heartbeat_url", "") or "").strip(),
         }
         cfg = load_config()
         cfg["watcher"] = w
@@ -1424,6 +1494,14 @@ def waechter():
             _run_watch_cycle(_watcher_cfg(), dispatch=True)
             _log_activity("watcher", "Manueller Prüflauf")
             return redirect(url_for("verwaltung", tab="waechter", msg="Prüflauf ausgeführt — Ergebnis unten."))
+        if action == "digest_now":
+            _send_digest()
+            return redirect(url_for("verwaltung", tab="waechter", msg="Digest an alle Profile mit aktivem Kanal gesendet."))
+        if action == "heartbeat_now":
+            if w["heartbeat_url"]:
+                _ping_heartbeat(w["heartbeat_url"])
+                return redirect(url_for("verwaltung", tab="waechter", msg="Heartbeat-Ping gesendet."))
+            return redirect(url_for("verwaltung", tab="waechter", err="Keine Heartbeat-URL gesetzt."))
         return redirect(url_for("verwaltung", tab="waechter", msg="Wächter-Einstellungen gespeichert."))
 
     wc = _watcher_cfg()
@@ -1439,6 +1517,8 @@ def waechter():
                      if _watcher_state.get("next_run") else "—"),
         "active_alerts": len(_watcher_state.get("alerts_active") or ()),
         "error": _watcher_state.get("last_error"),
+        "last_heartbeat": _fmt_rel_ts(_watcher_state.get("last_heartbeat")),
+        "last_digest": _watcher_state.get("last_digest") or "—",
     }
     return render_template(
         "waechter.html", w=wc, events=_NOTIFY_EVENTS, results=results, status=status,

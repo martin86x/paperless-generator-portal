@@ -61,6 +61,26 @@
       </div>
       <p class="hint">„Jetzt prüfen" speichert und führt sofort einen Lauf aus (meldet bei Auffälligkeit — gut zum Testen).</p>
     </div>
+
+    <!-- Digest + Heartbeat -->
+    <div class="card" style="margin-top:14px">
+      <h2 style="margin-top:0">Tages-Digest &amp; Heartbeat</h2>
+      <label style="display:flex;align-items:center;gap:8px;margin:0;font-size:14px;color:var(--text)">
+        <input type="checkbox" name="digest_enabled" value="1" style="width:auto"{% if w.digest_enabled %} checked{% endif %}> Täglicher Status-Digest
+      </label>
+      <div style="font-size:12px;color:var(--text-dim);margin:4px 0 0 26px">Einmal am Tag eine Kurzmeldung je Profil (erreichbar? wie viele Dokumente? Drift?) über die aktivierten Kanäle — so weißt du, dass die Überwachung <em>läuft</em> und nicht nur schweigt. Zuletzt gesendet: {{ status.last_digest }}.</div>
+      <label style="margin-left:26px">Uhrzeit (Stunde, 0–23, Ortszeit)</label>
+      <input type="text" name="digest_hour" value="{{ w.digest_hour }}" inputmode="numeric" placeholder="8" style="margin-left:26px;width:calc(100% - 26px)">
+
+      <label style="margin-top:16px">Heartbeat-URL (Dead-Man's-Switch)</label>
+      <input type="url" name="heartbeat_url" value="{{ w.heartbeat_url }}" placeholder="https://hc-ping.com/dein-uuid">
+      <p class="hint">Wird nach jedem Prüflauf angepingt (z. B. <a class="link" href="https://healthchecks.io" target="_blank" rel="noopener">healthchecks.io</a>). Bleibt der Ping aus, weil das <strong>Portal selbst</strong> tot ist, alarmiert dich der Dienst — genau der Fall, den der Wächter sonst nicht melden kann. Letzter Ping: {{ status.last_heartbeat }}.</p>
+
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">
+        <button type="submit" name="action" value="digest_now" style="width:auto;padding:8px 14px;font-size:13px;background:var(--bg3);border:1px solid var(--border)">Digest jetzt senden</button>
+        <button type="submit" name="action" value="heartbeat_now" style="width:auto;padding:8px 14px;font-size:13px;background:var(--bg3);border:1px solid var(--border)">Heartbeat jetzt pingen</button>
+      </div>
+    </div>
   </form>
 
   <!-- Ergebnisse -->
