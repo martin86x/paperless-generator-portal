@@ -54,7 +54,34 @@
       <button onclick="plxCopy('cmd-inner',this)" style="margin-top:8px;width:auto;padding:6px 12px;font-size:12px">Kopieren</button>
     </details>
 
-    <p class="hint" style="margin-top:14px">Ein Ein-Klick-Update aus dem Portal ist bewusst nicht aktiv — der Container bräuchte dafür Docker-Vollzugriff (Sicherheit). Config &amp; Profile im <code>/config</code>-Volume überstehen den Rebuild.</p>
+    <p class="hint" style="margin-top:14px">Config &amp; Profile im <code>/config</code>-Volume überstehen den Rebuild.</p>
+  </div>
+
+  <!-- 1-Klick-Update (optional, sicher via Host-Helper) -->
+  <div class="card" style="margin-top:14px">
+    <h2 style="margin-top:0">1-Klick-Update {% if oneclick.helper %}<span style="font-size:11px;color:var(--ok)">· Helper aktiv</span>{% else %}<span style="font-size:11px;color:var(--text-dim)">· nicht eingerichtet</span>{% endif %}</h2>
+    {% if oneclick.status %}
+    <div class="msg {{ 'ok' if oneclick.status.result == 'ok' else 'err' }}" style="margin-top:0">
+      Letztes {{ oneclick.status.action }}: {{ oneclick.status.result }}{% if oneclick.status.commit %} → <code>{{ oneclick.status.commit }}</code>{% endif %} · {{ oneclick.status.ts }}
+    </div>
+    {% endif %}
+    {% if oneclick.pending %}<div class="msg" style="background:var(--bg3);border:1px solid var(--border);margin-top:8px">⏳ Anforderung liegt vor — wird vom Host-Helper verarbeitet.</div>{% endif %}
+
+    {% if oneclick.helper %}
+      <p class="hint" style="margin-top:8px">Der Host-Helper ist aktiv. Update/Rollback laufen ohne SSH — der Container erhält dabei <strong>keine</strong> Docker-Rechte.</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px">
+        <form method="post" action="{{ url_for('update_trigger') }}" onsubmit="return confirm('Jetzt auf den neuesten GitHub-Stand aktualisieren? Der Container wird neu gebaut.');">
+          <input type="hidden" name="action" value="update">
+          <button type="submit" style="width:auto;margin:0;padding:9px 16px">⟳ Jetzt aktualisieren</button>
+        </form>
+        <form method="post" action="{{ url_for('update_trigger') }}" onsubmit="return confirm('Auf den vorherigen Stand zurückrollen?');">
+          <input type="hidden" name="action" value="rollback">
+          <button type="submit" style="width:auto;margin:0;padding:9px 16px;background:var(--bg3);border:1px solid var(--border)">↩ Rollback</button>
+        </form>
+      </div>
+    {% else %}
+      <p class="hint" style="margin-top:8px">Bewusst <strong>ohne Docker-Socket im Container</strong> (das wäre root-äquivalent auf dem Host). Für echtes 1-Klick-Update den kleinen <strong>Host-Helper</strong> einmalig als Cron auf dem LXC einrichten — Anleitung im Repo unter <code>host-helper/</code>. Danach erscheinen hier die Knöpfe „Aktualisieren" und „Rollback". Bis dahin einfach den Befehl oben nutzen.</p>
+    {% endif %}
   </div>
 
   <!-- Voll-Backup -->

@@ -45,6 +45,11 @@ SNAP_DIR = os.path.join(CONFIG_DIR, "instance-snapshots")
 WATCHER_LOCK_PATH = os.path.join(CONFIG_DIR, "watcher.lock")
 METRICS_DIR = os.path.join(CONFIG_DIR, "history-metrics")
 METRICS_MAX = 2000  # gekappte Historie je Profil (JSONL-Zeilen)
+# 1-Klick-Update (P7) — SICHER ohne Docker-Socket: das Portal legt nur eine Anforderung
+# im /config-Volume ab; ein Host-Helper (Cron auf dem LXC) fuehrt den Rebuild aus.
+UPDATE_REQUEST = os.path.join(CONFIG_DIR, "update-request.json")
+UPDATE_STATUS = os.path.join(CONFIG_DIR, "update-status.json")
+UPDATE_HELPER_ALIVE = os.path.join(CONFIG_DIR, "update-helper.alive")
 SITE_DIR = os.environ.get("SITE_DIR", os.path.join(os.path.dirname(__file__), "site"))
 
 DEFAULT_ADMIN_USER = "admin"
@@ -707,10 +712,38 @@ def update_page():
     inner_cmd = ("cd /opt/paperless-generator-portal && git fetch origin main && "
                  "git reset --hard origin/main && docker compose up -d --build")
     full_cmd = "pct exec %s -- bash -c '%s'" % (lxc_id or "<CTID>", inner_cmd)
+    upd_status = None
+    try:
+        with open(UPDATE_STATUS, encoding="utf-8") as fh:
+            upd_status = json.load(fh)
+    except (OSError, ValueError):
+        pass
+    oneclick = {
+        "helper": os.path.exists(UPDATE_HELPER_ALIVE),
+        "pending": os.path.exists(UPDATE_REQUEST),
+        "status": upd_status,
+    }
     return render_template("update.html", version=PORTAL_VERSION, latest=latest,
                            gh_err=gh_err, inner_cmd=inner_cmd, full_cmd=full_cmd,
-                           lxc_id=lxc_id, repo=GITHUB_REPO,
+                           lxc_id=lxc_id, repo=GITHUB_REPO, oneclick=oneclick,
                            msg=request.args.get("msg"), err=request.args.get("err"))
+
+
+@app.route("/verwaltung/update/trigger", methods=["POST"])
+def update_trigger():
+    """1-Klick-Update/Rollback anfordern (SICHER): nur eine Anforderungsdatei ins
+    /config-Volume schreiben. Der Host-Helper (Cron auf dem LXC) fuehrt sie aus."""
+    action = "rollback" if request.form.get("action") == "rollback" else "update"
+    try:
+        with open(UPDATE_REQUEST, "w", encoding="utf-8") as fh:
+            json.dump({"action": action, "ts": datetime.now().isoformat(timespec="seconds")}, fh)
+    except OSError as exc:
+        return redirect(url_for("verwaltung", tab="version",
+                                err="Konnte Anforderung nicht schreiben: %s" % exc))
+    _log_activity("update", "1-Klick-%s angefordert" % ("Rollback" if action == "rollback" else "Update"))
+    return redirect(url_for("verwaltung", tab="version",
+                            msg="%s angefordert — der Host-Helper führt es in Kürze aus."
+                                % ("Rollback" if action == "rollback" else "Update")))
 
 
 _BACKUP_SKIP = {"watcher.lock"}  # transiente Dateien nicht mitsichern
