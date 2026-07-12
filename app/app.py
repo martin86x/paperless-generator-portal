@@ -32,6 +32,8 @@ PROFILES_PATH = os.path.join(CONFIG_DIR, "profiles.json")
 HISTORY_DIR = os.path.join(CONFIG_DIR, "history")
 HISTORY_MAX = 20
 ACTIVITY_PATH = os.path.join(CONFIG_DIR, "activity.log")
+UNDO_DIR = os.path.join(CONFIG_DIR, "undo")
+SNAP_DIR = os.path.join(CONFIG_DIR, "instance-snapshots")
 SITE_DIR = os.environ.get("SITE_DIR", os.path.join(os.path.dirname(__file__), "site"))
 
 DEFAULT_ADMIN_USER = "admin"
@@ -758,6 +760,259 @@ def dashboard():
         cards.append(card)
     cards.sort(key=lambda c: c["name"].lower())
     return render_template("dashboard.html", cards=cards)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DRIFT „ANWENDEN" — sicher: Einzel-Haekchen, Passwort-Re-Auth, Instanz-Snapshot,
+# nur create/update (nie Dokumente/DELETE), Undo, Protokoll.
+# Kategorien mit klarem Namensfeld (Custom Fields bewusst NICHT — Typ-Mapping
+# gehoert in den Generator-Direkt-Lauf).
+# ─────────────────────────────────────────────────────────────────────────────
+_APPLY_CATS = [
+    ("Tags", "tags", "tags/"),
+    ("Typen", "types", "document_types/"),
+    ("Korrespondenten", "correspondents", "correspondents/"),
+    ("Speicherpfade", "storagePaths", "storage_paths/"),
+]
+
+
+def _instance_names(url, token, endpoint):
+    """Menge vorhandener Namen (lowercase) eines Endpunkts, oder None bei Fehler."""
+    names = set()
+    hdr = {"Authorization": "Token " + token} if token else {}
+    nexturl = url.rstrip("/") + "/api/" + endpoint + "?page_size=250"
+    try:
+        while nexturl:
+            r = requests.get(nexturl, headers=hdr, timeout=10, allow_redirects=False)
+            if r.status_code != 200:
+                return None
+            j = r.json()
+            for row in j.get("results", []):
+                if row.get("name"):
+                    names.add(row["name"].strip().lower())
+            nexturl = j.get("next")
+    except (requests.RequestException, ValueError):
+        return None
+    return names
+
+
+def _instance_snapshot(url, token):
+    """Ist-Zustand der Instanz (Config-Objekte) sichern — Restore-Punkt vor dem Schreiben."""
+    hdr = {"Authorization": "Token " + token} if token else {}
+    snap = {}
+    for ep in ("tags", "document_types", "correspondents", "storage_paths", "custom_fields"):
+        rows, nexturl = [], url.rstrip("/") + "/api/" + ep + "/?page_size=250"
+        try:
+            while nexturl:
+                r = requests.get(nexturl, headers=hdr, timeout=10, allow_redirects=False)
+                if r.status_code != 200:
+                    break
+                j = r.json()
+                rows.extend(j.get("results", []))
+                nexturl = j.get("next")
+        except (requests.RequestException, ValueError):
+            pass
+        snap[ep] = rows
+    return snap
+
+
+def _save_instance_snapshot(pid, snap):
+    d = os.path.join(SNAP_DIR, pid)
+    os.makedirs(d, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%dT%H%M%S")
+    with open(os.path.join(d, ts + ".json"), "w", encoding="utf-8") as fh:
+        json.dump(snap, fh, ensure_ascii=False)
+
+
+def _api_create(url, token, endpoint, payload):
+    hdr = {"Content-Type": "application/json"}
+    if token:
+        hdr["Authorization"] = "Token " + token
+    try:
+        r = requests.post(url.rstrip("/") + "/api/" + endpoint, headers=hdr, json=payload,
+                          timeout=15, allow_redirects=False)
+        if r.status_code in (200, 201):
+            return True, (r.json() or {}).get("id"), None
+        return False, None, "HTTP %d" % r.status_code
+    except (requests.RequestException, ValueError) as exc:
+        return False, None, str(exc)
+
+
+def _api_delete(url, token, endpoint, oid):
+    hdr = {"Authorization": "Token " + token} if token else {}
+    try:
+        r = requests.delete(url.rstrip("/") + "/api/" + endpoint + str(oid) + "/",
+                            headers=hdr, timeout=15, allow_redirects=False)
+        return r.status_code in (200, 204)
+    except requests.RequestException:
+        return False
+
+
+def _gc_apply_entries(gc, key):
+    """Geordnete Liste anlegbarer Eintraege einer Kategorie — spiegelt exakt die
+    Payloads des Generator-Direkt-Modus (05-direct.js). Tags sind ein Baum
+    (Eltern zuerst, dann Kinder mit ``parent``); Tag-Matching stammt aus
+    ``tagMatch`` (per Name). Jeder Eintrag: {name, endpoint, payload, parent_name}."""
+    entries = []
+    if key == "tags":
+        tm = {m.get("name"): m for m in (gc.get("tagMatch") or [])
+              if isinstance(m, dict) and m.get("name")}
+        for par in (gc.get("tags") or []):
+            if not isinstance(par, dict) or not par.get("name"):
+                continue
+            ppl = {"name": par["name"], "matching_algorithm": 0}
+            if par.get("color"):
+                ppl["color"] = par["color"]
+            if par.get("isInbox"):
+                ppl["is_inbox_tag"] = True
+            entries.append({"name": par["name"], "endpoint": "tags/",
+                            "payload": ppl, "parent_name": None})
+            for ch in (par.get("children") or []):
+                if not isinstance(ch, dict) or not ch.get("name"):
+                    continue
+                cpl = {"name": ch["name"], "matching_algorithm": 0}
+                if ch.get("color"):
+                    cpl["color"] = ch["color"]
+                m = tm.get(ch["name"])
+                if m and m.get("algo", 0) > 0 and m.get("match"):
+                    cpl.update({"matching_algorithm": m["algo"],
+                                "match": m["match"], "is_insensitive": True})
+                entries.append({"name": ch["name"], "endpoint": "tags/",
+                                "payload": cpl, "parent_name": par["name"]})
+        return entries
+    simple = {
+        "types": ("document_types/", None),
+        "correspondents": ("correspondents/", None),
+        "storagePaths": ("storage_paths/", "path"),
+    }
+    if key in simple:
+        endpoint, pathfield = simple[key]
+        for e in (gc.get(key) or []):
+            if not isinstance(e, dict) or not e.get("name"):
+                continue
+            pl = {"name": e["name"], "matching_algorithm": 0}
+            if pathfield:
+                pl["path"] = e.get(pathfield, "")
+            if e.get("algo", 0) > 0 and e.get("match"):
+                pl.update({"matching_algorithm": e["algo"],
+                           "match": e["match"], "is_insensitive": True})
+            entries.append({"name": e["name"], "endpoint": endpoint,
+                            "payload": pl, "parent_name": None})
+        return entries
+    return []
+
+
+def _save_undo(pid, items):
+    os.makedirs(UNDO_DIR, exist_ok=True)
+    with open(os.path.join(UNDO_DIR, pid + ".json"), "w", encoding="utf-8") as fh:
+        json.dump(items, fh, ensure_ascii=False)
+
+
+def _load_undo(pid):
+    try:
+        with open(os.path.join(UNDO_DIR, pid + ".json"), encoding="utf-8") as fh:
+            return json.load(fh)
+    except (FileNotFoundError, ValueError):
+        return []
+
+
+@app.route("/anwenden")
+def anwenden():
+    profs = load_profiles()
+    aid = _active_id()
+    act = profs.get(aid, {})
+    url = act.get("paperless_url")
+    token = _dec(act.get("paperless_token"))
+    ctx = {"active": act, "productive": bool(act.get("productive")),
+           "err": request.args.get("err"), "undo_available": bool(_load_undo(aid))}
+    if act.get("readonly"):
+        return render_template("anwenden.html", blocked="Dieses Profil ist auf „nur lesen“ gesetzt — Schreiben gesperrt.", groups=None, **ctx)
+    if not act.get("generator_config"):
+        return render_template("anwenden.html", blocked="Für dieses Profil ist noch keine Konfiguration gespeichert.", groups=None, **ctx)
+    if not url:
+        return render_template("anwenden.html", blocked="Keine Paperless-URL gesetzt.", groups=None, **ctx)
+    gc = act.get("generator_config") or {}
+    groups = []
+    for label, key, ep in _APPLY_CATS:
+        inst = _instance_names(url, token, ep)
+        if inst is None:
+            return render_template("anwenden.html", blocked="Instanz nicht erreichbar oder Token ungültig.", groups=None, **ctx)
+        missing, seen = [], set()
+        for e in _gc_apply_entries(gc, key):
+            low = e["name"].strip().lower()
+            if low in inst or low in seen:
+                continue
+            seen.add(low)
+            missing.append(e["name"])
+        if missing:
+            groups.append({"label": label, "key": key, "entries": missing})
+    return render_template("anwenden.html", blocked=None, groups=groups, **ctx)
+
+
+@app.route("/anwenden", methods=["POST"])
+def anwenden_post():
+    profs = load_profiles()
+    aid = _active_id()
+    act = profs.get(aid, {})
+    url = act.get("paperless_url")
+    token = _dec(act.get("paperless_token"))
+    if act.get("readonly") or not url:
+        return redirect(url_for("anwenden"))
+    if not check_password_hash(load_config()["admin_pw_hash"], request.form.get("password", "")):
+        return redirect(url_for("anwenden", err="Passwort falsch — es wurde NICHTS geändert."))
+    selected = request.form.getlist("item")
+    if not selected:
+        return redirect(url_for("anwenden", err="Nichts angehakt — es wurde nichts geändert."))
+    gc = act.get("generator_config") or {}
+    selected = set(selected)
+    snap = _instance_snapshot(url, token)
+    _save_instance_snapshot(aid, snap)  # Restore-Punkt VOR dem Schreiben
+    # Name→ID der vorhandenen Tags (fuer Kind→Eltern-Verknuepfung); waechst mit neu Angelegten.
+    tagid = {row["name"].strip().lower(): row["id"]
+             for row in snap.get("tags", [])
+             if isinstance(row, dict) and row.get("name") and row.get("id") is not None}
+    created, errors = [], []
+    for _label, key, _ep in _APPLY_CATS:  # Reihenfolge wichtig: Eltern-Tags vor Kindern
+        for e in _gc_apply_entries(gc, key):
+            if (key + "|" + e["name"]) not in selected:
+                continue
+            payload = dict(e["payload"])
+            if key == "tags" and e["parent_name"]:
+                pid = tagid.get(e["parent_name"].strip().lower())
+                if not pid:
+                    errors.append("%s: Eltern-Tag „%s“ fehlt — bitte zuerst anhaken/anlegen"
+                                  % (e["name"], e["parent_name"]))
+                    continue
+                payload["parent"] = pid
+            ok, oid, err = _api_create(url, token, e["endpoint"], payload)
+            if ok:
+                created.append({"endpoint": e["endpoint"], "id": oid, "name": e["name"]})
+                if key == "tags" and oid is not None:
+                    tagid[e["name"].strip().lower()] = oid
+            else:
+                errors.append("%s: %s" % (e["name"], err))
+    _save_undo(aid, created)
+    _log_activity("apply", "Anwenden auf %s: %d angelegt%s"
+                  % (act.get("name"), len(created),
+                     (", %d Fehler" % len(errors)) if errors else ""))
+    return render_template("anwenden_done.html", created=created, errors=errors, active=act)
+
+
+@app.route("/anwenden/undo", methods=["POST"])
+def anwenden_undo():
+    profs = load_profiles()
+    aid = _active_id()
+    act = profs.get(aid, {})
+    url = act.get("paperless_url")
+    token = _dec(act.get("paperless_token"))
+    undo = _load_undo(aid)
+    removed = 0
+    for it in reversed(undo):  # Kinder vor Eltern loeschen
+        if it.get("id") and _api_delete(url, token, it.get("endpoint"), it["id"]):
+            removed += 1
+    _save_undo(aid, [])
+    _log_activity("undo", "Rückgängig auf %s: %d Einträge entfernt" % (act.get("name"), removed))
+    return redirect(url_for("protokoll"))
 
 
 @app.route("/profiles", methods=["POST"])

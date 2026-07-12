@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Angewendet — Paperless Generator Portal{% endblock %}
+{% block content %}
+{% include "_subnav.html" %}
+<div style="width:100%;max-width:520px">
+  <div class="card">
+    <h1>Angewendet</h1>
+    <div class="msg ok">✓ {{ created|length }} Eintrag/Einträge in {{ active.name }} angelegt.</div>
+    {% if errors %}<div class="msg err">✗ {{ errors|length }} Fehler:<br>{% for e in errors %}{{ e }}<br>{% endfor %}</div>{% endif %}
+    {% if created %}
+    <p class="hint">Angelegt: {% for c in created %}{{ c.name }}{% if not loop.last %}, {% endif %}{% endfor %}</p>
+    <form method="post" action="{{ url_for('anwenden_undo') }}"
+          onsubmit="return confirm('Die eben angelegten Einträge wieder entfernen?');">
+      <button type="submit" style="background:var(--bg3);border:1px solid var(--border)">↩ Rückgängig machen</button>
+    </form>
+    {% endif %}
+    <p class="hint" style="margin-top:12px"><a class="link" href="{{ url_for('anwenden') }}">← Weitere anwenden</a> · <a class="link" href="{{ url_for('protokoll') }}">Protokoll ansehen</a></p>
+  </div>
+</div>
+{% endblock %}

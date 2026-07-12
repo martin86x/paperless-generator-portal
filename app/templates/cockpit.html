@@ -15,6 +15,7 @@
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
       <a class="link" href="{{ url_for('index') }}" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px">▶ Generator öffnen</a>
+      {% if active.has_config and not active.readonly %}<a class="link" href="{{ url_for('anwenden') }}" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px">✓ Konfiguration anwenden</a>{% endif %}
       {% if active.url %}<a class="link" href="{{ active.url }}" target="_blank" rel="noopener" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px">↗ Paperless öffnen</a>{% endif %}
       <a class="link" href="{{ url_for('profiles_export') }}" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px">⬇ Profile sichern</a>
     </div>

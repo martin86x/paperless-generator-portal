@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Anwenden — Paperless Generator Portal{% endblock %}
+{% block content %}
+{% include "_subnav.html" %}
+<div style="width:100%;max-width:520px">
+  <div class="card">
+    <h1>Konfiguration anwenden</h1>
+    <p class="sub">Fehlende Einträge aus der gespeicherten Profil-Konfiguration in <strong>{{ active.name }}</strong> anlegen. <strong>Nur Angehaktes</strong> wird geschrieben — Dokumente werden nie verändert.</p>
+    {% if err %}<div class="msg err">✗ {{ err }}</div>{% endif %}
+
+    {% if blocked %}
+      <div class="msg err">{{ blocked }}</div>
+    {% elif not groups %}
+      <div class="msg ok">✓ Alles aktuell — keine fehlenden Einträge.</div>
+    {% else %}
+      {% if productive %}<div class="msg err">⚠ PRODUKTIVSYSTEM — Änderungen wirken sofort auf das Live-System.</div>{% endif %}
+      <p class="hint">Vor dem Schreiben wird automatisch ein Instanz-Snapshot als Restore-Punkt gesichert. Danach ist „rückgängig" möglich.</p>
+      <form method="post" action="{{ url_for('anwenden_post') }}"
+            onsubmit="return confirm('Ausgewählte Einträge jetzt in {{ active.name }} anlegen?');">
+        {% for g in groups %}
+        <h2>{{ g.label }} ({{ g.entries|length }})</h2>
+        {% for name in g.entries %}
+        <label style="display:flex;align-items:center;gap:8px;font-size:13.5px;margin:5px 0;color:var(--text)">
+          <input type="checkbox" name="item" value="{{ g.key }}|{{ name }}" style="width:auto"> {{ name }}
+        </label>
+        {% endfor %}
+        {% endfor %}
+        <hr class="divider">
+        <label for="password">Passwort bestätigen (Sicherheitsabfrage)</label>
+        <input type="password" id="password" name="password" required autocomplete="off">
+        <button type="submit">Ausgewählte anwenden</button>
+      </form>
+    {% endif %}
+
+    {% if undo_available %}
+    <hr class="divider">
+    <form method="post" action="{{ url_for('anwenden_undo') }}"
+          onsubmit="return confirm('Die zuletzt angelegten Einträge wieder entfernen?');">
+      <button type="submit" style="background:var(--bg3);border:1px solid var(--border)">↩ Letzte Anwendung rückgängig machen</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
