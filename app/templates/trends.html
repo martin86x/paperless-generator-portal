@@ -1,0 +1,46 @@
+{% extends layout %}
+{% block title %}Trends — Paperless Generator Portal{% endblock %}
+{% block content %}
+{% if not embed %}{% include "_subnav.html" %}{% endif %}
+<div style="width:100%;max-width:560px">
+  <div class="card">
+    <h1 style="margin:0;font-size:18px">Trends</h1>
+    <p class="sub" style="margin:8px 0 0">Kennzahlen über Zeit. Erfassung läuft automatisch mit dem Wächter (max. ~1×/Stunde) — oder manuell hier.</p>
+    {% if msg %}<div class="msg ok">{{ msg }}</div>{% endif %}
+    {% if err %}<div class="msg err">{{ err }}</div>{% endif %}
+    <form method="post" action="{{ url_for('trends') }}" style="margin-top:10px">
+      <button type="submit" style="width:auto;padding:8px 14px;font-size:13px;background:var(--bg3);border:1px solid var(--border)">Jetzt erfassen</button>
+    </form>
+  </div>
+
+  {% for c in cards %}
+  <div class="card" style="margin-top:14px">
+    <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px">
+      <h2 style="margin:0;font-size:15px;color:var(--text)">{{ c.name }}{% if c.active %} <span style="font-size:11px;color:var(--ok)">aktiv</span>{% endif %}</h2>
+      <span style="font-size:11.5px;color:var(--text-dim)">{{ c.count }} Messpunkt(e){% if c.since %} · seit {{ c.since }}{% endif %}</span>
+    </div>
+
+    {% if c.svg %}
+      <div style="margin-top:12px">{{ c.svg|safe }}</div>
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-dim);margin-top:2px">
+        <span>Dokumente gesamt</span>
+        {% if c.delta is not none %}<span style="color:{{ 'var(--ok)' if c.delta >= 0 else 'var(--err)' }}">{{ '+' if c.delta >= 0 else '' }}{{ c.delta }} im Zeitraum</span>{% endif %}
+      </div>
+    {% else %}
+      <p class="hint" style="margin-top:10px">Noch zu wenig Daten für eine Kurve — mindestens 2 Messpunkte nötig. „Jetzt erfassen" anklicken oder den Wächter laufen lassen.</p>
+    {% endif %}
+
+    {% if c.cur %}
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;text-align:center;margin-top:12px">
+      {% set tiles = [('Gesamt', c.cur.total, 'var(--text)'), ('Posteingang', c.cur.inbox, '#f59e0b'), ('ohne Typ', c.cur.no_type, 'var(--err)'), ('ohne Korresp.', c.cur.no_corr, 'var(--err)')] %}
+      {% for label, val, col in tiles %}
+      <div style="background:var(--bg3);border-radius:8px;padding:8px 4px"><div style="font-size:18px;font-weight:600;color:{{ col }}">{{ '—' if val is none else val }}</div><div style="font-size:10.5px;color:var(--text-dim)">{{ label }}</div></div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  {% else %}
+  <div class="card" style="margin-top:14px"><p class="hint" style="margin:0">Noch keine Kennzahlen erfasst. Sobald der Wächter läuft (oder „Jetzt erfassen"), erscheinen hier Kurven pro Instanz.</p></div>
+  {% endfor %}
+</div>
+{% endblock %}

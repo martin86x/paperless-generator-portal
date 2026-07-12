@@ -1,7 +1,7 @@
-{% extends "base.html" %}
+{% extends layout %}
 {% block title %}Einstellungen — Paperless Generator Portal{% endblock %}
 {% block content %}
-{% include "_subnav.html" %}
+{% if not embed %}{% include "_subnav.html" %}{% endif %}
 <div class="card">
   <h1>Konto &amp; Passwort</h1>
   <p class="sub">Zugang zum Portal verwalten.</p>

@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Verwaltung — Paperless Generator Portal{% endblock %}
+{% block content %}
+<div style="width:100%;max-width:560px">
+  <!-- Reiter -->
+  <div id="vtabs" style="display:flex;gap:4px;flex-wrap:wrap;font-size:13px;margin-bottom:14px">
+    {% for t in tabs %}
+    <button type="button" class="vtab" data-tab="{{ t.id }}"
+            style="padding:6px 12px;border-radius:8px;cursor:pointer;background:transparent;color:var(--text-dim);border:0.5px solid transparent;width:auto;margin:0;font-weight:400">{{ t.label }}</button>
+    {% endfor %}
+  </div>
+  <!-- Panels -->
+  {% for t in tabs %}
+  <div class="vpanel" id="vpanel-{{ t.id }}" data-tab="{{ t.id }}" data-src="{{ t.src }}" style="display:none">
+    <div class="vloading" style="color:var(--text-dim);font-size:13px;padding:20px 4px">Lädt …</div>
+  </div>
+  {% endfor %}
+</div>
+<script>
+(function(){
+  var active = {{ active|tojson }};
+  var tabs = document.querySelectorAll('.vtab');
+
+  function runScripts(container){
+    container.querySelectorAll('script').forEach(function(old){
+      var s = document.createElement('script');
+      if(old.src){ s.src = old.src; } else { s.textContent = old.textContent; }
+      old.parentNode.replaceChild(s, old);
+    });
+  }
+  function load(panel){
+    var src = panel.getAttribute('data-src');
+    fetch(src, {credentials:'same-origin'})
+      .then(function(r){ if(r.status===401){ location.href='/login'; return null; } return r.text(); })
+      .then(function(html){
+        if(html===null) return;
+        panel.innerHTML = html;
+        runScripts(panel);
+        panel.setAttribute('data-loaded','1');
+      })
+      .catch(function(){ panel.innerHTML = '<div class="msg err">Abschnitt konnte nicht geladen werden.</div>'; });
+  }
+  function show(id, push){
+    tabs.forEach(function(b){
+      var on = b.getAttribute('data-tab')===id;
+      b.style.background = on ? 'var(--bg3)' : 'transparent';
+      b.style.color = on ? 'var(--text)' : 'var(--text-dim)';
+      b.style.borderColor = on ? 'var(--border)' : 'transparent';
+      b.style.fontWeight = on ? '600' : '400';
+    });
+    document.querySelectorAll('.vpanel').forEach(function(p){
+      var on = p.getAttribute('data-tab')===id;
+      p.style.display = on ? '' : 'none';
+      if(on && !p.getAttribute('data-loaded')) load(p);
+    });
+    if(push){ try{ history.replaceState(null,'','?tab='+id); }catch(e){} }
+  }
+  tabs.forEach(function(b){
+    b.addEventListener('click', function(){ show(b.getAttribute('data-tab'), true); });
+  });
+  show(active, false);
+})();
+</script>
+{% endblock %}

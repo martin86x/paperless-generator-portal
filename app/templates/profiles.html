@@ -1,7 +1,7 @@
-{% extends "base.html" %}
+{% extends layout %}
 {% block title %}Profile — Paperless Generator Portal{% endblock %}
 {% block content %}
-{% include "_subnav.html" %}
+{% if not embed %}{% include "_subnav.html" %}{% endif %}
 <div style="width:100%;max-width:480px">
   <div class="card">
     <h1>Instanz-Profile</h1>

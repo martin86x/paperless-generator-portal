@@ -41,6 +41,8 @@ ACTIVITY_PATH = os.path.join(CONFIG_DIR, "activity.log")
 UNDO_DIR = os.path.join(CONFIG_DIR, "undo")
 SNAP_DIR = os.path.join(CONFIG_DIR, "instance-snapshots")
 WATCHER_LOCK_PATH = os.path.join(CONFIG_DIR, "watcher.lock")
+METRICS_DIR = os.path.join(CONFIG_DIR, "history-metrics")
+METRICS_MAX = 2000  # gekappte Historie je Profil (JSONL-Zeilen)
 SITE_DIR = os.environ.get("SITE_DIR", os.path.join(os.path.dirname(__file__), "site"))
 
 DEFAULT_ADMIN_USER = "admin"
@@ -408,6 +410,13 @@ def _inject_active_profile():
         return {"active_prof": None}
 
 
+@app.context_processor
+def _inject_layout():
+    """`?embed=1` -> Seite ohne Kopf/Subnav rendern (Fragment fuer die Verwaltungs-Shell)."""
+    embed = bool(request.args.get("embed"))
+    return {"embed": embed, "layout": "_embed.html" if embed else "base.html"}
+
+
 @app.before_request
 def require_login():
     if request.endpoint in PUBLIC_ENDPOINTS:
@@ -595,28 +604,27 @@ def wizard():
 @app.route("/settings", methods=["GET", "POST"])
 def settings():
     cfg = load_config()
-    msg = err = None
     if request.method == "POST":
         # Nur noch Passwort — Paperless-Verbindungen laufen ueber Profile (/profiles).
+        def _back(**kw):
+            return redirect(url_for("verwaltung", tab="konto", **kw))
         new = request.form.get("new", "")
+        cur = request.form.get("current", "")
+        rep = request.form.get("repeat", "")
         if not new:
-            err = "Bitte ein neues Passwort eingeben."
-        else:
-            cur = request.form.get("current", "")
-            rep = request.form.get("repeat", "")
-            if not check_password_hash(cfg["admin_pw_hash"], cur):
-                err = "Aktuelles Passwort ist falsch."
-            elif len(new) < 4:
-                err = "Neues Passwort muss mindestens 4 Zeichen haben."
-            elif new != rep:
-                err = "Die neuen Passwörter stimmen nicht überein."
-            else:
-                cfg["admin_pw_hash"] = generate_password_hash(new)
-                cfg["is_default_pw"] = False
-                save_config(cfg)
-                msg = "Passwort geändert."
+            return _back(err="Bitte ein neues Passwort eingeben.")
+        if not check_password_hash(cfg["admin_pw_hash"], cur):
+            return _back(err="Aktuelles Passwort ist falsch.")
+        if len(new) < 4:
+            return _back(err="Neues Passwort muss mindestens 4 Zeichen haben.")
+        if new != rep:
+            return _back(err="Die neuen Passwörter stimmen nicht überein.")
+        cfg["admin_pw_hash"] = generate_password_hash(new)
+        cfg["is_default_pw"] = False
+        save_config(cfg)
+        return _back(msg="Passwort geändert.")
     return render_template("settings.html", is_default_pw=cfg.get("is_default_pw", False),
-                           msg=msg, err=err)
+                           msg=request.args.get("msg"), err=request.args.get("err"))
 
 
 @app.route("/")
@@ -671,8 +679,8 @@ def update_page():
         cfg["lxc_id"] = lxc if lxc.isdigit() else ""   # nur eine Ziffern-CTID zulassen
         save_config(cfg)
         if lxc and not lxc.isdigit():
-            return redirect(url_for("update_page", err="Container-ID muss eine Zahl sein (z. B. 230)."))
-        return redirect(url_for("update_page", msg="Container-ID gespeichert." if lxc else "Container-ID entfernt."))
+            return redirect(url_for("verwaltung", tab="version", err="Container-ID muss eine Zahl sein (z. B. 230)."))
+        return redirect(url_for("verwaltung", tab="version", msg="Container-ID gespeichert." if lxc else "Container-ID entfernt."))
 
     lxc_id = str(cfg.get("lxc_id") or "").strip()
     latest = None
@@ -722,9 +730,42 @@ def _fmt_size(n):
     return "%.1f TB" % n
 
 
+# Reiter der Verwaltungs-Shell: (id, Label, Endpunkt des Fragments). Reihenfolge = Anzeige.
+_VERW_TABS = [
+    ("overview", "Überblick", "verwaltung_overview"),
+    ("profiles", "Profile", "profiles"),
+    ("kennzahlen", "Kennzahlen", "dashboard"),
+    ("trends", "Trends", "trends"),
+    ("waechter", "Wächter", "waechter"),
+    ("benachrichtigungen", "Benachrichtigungen", "notifications"),
+    ("konto", "Konto", "settings"),
+    ("version", "Version", "update_page"),
+    ("protokoll", "Protokoll", "protokoll"),
+]
+
+
 @app.route("/verwaltung")
 def verwaltung():
-    """Cockpit-Startseite: Status des aktiven Profils, Kennzahlen, Profilliste, Portal-Selbststatus."""
+    """Verwaltungs-Shell: EINE Seite mit In-Page-Reitern. Jeder Reiter laedt sein Fragment
+    lazy per fetch(<route>?embed=1). Live-Daten also erst beim Oeffnen des Reiters."""
+    active = request.args.get("tab", "overview")
+    if active not in {t[0] for t in _VERW_TABS}:
+        active = "overview"
+    msg, err = request.args.get("msg"), request.args.get("err")
+    tabs = []
+    for tid, label, ep in _VERW_TABS:
+        args = {"embed": 1}
+        if tid == active and msg:
+            args["msg"] = msg
+        if tid == active and err:
+            args["err"] = err
+        tabs.append({"id": tid, "label": label, "src": url_for(ep, **args)})
+    return render_template("verwaltung_shell.html", tabs=tabs, active=active)
+
+
+@app.route("/verwaltung/overview")
+def verwaltung_overview():
+    """Cockpit-Inhalt (Fragment): Status des aktiven Profils, Kennzahlen, Profilliste, Selbststatus."""
     profs = load_profiles()
     aid = _active_id()
     act = profs.get(aid, {})
@@ -958,7 +999,7 @@ def notifications():
     profs = load_profiles()
     aid = _active_id()
     if not aid or aid not in profs:
-        return redirect(url_for("profiles", err="Kein aktives Profil."))
+        return redirect(url_for("verwaltung", tab="profiles", err="Kein aktives Profil."))
     prof = profs[aid]
 
     if request.method == "POST":
@@ -999,14 +1040,14 @@ def notifications():
                     % (prof.get("name") or "?"))
             _prio, res = _dispatch_notification(profs[aid], "update", title, body, only=channel)
             if not res:
-                return redirect(url_for("notifications", err="Kanal ist nicht aktiviert."))
+                return redirect(url_for("verwaltung", tab="benachrichtigungen", err="Kanal ist nicht aktiviert."))
             name, ok, detail = res[0]
             _log_activity("notify", "Test %s (%s): %s" % (name, prof.get("name"),
                                                           "ok" if ok else detail))
             if ok:
-                return redirect(url_for("notifications", msg="%s: Testnachricht gesendet." % name))
-            return redirect(url_for("notifications", err="%s fehlgeschlagen: %s" % (name, detail)))
-        return redirect(url_for("notifications", msg="Benachrichtigungen gespeichert."))
+                return redirect(url_for("verwaltung", tab="benachrichtigungen", msg="%s: Testnachricht gesendet." % name))
+            return redirect(url_for("verwaltung", tab="benachrichtigungen", err="%s fehlgeschlagen: %s" % (name, detail)))
+        return redirect(url_for("verwaltung", tab="benachrichtigungen", msg="Benachrichtigungen gespeichert."))
 
     view = _notif_of(prof)
     return render_template(
@@ -1048,6 +1089,7 @@ _watcher_state = {
     "results": {},       # pid -> {name, ts, checks:[{event,label,status,detail}]}
     "alerts_active": set(),   # {(pid, event)} — aktuell gemeldete Auffaelligkeiten
     "last_error": None,
+    "last_metrics": None,  # Unix-ts der letzten Kennzahl-Erfassung (Trends, gedrosselt)
 }
 _watcher_started = False
 _watcher_lock_fh = None
@@ -1197,6 +1239,65 @@ def _maybe_alert(prof, pid, c):
         _log_activity("watcher", "Entwarnung %s/%s" % (prof.get("name") or pid, c["event"]))
 
 
+def _metrics_path(pid):
+    return os.path.join(METRICS_DIR, pid + ".jsonl")
+
+
+def _record_metrics(force=False):
+    """Kennzahlen je Profil als JSONL-Zeile mitschreiben (Trends). Read-only; gedrosselt
+    auf ~1x/Stunde, damit haeufige Waechter-Zyklen nicht dauernd Zaehler abfragen."""
+    now = time.time()
+    if not force and _watcher_state.get("last_metrics") and now - _watcher_state["last_metrics"] < 3300:
+        return
+    _watcher_state["last_metrics"] = now
+    try:
+        profs = load_profiles()
+    except (OSError, ValueError):
+        return
+    os.makedirs(METRICS_DIR, exist_ok=True)
+    for pid, p in profs.items():
+        url = p.get("paperless_url")
+        if not url:
+            continue
+        token = _dec(p.get("paperless_token"))
+        total = _api_count(url, token, "documents/?page_size=1")
+        if total is None:
+            continue  # nicht erreichbar -> keine Luecke mit Nullwerten erzeugen
+        row = {
+            "ts": int(now),
+            "total": total,
+            "inbox": _api_count(url, token, "documents/?is_in_inbox=true&page_size=1"),
+            "no_type": _api_count(url, token, "documents/?document_type__isnull=true&page_size=1"),
+            "no_corr": _api_count(url, token, "documents/?correspondent__isnull=true&page_size=1"),
+        }
+        path = _metrics_path(pid)
+        try:
+            with open(path, "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(row) + "\n")
+            # Datei gedeckelt halten (letzte METRICS_MAX Zeilen)
+            with open(path, encoding="utf-8") as fh:
+                lines = fh.readlines()
+            if len(lines) > METRICS_MAX:
+                with open(path, "w", encoding="utf-8") as fh:
+                    fh.writelines(lines[-METRICS_MAX:])
+        except OSError:
+            pass
+
+
+def _read_metrics(pid, limit=500):
+    rows = []
+    try:
+        with open(_metrics_path(pid), encoding="utf-8") as fh:
+            for ln in fh.readlines()[-limit:]:
+                try:
+                    rows.append(json.loads(ln))
+                except ValueError:
+                    pass
+    except FileNotFoundError:
+        pass
+    return rows
+
+
 def _run_watch_cycle(wc, dispatch=True):
     """Ein Prueflauf ueber alle Profile mit URL. STRIKT read-only. Rueckgabe: results-Dict."""
     results = {}
@@ -1224,6 +1325,7 @@ def _run_watch_cycle(wc, dispatch=True):
                 _maybe_alert(p, pid, c)
     _watcher_state["results"] = results
     _watcher_state["last_run"] = time.time()
+    _record_metrics()  # Trends miterfassen (gedrosselt)
     return results
 
 
@@ -1321,8 +1423,8 @@ def waechter():
         if action == "run_now":
             _run_watch_cycle(_watcher_cfg(), dispatch=True)
             _log_activity("watcher", "Manueller Prüflauf")
-            return redirect(url_for("waechter", msg="Prüflauf ausgeführt — Ergebnis unten."))
-        return redirect(url_for("waechter", msg="Wächter-Einstellungen gespeichert."))
+            return redirect(url_for("verwaltung", tab="waechter", msg="Prüflauf ausgeführt — Ergebnis unten."))
+        return redirect(url_for("verwaltung", tab="waechter", msg="Wächter-Einstellungen gespeichert."))
 
     wc = _watcher_cfg()
     results = []
@@ -1341,6 +1443,56 @@ def waechter():
     return render_template(
         "waechter.html", w=wc, events=_NOTIFY_EVENTS, results=results, status=status,
         msg=request.args.get("msg"), err=request.args.get("err"))
+
+
+def _line_svg(values, color="#3b82f6", w=440, h=110, pad=16):
+    """Kompaktes Inline-SVG-Liniendiagramm aus einer Zahlenreihe (kein externes JS/CDN)."""
+    vals = [v for v in values if v is not None]
+    if len(vals) < 2:
+        return None
+    lo, hi = min(vals), max(vals)
+    rng = (hi - lo) or 1
+    step = (w - 2 * pad) / (len(vals) - 1)
+    pts = []
+    for i, v in enumerate(vals):
+        x = pad + i * step
+        y = h - pad - (v - lo) / rng * (h - 2 * pad)
+        pts.append("%.1f,%.1f" % (x, y))
+    last = pts[-1].split(",")
+    return (
+        '<svg viewBox="0 0 %d %d" style="width:100%%;height:auto;display:block" '
+        'xmlns="http://www.w3.org/2000/svg">' % (w, h)
+        + '<polyline fill="none" stroke="%s" stroke-width="2" stroke-linejoin="round" '
+          'stroke-linecap="round" points="%s"/>' % (color, " ".join(pts))
+        + '<circle cx="%s" cy="%s" r="3" fill="%s"/></svg>' % (last[0], last[1], color)
+    )
+
+
+@app.route("/verwaltung/trends", methods=["GET", "POST"])
+def trends():
+    if request.method == "POST":
+        _record_metrics(force=True)
+        _log_activity("trends", "Kennzahlen manuell erfasst")
+        return redirect(url_for("verwaltung", tab="trends", msg="Kennzahlen erfasst."))
+    profs = load_profiles()
+    aid = _active_id()
+    cards = []
+    for pid, p in profs.items():
+        rows = _read_metrics(pid, limit=500)
+        if not rows and not p.get("paperless_url"):
+            continue
+        totals = [r.get("total") for r in rows]
+        delta = None
+        if len(rows) >= 2 and rows[0].get("total") is not None and rows[-1].get("total") is not None:
+            delta = rows[-1]["total"] - rows[0]["total"]
+        cards.append({
+            "name": p.get("name") or pid, "active": pid == aid, "count": len(rows),
+            "svg": _line_svg(totals), "cur": rows[-1] if rows else None,
+            "since": _fmt_rel_ts(rows[0]["ts"]) if rows else None, "delta": delta,
+        })
+    cards.sort(key=lambda c: c["name"].lower())
+    return render_template("trends.html", cards=cards,
+                           msg=request.args.get("msg"), err=request.args.get("err"))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1606,14 +1758,14 @@ def profiles_create():
     save_profiles(profs)
     set_active_profile(pid)
     _log_activity("profile", "Profil angelegt: %s" % name)
-    return redirect(url_for("profiles", msg="Profil angelegt und aktiviert."))
+    return redirect(url_for("verwaltung", tab="profiles", msg="Profil angelegt und aktiviert."))
 
 
 @app.route("/profiles/<pid>/activate", methods=["POST"])
 def profiles_activate(pid):
     if set_active_profile(pid):
         return redirect(url_for("index"))
-    return redirect(url_for("profiles", err="Profil nicht gefunden."))
+    return redirect(url_for("verwaltung", tab="profiles", err="Profil nicht gefunden."))
 
 
 @app.route("/profiles/<pid>/rename", methods=["POST"])
@@ -1624,21 +1776,21 @@ def profiles_rename(pid):
         if new:
             profs[pid]["name"] = new
             save_profiles(profs)
-    return redirect(url_for("profiles"))
+    return redirect(url_for("verwaltung", tab="profiles"))
 
 
 @app.route("/profiles/<pid>/delete", methods=["POST"])
 def profiles_delete(pid):
     profs = load_profiles()
     if pid not in profs:
-        return redirect(url_for("profiles", err="Profil nicht gefunden."))
+        return redirect(url_for("verwaltung", tab="profiles", err="Profil nicht gefunden."))
     if len(profs) <= 1:
-        return redirect(url_for("profiles", err="Das letzte Profil kann nicht gelöscht werden."))
+        return redirect(url_for("verwaltung", tab="profiles", err="Das letzte Profil kann nicht gelöscht werden."))
     del profs[pid]
     save_profiles(profs)
     if _active_id() not in profs:            # war es aktiv -> auf ein anderes umschalten
         set_active_profile(next(iter(profs)))
-    return redirect(url_for("profiles", msg="Profil gelöscht."))
+    return redirect(url_for("verwaltung", tab="profiles", msg="Profil gelöscht."))
 
 
 @app.route("/profiles/export")
@@ -1668,55 +1820,55 @@ def profiles_import():
     """Profile aus hochgeladener JSON wiederherstellen (ersetzt alle; vorige werden gesichert)."""
     f = request.files.get("file")
     if not f:
-        return redirect(url_for("profiles", err="Keine Datei ausgewählt."))
+        return redirect(url_for("verwaltung", tab="profiles", err="Keine Datei ausgewählt."))
     try:
         data = json.load(f.stream)
     except ValueError:
-        return redirect(url_for("profiles", err="Ungültige JSON-Datei."))
+        return redirect(url_for("verwaltung", tab="profiles", err="Ungültige JSON-Datei."))
     if not isinstance(data, dict) or not data or \
             any(not isinstance(v, dict) or "name" not in v for v in data.values()):
-        return redirect(url_for("profiles", err="Datei enthält keine gültigen Profile."))
+        return redirect(url_for("verwaltung", tab="profiles", err="Datei enthält keine gültigen Profile."))
     save_profiles(data)  # sichert die vorige Version automatisch (rotierendes Backup)
     if _active_id() not in data:
         set_active_profile(next(iter(data)))
-    return redirect(url_for("profiles", msg="Profile importiert (vorheriger Stand gesichert)."))
+    return redirect(url_for("verwaltung", tab="profiles", msg="Profile importiert (vorheriger Stand gesichert)."))
 
 
 @app.route("/profiles/<pid>/history/<ts>/restore", methods=["POST"])
 def profiles_history_restore(pid, ts):
     profs = load_profiles()
     if pid not in profs:
-        return redirect(url_for("profiles", err="Profil nicht gefunden."))
+        return redirect(url_for("verwaltung", tab="profiles", err="Profil nicht gefunden."))
     path = os.path.join(_history_dir(pid), ts + ".json")
     if not os.path.exists(path):
-        return redirect(url_for("profiles", err="Snapshot nicht gefunden."))
+        return redirect(url_for("verwaltung", tab="profiles", err="Snapshot nicht gefunden."))
     with open(path, encoding="utf-8") as fh:
         cfg = json.load(fh)
     _snapshot_history(pid, profs[pid].get("generator_config"))  # aktuellen Stand sichern
     profs[pid]["generator_config"] = cfg
     save_profiles(profs)
-    return redirect(url_for("profiles", msg="Snapshot vom %s wiederhergestellt." % _fmt_ts(ts)))
+    return redirect(url_for("verwaltung", tab="profiles", msg="Snapshot vom %s wiederhergestellt." % _fmt_ts(ts)))
 
 
 @app.route("/profiles/<pid>/flags", methods=["POST"])
 def profiles_flags(pid):
     profs = load_profiles()
     if pid not in profs:
-        return redirect(url_for("profiles", err="Profil nicht gefunden."))
+        return redirect(url_for("verwaltung", tab="profiles", err="Profil nicht gefunden."))
     profs[pid]["productive"] = bool(request.form.get("productive"))
     profs[pid]["readonly"] = bool(request.form.get("readonly"))
     profs[pid]["color"] = request.form.get("color", "").strip()[:16]
     save_profiles(profs)
     _log_activity("profile", "Flags geaendert (%s): produktiv=%s, readonly=%s"
                   % (profs[pid].get("name"), profs[pid]["productive"], profs[pid]["readonly"]))
-    return redirect(url_for("profiles", msg="Profil-Einstellungen gespeichert."))
+    return redirect(url_for("verwaltung", tab="profiles", msg="Profil-Einstellungen gespeichert."))
 
 
 @app.route("/profiles/<pid>/connection", methods=["POST"])
 def profiles_connection(pid):
     profs = load_profiles()
     if pid not in profs:
-        return redirect(url_for("profiles", err="Profil nicht gefunden."))
+        return redirect(url_for("verwaltung", tab="profiles", err="Profil nicht gefunden."))
     url = request.form.get("paperless_url", "").strip().rstrip("/")
     tok = request.form.get("paperless_token", "").strip()
     if url:
@@ -1725,7 +1877,7 @@ def profiles_connection(pid):
         profs[pid]["paperless_token"] = tok
     save_profiles(profs)
     _log_activity("connection", "Verbindung geaendert: %s" % (profs[pid].get("name") or pid))
-    return redirect(url_for("profiles", msg="Verbindung gespeichert."))
+    return redirect(url_for("verwaltung", tab="profiles", msg="Verbindung gespeichert."))
 
 
 # ─── Generator-Config des aktiven Profils laden/speichern (vom injizierten JS genutzt) ──
