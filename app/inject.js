@@ -73,6 +73,13 @@
       .catch(function () { location.href = '/'; });
   }
 
+  function syncHeadPadding() {
+    // Reserviert oben Platz in Hoehe der fixierten Leiste (inkl. evtl. Produktiv-Banner),
+    // damit nichts darunter verschwindet. Bei Umbruch/Resize neu berechnen.
+    var head = document.getElementById('plx-portal-head');
+    if (head) document.body.style.paddingTop = head.offsetHeight + 'px';
+  }
+
   function showProductiveBanner(name, color, readonly) {
     var head = document.getElementById('plx-portal-head');
     if (!head) return; // Kopf wird von buildNav() erzeugt; Banner lebt darin
@@ -80,9 +87,11 @@
     if (!b) { b = document.createElement('div'); b.id = 'plx-prod-banner'; head.insertBefore(b, head.firstChild); }
     b.style.cssText = 'background:' + (color || '#b91c1c') + ';color:#fff;text-align:center;padding:6px 12px;font-size:13px;font-weight:600;letter-spacing:.3px;font-family:system-ui,sans-serif;';
     b.textContent = '⚠ PRODUKTIV: ' + (name || '') + ' — Änderungen wirken auf das Live-System' + (readonly ? ' · nur lesen' : '');
+    syncHeadPadding();
   }
   function removeProductiveBanner() {
     var b = document.getElementById('plx-prod-banner'); if (b) b.remove();
+    syncHeadPadding();
   }
 
   function loadProfilesIntoDropdown() {
@@ -110,7 +119,9 @@
     // statt ihn zu ueberdecken. Produktiv-Banner (falls) lebt oben im selben Kopf.
     var head = document.createElement('div');
     head.id = 'plx-portal-head';
-    head.style.cssText = 'position:sticky;top:0;z-index:2147483647;width:100%;font-family:system-ui,sans-serif';
+    // Fest ganz oben angepinnt (fixed). Body bekommt unten passenden Abstand (syncHeadPadding),
+    // damit der Generator-Inhalt nicht unter der Leiste verschwindet.
+    head.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:2147483647;width:100%;font-family:system-ui,sans-serif';
 
     var n = document.createElement('div');
     n.id = 'plx-portal-nav';
@@ -147,6 +158,7 @@
 
     head.appendChild(n);
     document.body.insertBefore(head, document.body.firstChild);
+    syncHeadPadding();
   }
 
   function tameSection01() {
@@ -177,9 +189,20 @@
     sc.querySelectorAll('[onchange*="loadConnectionPreset"], [onclick*="saveConnectionPreset"]').forEach(function (el) {
       var w = el.closest('label') || el; if (w && w.style) w.style.display = 'none';
     });
+    // Token-.env-Hinweis: innersten Div mit dem Text treffen (nicht die Eltern-Container)
     Array.prototype.forEach.call(sc.querySelectorAll('div'), function (d) {
-      if (d.children.length <= 1 && d.textContent.indexOf('Token-Feld leer lassen') >= 0) d.style.display = 'none';
+      if (d.textContent.indexOf('Token-Feld leer lassen') >= 0 && !d.querySelector('div')) d.style.display = 'none';
     });
+    // „Verbindung testen": im Portal-Modus testet der Generator die PORTAL-Origin (Proxy),
+    // nicht die echte Instanz -> „verbunden mit sich selbst" ist verwirrend. Der echte
+    // Instanz-Status steht in Profile/Dashboard. Also den Test-Teil ausblenden.
+    var ctr = document.getElementById('conn-test-result');
+    if (ctr) {
+      ctr.style.display = 'none';
+      var lbl = ctr.previousElementSibling; if (lbl) lbl.style.display = 'none'; // „🔌 Verbindung testen"-Label
+    }
+    var bct = document.getElementById('btn-conn-test');
+    if (bct) { var row = bct.closest('div'); if (row) row.style.display = 'none'; }
 
     // Benachrichtigungs-E-Mail als Pflichtfeld (fuer die Frist-Workflows)
     var em = document.getElementById('inp-notify-email');
@@ -210,7 +233,9 @@
     try {
       if (typeof _parseUrlToFields === 'function') _parseUrlToFields(o);
       var t = document.getElementById('inp-token'); if (t) t.value = '';
-      if (typeof testConnection === 'function') testConnection();
+      // KEIN testConnection() im Portal-Modus: es würde die Portal-Origin (Proxy) testen und
+      // „✓ Verbindung OK – <portal>" zeigen (verbunden mit sich selbst). Der echte
+      // Instanz-Status steht in Profile/Dashboard.
     } catch (e) {}
   }
 
@@ -238,6 +263,8 @@
     try { buildNav(); } catch (e) {}
     loadProfilesIntoDropdown();
     try { tameSection01(); } catch (e) {}
+    window.addEventListener('resize', syncHeadPadding);
+    setTimeout(syncHeadPadding, 400); // nach Layout-Settle nochmal (Umbruch/Schriftmaße)
     // Nach dem generator-eigenen loadAutoSave (~900ms) die Profil-Config anwenden + same-origin erzwingen.
     setTimeout(loadActiveProfileConfig, 1200);
   });
