@@ -71,6 +71,11 @@
       {{ '✓' if p.conn_kind == 'ok' else '✗' }} {{ p.conn_text }}
     </div>
     <p class="hint">URL <code>{{ p.url or '—' }}</code> · Token {{ 'gesetzt' if p.has_token else 'nicht gesetzt' }} · Config {{ 'gespeichert' if p.has_config else 'leer (Defaults)' }}</p>
+    <p class="hint" style="margin-top:4px">
+      🔔 {% if p.notif %}{{ p.notif }}{% else %}<span style="color:var(--text-dim)">keine Benachrichtigung aktiv</span>{% endif %}
+      {% if p.active %}· <a class="link" href="{{ url_for('verwaltung', tab='benachrichtigungen') }}">bearbeiten</a>{% endif %}
+      &nbsp;·&nbsp; 🛡 {% if p.watch.enabled %}Wächter: {{ p.watch.checks.values()|select|list|length }} Check(s){% if p.watch.custom %} <span style="color:var(--accent2)">(eigene)</span>{% endif %}{% else %}<span style="color:var(--text-dim)">nicht überwacht</span>{% endif %}
+    </p>
 
     {% if not p.active %}
     <form method="post" action="{{ url_for('profiles_activate', pid=p.id) }}">
@@ -87,6 +92,9 @@
         <label>API-Token</label>
         <input type="password" name="paperless_token"
                placeholder="{% if p.has_token %}✓ gespeichert — leer lassen zum Behalten{% else %}Token eintragen{% endif %}">
+        <label>Erinnerungs-E-Mail (Frist-Workflows)</label>
+        <input type="email" name="notify_email" value="{{ p.notify_email }}" placeholder="deine@email.de">
+        <p class="hint">Für Fristen/Erinnerungen des Generators — ersetzt das Feld in Generator-Sektion 01.</p>
         <button type="submit">Verbindung speichern</button>
       </form>
 
@@ -111,6 +119,23 @@
       <form method="post" action="{{ url_for('profiles_delete', pid=p.id) }}" style="margin-top:10px"
             onsubmit="return confirm('Profil „{{ p.name }}“ wirklich löschen? Die gespeicherte Konfiguration geht verloren.');">
         <button type="submit" style="background:var(--err)">Profil löschen</button>
+      </form>
+    </details>
+
+    <details style="margin-top:8px">
+      <summary style="cursor:pointer;color:var(--text-dim);font-size:13px">Überwachung (Wächter){% if p.watch.custom %} · eigene{% endif %}</summary>
+      <form method="post" action="{{ url_for('profiles_watch', pid=p.id) }}" style="margin-top:8px">
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);margin:6px 0">
+          <input type="checkbox" name="watch_enabled" value="1" {% if p.watch.enabled %}checked{% endif %} style="width:auto"> Diese Instanz überwachen
+        </label>
+        <p class="hint" style="margin:2px 0 6px">Welche Checks für diese Instanz laufen (überschreibt die globale Vorgabe im Wächter-Reiter):</p>
+        {% set clabels = [('downtime','Erreichbarkeit/Token'),('drift','Konfig-Drift'),('asn_gap','ASN-Lücken'),('duplicate','Duplikate')] %}
+        {% for key, label in clabels %}
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);margin:4px 0">
+          <input type="checkbox" name="wchk_{{ key }}" value="1" {% if p.watch.checks[key] %}checked{% endif %} style="width:auto"> {{ label }}
+        </label>
+        {% endfor %}
+        <button type="submit">Überwachung speichern</button>
       </form>
     </details>
 

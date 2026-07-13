@@ -25,7 +25,7 @@
   <!-- Container-ID -->
   <div class="card" style="margin-top:14px">
     <h2 style="margin-top:0">Container</h2>
-    <p class="hint" style="margin-top:0">Die <strong>ID des LXC-Containers</strong>, in dem das Portal läuft (auf Proxmox mit <code>pct list</code> zu sehen). Wird gespeichert und in den Befehl unten eingesetzt.</p>
+    <p class="hint" style="margin-top:0">Die <strong>ID des Portal-Containers</strong> (ein Container für <em>alle</em> Instanzen) — nur fürs Portal-Update, nicht pro Paperless-Instanz. Auf Proxmox mit <code>pct list</code> zu sehen; wird gespeichert und in den Befehl unten eingesetzt.</p>
     <form method="post" action="{{ url_for('update_page') }}" style="display:flex;gap:8px;align-items:flex-end">
       <div style="flex:1">
         <label style="margin-top:0">Container-ID (CTID)</label>

@@ -34,7 +34,8 @@
       <input type="text" name="interval_min" value="{{ w.interval_min }}" placeholder="60">
       <p class="hint">Minimum 5 Minuten. Änderungen greifen sofort (ohne Neustart).</p>
 
-      <h2 style="margin:22px 0 10px">Checks</h2>
+      <h2 style="margin:22px 0 10px">Checks <span style="font-weight:400;font-size:11px;color:var(--text-dim)">· globale Vorgabe</span></h2>
+      <p class="hint" style="margin:0 0 8px">Diese Auswahl gilt als Vorgabe für alle Instanzen. Je Profil überschreibbar unter <a class="link" href="{{ url_for('verwaltung', tab='profiles') }}">Profile → Überwachung</a>.</p>
       {% set checkinfo = [
         ('downtime','Erreichbarkeit / Token','Instanz nicht erreichbar oder Token ungültig (abgelaufen/widerrufen).'),
         ('drift','Konfig-Drift','Gespeicherte Profil-Config enthält mehr Einträge als die Instanz (fehlende Tags/Typen/Felder/Korrespondenten/Pfade).'),

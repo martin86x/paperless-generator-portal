@@ -684,23 +684,36 @@ def index():
 def profiles():
     profs = load_profiles()
     aid = _active_id()
+    gwc = _watcher_cfg()
     items = []
     for pid, p in profs.items():
         kind, text = _connection_status({
             "paperless_url": p.get("paperless_url"),
             "paperless_token": _dec(p.get("paperless_token")),
         })
+        n = _notif_of(p)
+        notif_bits = []
+        if n["pushover"]["enabled"]:
+            notif_bits.append("Pushover")
+        if n["ntfy"]["enabled"]:
+            notif_bits.append("ntfy" + (" (%s)" % n["ntfy"]["topic"] if n["ntfy"]["topic"] else ""))
+        if n["email"]["enabled"]:
+            notif_bits.append("E-Mail" + (" → %s" % n["email"]["to"] if n["email"].get("to") else ""))
+        pw = _profile_watch(p, gwc)
         items.append({
             "id": pid,
             "name": p.get("name") or "(ohne Name)",
             "url": p.get("paperless_url") or "",
             "has_token": bool(p.get("paperless_token")),
             "has_config": p.get("generator_config") is not None,
+            "notify_email": (p.get("generator_config") or {}).get("notifyEmail", ""),
             "active": pid == aid,
             "conn_kind": kind, "conn_text": text,
             "productive": bool(p.get("productive")),
             "readonly": bool(p.get("readonly")),
             "color": p.get("color") or "",
+            "notif": ", ".join(notif_bits),
+            "watch": pw,
             "history": [{"ts": ts, "label": _fmt_ts(ts)} for ts in _list_history(pid)],
         })
     items.sort(key=lambda x: x["name"].lower())
@@ -1454,8 +1467,18 @@ def _read_metrics(pid, limit=500):
     return rows
 
 
+def _profile_watch(p, gwc):
+    """Effektive Ueberwachung eines Profils: eigene 'watch'-Einstellung ODER globale Vorgabe.
+    Rueckgabe: {enabled, checks:{…}, custom}. Fehlt 'watch' -> ueberwacht mit globalen Checks."""
+    w = p.get("watch") or {}
+    ch = w.get("checks") or {}
+    checks = {k: bool(ch.get(k, gwc["checks"][k])) for k in gwc["checks"]}
+    return {"enabled": bool(w.get("enabled", True)), "checks": checks, "custom": bool(p.get("watch"))}
+
+
 def _run_watch_cycle(wc, dispatch=True):
-    """Ein Prueflauf ueber alle Profile mit URL. STRIKT read-only. Rueckgabe: results-Dict."""
+    """Ein Prueflauf ueber alle Profile mit URL. STRIKT read-only. Rueckgabe: results-Dict.
+    Checks je Profil ueber _profile_watch (globale Vorgabe, pro Profil ueberschreibbar)."""
     results = {}
     try:
         profs = load_profiles()
@@ -1465,15 +1488,18 @@ def _run_watch_cycle(wc, dispatch=True):
         url = p.get("paperless_url")
         if not url:
             continue
+        pw = _profile_watch(p, wc)
+        if not pw["enabled"]:
+            continue  # diese Instanz nicht ueberwachen
         token = _dec(p.get("paperless_token"))
         checks = []
-        if wc["checks"]["downtime"]:
+        if pw["checks"]["downtime"]:
             checks.append(_chk_downtime(url, token))
-        if wc["checks"]["drift"]:
+        if pw["checks"]["drift"]:
             checks.append(_chk_drift(url, token, p.get("generator_config") or {}))
-        if wc["checks"]["asn_gap"]:
+        if pw["checks"]["asn_gap"]:
             checks.append(_chk_asn_gap(url, token, wc["asn_gap_threshold"]))
-        if wc["checks"]["duplicate"]:
+        if pw["checks"]["duplicate"]:
             checks.append(_chk_duplicate(url, token))
         results[pid] = {"name": p.get("name") or pid, "ts": time.time(), "checks": checks}
         if dispatch:
@@ -2185,9 +2211,30 @@ def profiles_connection(pid):
         profs[pid]["paperless_url"] = url
     if tok:
         profs[pid]["paperless_token"] = tok
+    if "notify_email" in request.form:
+        gc = profs[pid].get("generator_config") or {}
+        gc["notifyEmail"] = request.form.get("notify_email", "").strip()
+        profs[pid]["generator_config"] = gc
     save_profiles(profs)
     _log_activity("connection", "Verbindung geaendert: %s" % (profs[pid].get("name") or pid))
     return redirect(url_for("verwaltung", tab="profiles", msg="Verbindung gespeichert."))
+
+
+@app.route("/profiles/<pid>/watch", methods=["POST"])
+def profiles_watch(pid):
+    """Pro-Profil-Ueberwachung setzen: an/aus + welche Checks (ueberschreibt die globale Vorgabe)."""
+    profs = load_profiles()
+    if pid not in profs:
+        return redirect(url_for("verwaltung", tab="profiles", err="Profil nicht gefunden."))
+    f = request.form
+    profs[pid]["watch"] = {
+        "enabled": bool(f.get("watch_enabled")),
+        "checks": {k: bool(f.get("wchk_" + k)) for k in _WATCHER_DEFAULTS["checks"]},
+    }
+    save_profiles(profs)
+    _log_activity("profile", "Ueberwachung geaendert (%s): enabled=%s"
+                  % (profs[pid].get("name") or pid, profs[pid]["watch"]["enabled"]))
+    return redirect(url_for("verwaltung", tab="profiles", msg="Überwachung gespeichert."))
 
 
 # ─── Generator-Config des aktiven Profils laden/speichern (vom injizierten JS genutzt) ──
