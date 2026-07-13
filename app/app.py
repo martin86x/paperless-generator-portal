@@ -673,6 +673,18 @@ _DRIFT_CATS = [
 ]
 
 
+def _entry_on(e):
+    """Editor-Eintrag aktiv? (Generator setzt enabled:false auf deaktivierten Einträgen.)
+    Fehlendes Feld = aktiv (rückwärtskompatibel zu Configs ohne das Flag)."""
+    return not (isinstance(e, dict) and e.get("enabled") is False)
+
+
+def _count_active(gc, key):
+    """Anzahl aktiver Top-Level-Einträge einer Kategorie (deaktivierte zählen nicht mit —
+    sie werden auch nicht angelegt, sonst würde Drift fälschlich 'fehlt' melden)."""
+    return sum(1 for e in (gc.get(key) or []) if _entry_on(e))
+
+
 def _connection_status(cfg):
     """Live-Status der gespeicherten Paperless-Verbindung -> (kind, text) fuer die UI.
 
@@ -1133,7 +1145,7 @@ def dashboard():
                 if card["has_config"]:
                     drift = []
                     for label, key, ep in _DRIFT_CATS:
-                        cfg_n = len(gc.get(key) or [])
+                        cfg_n = _count_active(gc, key)
                         inst_n = _api_count(url, token, ep + "?page_size=1")
                         drift.append({"label": label, "cfg": cfg_n, "inst": inst_n,
                                       "diff": (cfg_n - inst_n) if inst_n is not None else None})
@@ -2082,7 +2094,7 @@ def _gc_apply_entries(gc, key):
         tm = {m.get("name"): m for m in (gc.get("tagMatch") or [])
               if isinstance(m, dict) and m.get("name")}
         for par in (gc.get("tags") or []):
-            if not isinstance(par, dict) or not par.get("name"):
+            if not isinstance(par, dict) or not par.get("name") or not _entry_on(par):
                 continue
             ppl = {"name": par["name"], "matching_algorithm": 0}
             if par.get("color"):
@@ -2092,7 +2104,7 @@ def _gc_apply_entries(gc, key):
             entries.append({"name": par["name"], "endpoint": "tags/",
                             "payload": ppl, "parent_name": None})
             for ch in (par.get("children") or []):
-                if not isinstance(ch, dict) or not ch.get("name"):
+                if not isinstance(ch, dict) or not ch.get("name") or not _entry_on(ch):
                     continue
                 cpl = {"name": ch["name"], "matching_algorithm": 0}
                 if ch.get("color"):
@@ -2112,7 +2124,7 @@ def _gc_apply_entries(gc, key):
     if key in simple:
         endpoint, pathfield = simple[key]
         for e in (gc.get(key) or []):
-            if not isinstance(e, dict) or not e.get("name"):
+            if not isinstance(e, dict) or not e.get("name") or not _entry_on(e):
                 continue
             pl = {"name": e["name"], "matching_algorithm": 0}
             if pathfield:

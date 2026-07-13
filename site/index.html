@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Paperless-ngx Setup Generator v3.86</title>
+<title>Paperless-ngx Setup Generator v3.87</title>
 <!-- Schriften inline (offline, kein Google-Fonts-CDN mehr; v3.78) -->
 <style>/* Google Fonts inline (v3.78) - Sora + JetBrains Mono (400/600/700), latin-Subset, base64. Ersetzt den @import; voll offline. */
 /* latin */
@@ -352,14 +352,14 @@ input.valid{border-color:var(--accent2)!important;}
   <button id="hamburger-btn" onclick="toggleSidebar()" aria-label="Navigation">
     <span></span><span></span><span></span>
   </button>
-  <span id="topbar-title">Setup Generator v3.86</span>
+  <span id="topbar-title">Setup Generator v3.87</span>
   <span id="topbar-conn-dot" class="sticky-conn-dot" title="Verbindungsstatus"></span>
-  <span id="topbar-badge">v3.86</span>
+  <span id="topbar-badge">v3.87</span>
 </div>
 <aside id="sidebar">
   <div class="sb-header">
     <div class="sb-logo">Paperless-ngx</div>
-    <div class="sb-title">Setup Generator v3.86</div>
+    <div class="sb-title">Setup Generator v3.87</div>
   </div>
   <nav class="sb-nav">
     <span class="sb-label">Konfiguration</span>
@@ -388,7 +388,7 @@ input.valid{border-color:var(--accent2)!important;}
 <main id="content">
 
   <div class="hero">
-    <div class="badge" id="hdr-badge">v3.86 &middot; Bash + Direkt &middot; REST API &middot; Stand: <span id="badge-date">10.07.2026</span></div>
+    <div class="badge" id="hdr-badge">v3.87 &middot; Bash + Direkt &middot; REST API &middot; Stand: <span id="badge-date">13.07.2026</span></div>
     <h1>Paperless-ngx<br>Setup Generator</h1>
     <p>Richtet eine frische Paperless-ngx-Instanz vollautomatisch ein &ndash; Tags, Dokumenttypen, Felder, Korrespondenten, Speicherpfade und Arbeitsabl&auml;ufe &ndash; per Bash-Skript oder direkt aus dem Browser via REST API.</p>
     <div style="margin-top:.6rem">
@@ -3293,6 +3293,7 @@ function renderTagEditor() {
     wrap.innerHTML = `
       <div class="acc-h te-head" onclick="toggleTeAcc(this)">
         <span style="cursor:grab;color:var(--text-muted);font-size:.85rem;letter-spacing:-2px;flex-shrink:0;user-select:none;padding:0 .1rem" title="Ziehen zum Sortieren" onclick="event.stopPropagation()">&#8942;&#8942;</span>
+        <input type="checkbox" ${plxOn(par)?'checked':''} title="Aktiv / Inaktiv – inaktive Tags werden nicht angelegt" onclick="event.stopPropagation()" onchange="TAGS[${pi}].enabled=this.checked; renderTagEditor(); updateStats();" style="width:1rem;height:1rem;cursor:pointer;flex-shrink:0">
         ${colorDot}
         <input type="color" value="${par.color}" title="Farbe ändern"
           onclick="event.stopPropagation();"
@@ -3318,6 +3319,7 @@ function renderTagEditor() {
       </div>
     `;
     list.appendChild(wrap);
+    if(!plxOn(par)) wrap.style.opacity = "0.55";
 
     // Kind-Tags in den Body rendern
     const childContainer = wrap.querySelector(`#te-children-${pi}`);
@@ -3347,7 +3349,9 @@ function renderTagEditor() {
       // Löschen
       const delBtn2=document.createElement("button");delBtn2.className="btn-del";delBtn2.textContent="✕";
       delBtn2.onclick=(function(pi2,ci2){return function(){deleteChildTag(pi2,ci2);};})(pi,ci);
-      cRow.appendChild(colInp);cRow.appendChild(nameInp2);cRow.appendChild(pLbl);cRow.appendChild(mBtn2);cRow.appendChild(delBtn2);
+      const cEn=plxToggle(plxOn(ch),(function(pi2,ci2){return function(on){TAGS[pi2].children[ci2].enabled=on;renderTagEditor();updateStats();};})(pi,ci));
+      if(!plxOn(ch)) cRow.style.opacity="0.55";
+      cRow.appendChild(cEn);cRow.appendChild(colInp);cRow.appendChild(nameInp2);cRow.appendChild(pLbl);cRow.appendChild(mBtn2);cRow.appendChild(delBtn2);
       // Matching-Body
       const mBody=document.createElement("div");mBody.id=matchId;
       mBody.style.cssText="display:"+(hasMatch?"block":"none")+";padding:.4rem .6rem .5rem 2.5rem;border-top:1px solid var(--border);background:var(--bg2);";
@@ -3550,6 +3554,7 @@ function renderTypeEditor() {
   TYPES.forEach(function(t, i) {
     const wrap = document.createElement("div");
     wrap.style.cssText = "background:var(--bg3);border:1px solid var(--border);border-radius:7px;margin-bottom:.4rem;overflow:hidden;";
+    if(!plxOn(t)) wrap.style.opacity = "0.55";
     wrap.draggable = true;
     wrap.dataset.idx = i;
     // Drag-and-Drop
@@ -3621,7 +3626,9 @@ function renderTypeEditor() {
       const mb=document.getElementById("type-match-"+i);
       if(mb){const open=mb.style.display!=="none";mb.style.display=open?"none":"block";mBtn.textContent=open?"Matching ▶":"Matching ▼";}
     };
-    row.appendChild(dragHandle);row.appendChild(inp);row.appendChild(upBtn);row.appendChild(dnBtn);row.appendChild(mBtn);row.appendChild(delBtn);
+    const enTog=plxToggle(plxOn(t),(function(i2){return function(on){TYPES[i2].enabled=on;renderTypeEditor();updateStats();};})(i));
+    const enBadge=plxBadge(plxOn(t));
+    row.appendChild(dragHandle);row.appendChild(enTog);row.appendChild(inp);row.appendChild(enBadge);row.appendChild(upBtn);row.appendChild(dnBtn);row.appendChild(mBtn);row.appendChild(delBtn);
     wrap.appendChild(row);
     // Matching-Body
     const matchDiv=document.createElement("div");matchDiv.id="type-match-"+i;
@@ -3709,6 +3716,7 @@ function renderCorrespondentEditor() {
   CORRESPONDENTS.forEach(function(c, i) {
     const wrap = document.createElement("div");
     wrap.style.cssText = "background:var(--bg3);border:1px solid var(--border);border-radius:7px;padding:.6rem .8rem;margin-bottom:.4rem;";
+    if(!plxOn(c)) wrap.style.opacity = "0.55";
     wrap.draggable = true;
     wrap.dataset.idx = i;
     (function(srcI) {
@@ -3759,8 +3767,11 @@ function renderCorrespondentEditor() {
     corrDragHandle.innerHTML = '&#8942;&#8942;';
     corrDragHandle.title = 'Ziehen zum Sortieren';
     corrDragHandle.style.cssText = 'cursor:grab;color:var(--text-muted);font-size:.85rem;letter-spacing:-2px;flex-shrink:0;user-select:none;padding:0 .1rem';
+    const corrEn=plxToggle(plxOn(c),(function(i2){return function(on){CORRESPONDENTS[i2].enabled=on;renderCorrespondentEditor();updateStats();};})(i));
+    const corrBadge=plxBadge(plxOn(c));
     row1.appendChild(corrDragHandle);
-    row1.appendChild(inp); row1.appendChild(db); wrap.appendChild(row1);
+    row1.appendChild(corrEn);
+    row1.appendChild(inp); row1.appendChild(corrBadge); row1.appendChild(db); wrap.appendChild(row1);
     // Zeile 2: Algorithmus + Hint
     const row2 = document.createElement("div");
     row2.style.cssText = "display:grid;grid-template-columns:180px 1fr;gap:.5rem;align-items:start";
@@ -4054,7 +4065,7 @@ const AN_HINTS=[
   "Unscharfe Suche – toleriert Tippfehler",
   "Automatisch trainiert aus manuell beschrifteten Dokumenten"
 ];
-const GENERATOR_VERSION = "3.86";
+const GENERATOR_VERSION = "3.87";
 
 function updateVersionWarnings(){
   const v=document.getElementById("inp-plx-version");
@@ -4896,12 +4907,23 @@ function renderFieldsEditor() {
       if(gi3>=0)FIELD_GROUPS.splice(gi3,1);
       renderFieldsEditor(); renderWorkflowEditor(); renderFristWorkflows();
     };})(grp.id);
-    hdr.appendChild(inp); hdr.appendChild(addBtn); hdr.appendChild(delBtn);
+    const grpChevron=document.createElement("button");
+    grpChevron.style.cssText="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:.7rem;padding:0 .35rem;flex-shrink:0";
+    grpChevron.title="Gruppe ein-/ausklappen";
+    hdr.appendChild(grpChevron); hdr.appendChild(inp); hdr.appendChild(addBtn); hdr.appendChild(delBtn);
     grpDiv.appendChild(hdr);
+    const grpBody=document.createElement("div");
+    const grpCollapsed = grpFields.length>6;   // lange Gruppen (>6 Felder) standardmäßig zu
+    grpChevron.textContent = grpCollapsed ? "▶ "+grpFields.length : "▼";
+    if(grpCollapsed) grpBody.style.display="none";
+    grpChevron.onclick=(function(b,ch,n){return function(){const hid=b.style.display==="none";b.style.display=hid?"":"none";ch.textContent=hid?"▼":"▶ "+n;};})(grpBody,grpChevron,grpFields.length);
     grpFields.forEach(f => {
       const i = FIELDS.indexOf(f);
       const row = document.createElement("div");
-      row.style.cssText = "display:grid;grid-template-columns:1fr 140px auto 32px;gap:.4rem;align-items:center;padding:.35rem .5rem;background:var(--bg3);border:1px solid var(--border);border-radius:6px;margin-bottom:.28rem;";
+      row.style.cssText = "display:grid;grid-template-columns:20px 1fr 140px auto 32px;gap:.4rem;align-items:center;padding:.35rem .5rem;background:var(--bg3);border:1px solid var(--border);border-radius:6px;margin-bottom:.28rem;";
+      if(!fieldOn(f)) row.style.opacity="0.55";
+      const fEn=plxToggle(fieldOn(f),(function(i2){return function(on){setFieldEnabled(FIELDS[i2],on);renderFieldsEditor();updateStats();};})(i));
+      row.appendChild(fEn);
       const ni = document.createElement("input"); ni.type="text"; ni.value=f[0];
       ni.placeholder="Feldname"; ni.style.cssText="padding:.26rem .45rem;font-size:.76rem";
       ni.oninput=(function(i2){return function(){var on=FIELDS[i2][0];FIELDS[i2][0]=this.value;syncFieldRenameToWorkflows(on,this.value);};})(i);
@@ -4934,8 +4956,9 @@ function renderFieldsEditor() {
         const ph = document.createElement("span"); row.appendChild(ph);
       }
       row.appendChild(db);
-      grpDiv.appendChild(row);
+      grpBody.appendChild(row);
     });
+    grpDiv.appendChild(grpBody);
     list.appendChild(grpDiv);
   });
 
@@ -4951,7 +4974,10 @@ function renderFieldsEditor() {
     extra.forEach(f => {
       const i=FIELDS.indexOf(f);
       const row=document.createElement("div");
-      row.style.cssText="display:grid;grid-template-columns:1fr 140px auto 32px;gap:.4rem;align-items:center;padding:.35rem .5rem;background:var(--bg3);border:1px solid var(--border);border-radius:6px;margin-bottom:.28rem;";
+      row.style.cssText="display:grid;grid-template-columns:20px 1fr 140px auto 32px;gap:.4rem;align-items:center;padding:.35rem .5rem;background:var(--bg3);border:1px solid var(--border);border-radius:6px;margin-bottom:.28rem;";
+      if(!fieldOn(f)) row.style.opacity="0.55";
+      const fEn=plxToggle(fieldOn(f),(function(i2){return function(on){setFieldEnabled(FIELDS[i2],on);renderFieldsEditor();updateStats();};})(i));
+      row.appendChild(fEn);
       const ni=document.createElement("input");ni.type="text";ni.value=f[0];ni.placeholder="Feldname";ni.style.cssText="padding:.26rem .45rem;font-size:.76rem";
       ni.oninput=(function(i2){return function(){var on=FIELDS[i2][0];FIELDS[i2][0]=this.value;syncFieldRenameToWorkflows(on,this.value);};})(i);
       const sel=document.createElement("select");sel.style.cssText="padding:.26rem .45rem;font-size:.71rem";
@@ -5044,9 +5070,13 @@ function renderPathsEditor() {
   STORAGE_PATHS.forEach(function(sp, i) {
     const div = document.createElement("div");
     div.style.cssText = "background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:.8rem 1rem;margin-bottom:.6rem;";
-    // Zeile 1: Name + Del
+    if(!plxOn(sp)) div.style.opacity="0.55";
+    // Zeile 1: Aktiv-Toggle + Name + Del
     const row1 = document.createElement("div");
-    row1.style.cssText = "display:grid;grid-template-columns:1fr 36px;gap:.5rem;align-items:center;margin-bottom:.5rem";
+    row1.style.cssText = "display:grid;grid-template-columns:20px 1fr 36px;gap:.5rem;align-items:center;margin-bottom:.5rem";
+    const spEn=plxToggle(plxOn(sp),(function(i2){return function(on){STORAGE_PATHS[i2].enabled=on;renderPathsEditor();updateStats();};})(i));
+    spEn.style.marginTop="1.2rem";
+    row1.appendChild(spEn);
     const nameWrap = document.createElement("div");
     const lbl0 = document.createElement("span"); lbl0.className="flabel"; lbl0.style.fontSize=".64rem"; lbl0.textContent="Name";
     const nameInp = document.createElement("input"); nameInp.type="text"; nameInp.value=sp.name;
@@ -5314,10 +5344,10 @@ function _generateScript() {
 
   // count total items for progress
   let totalItems=0;
-  if(doTags){TAGS.forEach(p=>{totalItems++;p.children.forEach(()=>totalItems++);});}
-  if(doTypes) totalItems+=typeData.length;
-  if(doFields) totalItems+=FIELDS.length;
-  if(doCorr) totalItems+=CORRESPONDENTS.length;
+  if(doTags){TAGS.filter(plxOn).forEach(p=>{totalItems++;p.children.filter(plxOn).forEach(()=>totalItems++);});}
+  if(doTypes) totalItems+=typeData.filter(plxOn).length;
+  if(doFields) totalItems+=FIELDS.filter(fieldOn).length;
+  if(doCorr) totalItems+=CORRESPONDENTS.filter(plxOn).length;
   if(doPath) totalItems+=STORAGE_PATHS.length;
   const doWF=document.getElementById("chk-workflows") && document.getElementById("chk-workflows").checked;
   if(doWF) {
@@ -5688,7 +5718,7 @@ function _generateScript() {
     p('echo "${YELLOW}=== Tags anlegen ===${NC}"');
     p('echo "Schritt 1: Eltern-Tags"');
     p("");
-    TAGS.forEach(par=>{
+    TAGS.filter(plxOn).forEach(par=>{
       const nm=esc(par.name);
       const inbox=par.isInbox?',"is_inbox_tag":true':"";
       p(`api_post "/api/tags/" '{"name":"${nm}","color":"${par.color}","matching_algorithm":0${inbox}}' "${par.name}" "${nm}"`);
@@ -5698,7 +5728,7 @@ function _generateScript() {
     p('echo "Schritt 2: Eltern-Tag-IDs abrufen"');
     p('if $DRY_RUN; then echo "  ${CYAN}[DRY-RUN] IDs können erst nach echtem Anlegen abgerufen werden – Kind-Tags werden im Dry-Run übersprungen${NC}"; fi');
     p("");
-    const pwk=TAGS.filter(par=>par.children.length>0);
+    const pwk=TAGS.filter(par=>plxOn(par)&&par.children.some(plxOn));
     pwk.forEach(par=>{
       const vn="ID_"+par.name.replace(/[^a-zA-Z0-9]/g,"_").replace(/_+/g,"_").replace(/^_|_$/g,"").toUpperCase();
       const nm2=esc(par.name);
@@ -5715,7 +5745,7 @@ function _generateScript() {
       p(`  echo "  \${YELLOW}⚠ SKIP: Eltern-ID für '${par.name}' nicht gefunden – Kind-Tags werden übersprungen\${NC}"`);
       p(`else`);
       p(`echo "  \${DIM}── ${par.name} ──\${NC}"`);
-      par.children.forEach(ch=>{
+      par.children.filter(plxOn).forEach(ch=>{
         const cn=esc(ch.name);
         const col=ch.color;
         let mp=',"matching_algorithm":0';
@@ -5734,7 +5764,7 @@ function _generateScript() {
     p("# ── DOKUMENTTYPEN ───────────────────────────────────────────────");
     p('echo "${YELLOW}=== Dokumenttypen anlegen ===${NC}"');
     p("");
-    typeData.forEach(t=>{
+    typeData.filter(plxOn).forEach(t=>{
       const nm=esc(t.name);
       let mp=',"matching_algorithm":0';
       if(doMTy&&t.algo>0&&t.match.trim()){const me=escSQ(t.match.trim());mp=`,"matching_algorithm":${t.algo},"match":"${me}","is_insensitive":true`;}
@@ -5787,7 +5817,7 @@ function _generateScript() {
     p('  fi');
     p('}');
     p("");
-    FIELDS.filter(f=>f[0].trim()&&f[1].trim()).forEach(([nm,tp,,extraData])=>{
+    FIELDS.filter(f=>f[0].trim()&&f[1].trim()&&fieldOn(f)).forEach(([nm,tp,,extraData])=>{
       if(!nm||!tp)return;
       const en=esc(nm);
       let extra = "";
@@ -5812,7 +5842,7 @@ function _generateScript() {
     p("# ── KORRESPONDENTEN ─────────────────────────────────────────────");
     p('echo "${YELLOW}=== Korrespondenten anlegen ===${NC}"');
     p("");
-    CORRESPONDENTS.forEach(c => {
+    CORRESPONDENTS.filter(plxOn).forEach(c => {
       const nm = esc(c.name);
       let mp = ',"matching_algorithm":0';
       if(c.algo > 0 && c.match.trim()){
@@ -5828,7 +5858,7 @@ function _generateScript() {
   if(doPath){
   p("# ── SPEICHERPFAD ────────────────────────────────────────────────");
   p('echo "${YELLOW}=== Speicherpfad-Vorlage anlegen ===${NC}"');
-  STORAGE_PATHS.forEach(sp => {
+  STORAGE_PATHS.filter(plxOn).forEach(sp => {
     const nm=esc(sp.name);const pt=esc(sp.path);
     const ma=sp.algo||0;const mt=sp.match?escSQ(sp.match):"";
     const mp=(ma>0&&mt)?`,"matching_algorithm":${ma},"match":"${mt}","is_insensitive":true`:',"matching_algorithm":0';
@@ -7740,11 +7770,11 @@ async function runDirect(realRun) {
   const _doCorrC = document.getElementById('chk-corr')?.checked;
   const _doPaC   = document.getElementById('chk-path')?.checked;
   const _doWFC   = document.getElementById('chk-workflows')?.checked;
-  if(_doTagsC) TAGS.forEach(function(p){ if(isTagSelected(p.name)){ totalItems++; totalItems += (p.children||[]).filter(function(c){ return isTagSelected(c.name); }).length; } });
-  if(_doTypesC) totalItems += typeData.filter(function(t){ return isTypeSelected(t.name); }).length;
-  if(_doFiC) totalItems += FIELDS.filter(f=>f[0].trim()&&f[1].trim()).length;
-  if(_doCorrC) totalItems += CORRESPONDENTS.filter(function(c){ return isCorrSelected(c.name); }).length;
-  if(_doPaC) totalItems += STORAGE_PATHS.length;
+  if(_doTagsC) TAGS.forEach(function(p){ if(isTagSelected(p.name)&&plxOn(p)){ totalItems++; totalItems += (p.children||[]).filter(function(c){ return isTagSelected(c.name)&&plxOn(c); }).length; } });
+  if(_doTypesC) totalItems += typeData.filter(function(t){ return isTypeSelected(t.name)&&plxOn(t); }).length;
+  if(_doFiC) totalItems += FIELDS.filter(f=>f[0].trim()&&f[1].trim()&&fieldOn(f)).length;
+  if(_doCorrC) totalItems += CORRESPONDENTS.filter(function(c){ return isCorrSelected(c.name)&&plxOn(c); }).length;
+  if(_doPaC) totalItems += STORAGE_PATHS.filter(plxOn).length;
   if(_doWFC) { totalItems += WORKFLOWS.filter(w=>w.enabled&&(w.trigger_added||w.trigger_updated)&&(w.fields.length>0||(w.tags&&w.tags.length>0))).length; totalItems += FRIST_CONFIGS.reduce(function(a,c){ return a+((c.reminders||[]).length||2); },0); }
 
   dlog(dryRun ? '★ DRY-RUN – keine Änderungen' : '▶ Setup startet', 'head');
@@ -7756,7 +7786,7 @@ async function runDirect(realRun) {
     dlog('=== Tags anlegen ===', 'head');
     dlog('Schritt 1: Eltern-Tags', 'dim');
     const parentIds = {};
-    for(const par of TAGS.filter(p=>isTagSelected(p.name))) {
+    for(const par of TAGS.filter(p=>isTagSelected(p.name)&&plxOn(p))) {
       cntTotal++;
       updateProgress(cntTotal, totalItems, par.name);
       const res = await apiDirect(url, token, '/api/tags/', {name:par.name, color:par.color, matching_algorithm:0, ...(par.isInbox?{is_inbox_tag:true}:{})}, par.name, dryRun);
@@ -7770,7 +7800,7 @@ async function runDirect(realRun) {
     }
     // Kind-Tags
     dlog('Schritt 2: Kind-Tags', 'dim');
-    for(const par of TAGS.filter(p=>p.children.length>0)) {
+    for(const par of TAGS.filter(p=>plxOn(p)&&p.children.some(plxOn))) {
       const pid = parentIds[par.name];
       if(!pid && !dryRun) {
         dlog(`⚠ SKIP: Eltern-ID für '${par.name}' nicht gefunden – ${par.children.length} Kind-Tag(s) ebenfalls übersprungen`, 'warn');
@@ -7780,7 +7810,7 @@ async function runDirect(realRun) {
       }
       dlog(`  ── ${par.name} ──`, 'dim');
       const tm = tagData;
-      for(const ch of par.children.filter(c=>isTagSelected(c.name))) {
+      for(const ch of par.children.filter(c=>isTagSelected(c.name)&&plxOn(c))) {
         cntTotal++;
         updateProgress(cntTotal, totalItems, ch.name);
         const matchEntry = tm.find(m=>m.name===ch.name);
@@ -7802,7 +7832,7 @@ async function runDirect(realRun) {
   if(!_authFailed && doTypes) {
     dlog('', 'dim');
     dlog('=== Dokumenttypen anlegen ===', 'head');
-    for(const t of typeData.filter(t=>isTypeSelected(t.name))) {
+    for(const t of typeData.filter(t=>isTypeSelected(t.name)&&plxOn(t))) {
       cntTotal++;
       updateProgress(cntTotal, totalItems, t.name);
       // Konsistenz mit Bash: Schalter "Matching für Dokumenttypen" (chk-mty) beachten + Match muss gesetzt sein
@@ -7822,7 +7852,7 @@ async function runDirect(realRun) {
   if(!_authFailed && doFields) {
     dlog('', 'dim');
     dlog('=== Benutzerdefinierte Felder anlegen ===', 'head');
-    for(const [nm, tp, , extraData] of FIELDS.filter(f=>f[0].trim()&&f[1].trim())) {
+    for(const [nm, tp, , extraData] of FIELDS.filter(f=>f[0].trim()&&f[1].trim()&&fieldOn(f))) {
       cntTotal++;
       updateProgress(cntTotal, totalItems, nm);
       const fd = {name:nm, data_type:tp};
@@ -7852,7 +7882,7 @@ async function runDirect(realRun) {
   if(!_authFailed && doCorr) {
     dlog('', 'dim');
     dlog('=== Korrespondenten anlegen ===', 'head');
-    for(const c of CORRESPONDENTS.filter(c=>isCorrSelected(c.name))) {
+    for(const c of CORRESPONDENTS.filter(c=>isCorrSelected(c.name)&&plxOn(c))) {
       cntTotal++;
       updateProgress(cntTotal, totalItems, c.name);
       const cd = {name:c.name, matching_algorithm:0};
@@ -7874,7 +7904,7 @@ async function runDirect(realRun) {
   if(!_authFailed && doPath) {
     dlog('', 'dim');
     dlog('=== Speicherpfade anlegen ===', 'head');
-    for(const sp of STORAGE_PATHS) {
+    for(const sp of STORAGE_PATHS.filter(plxOn)) {
       cntTotal++;
       updateProgress(cntTotal, totalItems, sp.name);
       const sd = {name:sp.name, path:sp.path, matching_algorithm:0};
@@ -8304,6 +8334,7 @@ async function runPatchDiff() {
 
     // Dokumenttypen vergleichen
     TYPES.forEach(function(t) {
+      if(!plxOn(t)) return;
       const api=tMap[t.name.toLowerCase()]; if(!api) return;
       if(api.matching_algorithm===(t.algo||0) && (api.match||'')===(t.match||'')) return;
       _patchDiffs.push({entity:'document_types',id:api.id,name:t.name,type:'Dokumenttyp',
@@ -8313,6 +8344,7 @@ async function runPatchDiff() {
 
     // Korrespondenten vergleichen
     CORRESPONDENTS.forEach(function(c) {
+      if(!plxOn(c)) return;
       const api=cMap[c.name.toLowerCase()]; if(!api) return;
       if(api.matching_algorithm===(c.algo||0) && (api.match||'')===(c.match||'')) return;
       _patchDiffs.push({entity:'correspondents',id:api.id,name:c.name,type:'Korrespondent',
@@ -8747,6 +8779,37 @@ async function _directWorkflows({url, token, dryRun, totalItems, st}) {
   }
 }
 
+// ─── Aktiv/Inaktiv je Editor-Eintrag (wie wf.enabled bei Arbeitsabläufen) ───
+// Inaktive Einträge bleiben in der Config erhalten, werden aber aus Skript,
+// Direkt-Lauf und Statistik ausgeschlossen. Default = aktiv (fehlendes Feld = an),
+// damit ältere gespeicherte Konfigurationen unverändert weiterlaufen.
+function plxOn(o){ return !(o && o.enabled === false); }
+// FIELDS ist ein Array-von-Arrays [name,typ,gruppe,opts?]; enabled liegt im Opt-Objekt
+// (4. Element), damit es den JSON-Export übersteht.
+function fieldOn(f){ return !(f && f[3] && f[3].enabled === false); }
+function setFieldEnabled(f, on){
+  if(!f[3] || typeof f[3] !== 'object') f[3] = f[3] ? {value:f[3]} : {};
+  if(on) delete f[3].enabled; else f[3].enabled = false;
+}
+// Kleines Aktiv/Inaktiv-Badge (einheitlich für alle Editoren)
+function plxBadge(on){
+  const b=document.createElement("span");
+  b.textContent = on ? "aktiv" : "inaktiv";
+  b.style.cssText = "font-size:.6rem;padding:.08rem .34rem;border-radius:3px;font-family:JetBrains Mono,monospace;flex-shrink:0;white-space:nowrap;" +
+    (on ? "background:rgba(56,217,169,.12);color:var(--accent2);border:1px solid rgba(56,217,169,.25);"
+        : "background:rgba(107,114,128,.1);color:#6b7280;border:1px solid rgba(107,114,128,.25);");
+  return b;
+}
+// Aktiv-Checkbox (createElement-Editoren). onToggle(bool) bekommt den neuen Zustand.
+function plxToggle(on, onToggle){
+  const t=document.createElement("input"); t.type="checkbox"; t.checked=on;
+  t.title="Aktiv / Inaktiv – inaktive Einträge werden nicht angelegt";
+  t.style.cssText="width:1rem;height:1rem;cursor:pointer;flex-shrink:0";
+  t.onclick=function(e){e.stopPropagation();};
+  t.onchange=function(){ onToggle(this.checked); };
+  return t;
+}
+
 function togglePatchWarning(cb) {
   var w = document.getElementById('patch-mode-warn');
   if(w) w.style.display = cb.checked ? 'block' : 'none';
@@ -9074,6 +9137,14 @@ function runFullHealthCheck() {
         _iRows + (_crossConf.length>6?'<div style="font-size:.71rem;color:var(--text-muted);margin-top:.13rem">... +'+(_crossConf.length-6)+' weitere</div>':'');
       results.insertBefore(dInfo, results.firstChild);
     }
+
+    // Health-Status global bereitstellen + Event feuern — die Portal-Kopfleiste (inject.js)
+    // rendert daraus eine Ampel, die immer sichtbar ist (der Health-Check „geht sonst unter").
+    var _warn = ((typeof r !== 'undefined' && r) ? r.filter(function(x){ return x.critical !== true; }).length : 0)
+              + collisions.length + _crossConf.length;
+    window._lastHealthCriticalCount = _lastHealthCriticalCount;
+    window._lastHealthWarnCount = _warn;
+    try { document.dispatchEvent(new CustomEvent('plx:health', {detail:{critical:_lastHealthCriticalCount, warn:_warn}})); } catch(e){}
 
   }, 150);
 }

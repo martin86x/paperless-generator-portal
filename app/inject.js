@@ -73,6 +73,17 @@
       .catch(function () { location.href = '/'; });
   }
 
+  function updateHealthBadge(crit, warn) {
+    var hb = document.getElementById('plx-health-badge');
+    if (!hb) return;
+    var col, txt;
+    if (crit > 0) { col = '#f76f6f'; txt = '🔴 ' + crit + ' kritisch'; }
+    else if (warn > 0) { col = '#f59e0b'; txt = '🟡 ' + warn + ' Hinweis' + (warn > 1 ? 'e' : ''); }
+    else { col = '#38d9a9'; txt = '🟢 Health OK'; }
+    hb.style.color = col; hb.style.borderColor = col; hb.textContent = txt;
+    syncHeadPadding();
+  }
+
   function syncHeadPadding() {
     // Reserviert oben Platz in Hoehe der fixierten Leiste (inkl. evtl. Produktiv-Banner),
     // damit nichts darunter verschwindet. Bei Umbruch/Resize neu berechnen.
@@ -143,6 +154,20 @@
     dirty.id = 'plx-dirty'; dirty.textContent = '● ungespeichert';
     dirty.title = 'Es gibt ungespeicherte Änderungen in diesem Profil';
     dirty.style.cssText = 'display:none;color:#f59e0b;font-size:12px;font-weight:600'; n.appendChild(dirty);
+
+    // Health-Ampel: immer sichtbarer Status (der Health-Check in Sektion 10 "geht sonst unter").
+    var hb = document.createElement('button');
+    hb.id = 'plx-health-badge';
+    hb.title = 'Health-Check — klicken, um zum Ergebnis zu springen und neu zu prüfen';
+    hb.style.cssText = 'background:#1f232c;color:#9aa4b2;border:1px solid #2b303b;border-radius:6px;padding:5px 10px;font-size:12px;cursor:pointer;white-space:nowrap';
+    hb.textContent = '● Health-Check';
+    hb.addEventListener('click', function () {
+      try { if (typeof goTo === 'function') goTo('s-gen'); } catch (e) {}
+      var hr = document.getElementById('health-results');
+      if (hr) { try { hr.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {} }
+      try { if (typeof runFullHealthCheck === 'function') runFullHealthCheck(); } catch (e) {}
+    });
+    n.appendChild(hb);
 
     var spacer = document.createElement('span');
     spacer.style.cssText = 'flex:1 1 auto'; n.appendChild(spacer); // drueckt Verwaltung/Logout nach rechts
@@ -259,6 +284,12 @@
     }).catch(function () { forceSameOrigin(); });
   }
 
+  // Health-Status vom Generator (07-health-match.js feuert 'plx:health' nach jeder Prüfung).
+  document.addEventListener('plx:health', function (e) {
+    var d = e.detail || {};
+    updateHealthBadge(d.critical || 0, d.warn || 0);
+  });
+
   window.addEventListener('load', function () {
     try { buildNav(); } catch (e) {}
     loadProfilesIntoDropdown();
@@ -267,6 +298,14 @@
     setTimeout(syncHeadPadding, 400); // nach Layout-Settle nochmal (Umbruch/Schriftmaße)
     // Nach dem generator-eigenen loadAutoSave (~900ms) die Profil-Config anwenden + same-origin erzwingen.
     setTimeout(loadActiveProfileConfig, 1200);
+    // Ampel initial füllen: einmal prüfen, sobald Editoren + Config stehen (~1,9 s).
+    setTimeout(function () {
+      try {
+        if (typeof runFullHealthCheck === 'function') runFullHealthCheck();
+        else if (typeof window._lastHealthCriticalCount !== 'undefined')
+          updateHealthBadge(window._lastHealthCriticalCount || 0, window._lastHealthWarnCount || 0);
+      } catch (e) {}
+    }, 1900);
   });
 
   window.addEventListener('beforeunload', function (e) {
