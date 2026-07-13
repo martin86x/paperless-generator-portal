@@ -74,9 +74,11 @@
   }
 
   function showProductiveBanner(name, color, readonly) {
+    var head = document.getElementById('plx-portal-head');
+    if (!head) return; // Kopf wird von buildNav() erzeugt; Banner lebt darin
     var b = document.getElementById('plx-prod-banner');
-    if (!b) { b = document.createElement('div'); b.id = 'plx-prod-banner'; document.body.insertBefore(b, document.body.firstChild); }
-    b.style.cssText = 'position:sticky;top:0;z-index:2147483646;background:' + (color || '#b91c1c') + ';color:#fff;text-align:center;padding:6px 12px;font-size:13px;font-weight:600;letter-spacing:.3px;font-family:system-ui,sans-serif;';
+    if (!b) { b = document.createElement('div'); b.id = 'plx-prod-banner'; head.insertBefore(b, head.firstChild); }
+    b.style.cssText = 'background:' + (color || '#b91c1c') + ';color:#fff;text-align:center;padding:6px 12px;font-size:13px;font-weight:600;letter-spacing:.3px;font-family:system-ui,sans-serif;';
     b.textContent = '⚠ PRODUKTIV: ' + (name || '') + ' — Änderungen wirken auf das Live-System' + (readonly ? ' · nur lesen' : '');
   }
   function removeProductiveBanner() {
@@ -103,10 +105,16 @@
   }
 
   function buildNav() {
-    if (document.getElementById('plx-portal-nav')) return;
+    if (document.getElementById('plx-portal-head')) return;
+    // Voller Kopf im normalen Fluss (sticky) -> schiebt den Generator-Inhalt nach unten,
+    // statt ihn zu ueberdecken. Produktiv-Banner (falls) lebt oben im selben Kopf.
+    var head = document.createElement('div');
+    head.id = 'plx-portal-head';
+    head.style.cssText = 'position:sticky;top:0;z-index:2147483647;width:100%;font-family:system-ui,sans-serif';
+
     var n = document.createElement('div');
     n.id = 'plx-portal-nav';
-    n.style.cssText = 'position:fixed;top:8px;right:10px;z-index:2147483647;display:flex;gap:6px;align-items:center;font-family:system-ui,sans-serif';
+    n.style.cssText = 'display:flex;gap:8px;align-items:center;flex-wrap:wrap;width:100%;box-sizing:border-box;background:#171a21;border-bottom:1px solid #2b303b;padding:7px 12px';
 
     var sel = document.createElement('select');
     sel.id = 'plx-profile-sel';
@@ -125,15 +133,20 @@
     dirty.title = 'Es gibt ungespeicherte Änderungen in diesem Profil';
     dirty.style.cssText = 'display:none;color:#f59e0b;font-size:12px;font-weight:600'; n.appendChild(dirty);
 
+    var spacer = document.createElement('span');
+    spacer.style.cssText = 'flex:1 1 auto'; n.appendChild(spacer); // drueckt Verwaltung/Logout nach rechts
+
     var mk = function (h, txt, col) {
       var a = document.createElement('a');
       a.href = h; a.textContent = txt;
-      a.style.cssText = 'background:#1f232c;color:' + col + ';border:1px solid #2b303b;border-radius:6px;padding:5px 10px;font-size:12px;text-decoration:none';
+      a.style.cssText = 'background:#1f232c;color:' + col + ';border:1px solid #2b303b;border-radius:6px;padding:5px 10px;font-size:12px;text-decoration:none;white-space:nowrap';
       return a;
     };
     n.appendChild(mk(o + '/verwaltung', '⚙ Verwaltung', '#60a5fa'));
     n.appendChild(mk(o + '/logout', 'Logout', '#9aa4b2'));
-    document.body.appendChild(n);
+
+    head.appendChild(n);
+    document.body.insertBefore(head, document.body.firstChild);
   }
 
   function tameSection01() {
@@ -142,17 +155,31 @@
     var b = document.createElement('div');
     b.id = 'plx-portal-note';
     b.style.cssText = 'margin:.2rem 0 1rem;padding:.7rem .95rem;background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.4);border-radius:8px;font-size:.82rem;color:#bcd3ff;line-height:1.5';
-    b.appendChild(document.createTextNode('🔌 Portal-Modus: Die Verbindung zu Paperless läuft automatisch über den Portal-Proxy (same-origin, kein CORS). URL und Token musst du hier nicht eintragen — den Token verwaltest du je Profil unter '));
+    b.appendChild(document.createTextNode('🔌 Portal-Modus: Die Verbindung zu Paperless läuft automatisch über den Portal-Proxy (same-origin, kein CORS). URL und Token verwaltest du je Instanz unter '));
     var la = document.createElement('a');
-    la.href = o + '/profiles'; la.textContent = 'Profile'; la.style.cssText = 'color:#60a5fa;font-weight:700;text-decoration:underline';
+    la.href = o + '/verwaltung?tab=profiles'; la.textContent = 'Profile'; la.style.cssText = 'color:#60a5fa;font-weight:700;text-decoration:underline';
     b.appendChild(la);
-    b.appendChild(document.createTextNode('. Die übrigen Felder brauchst du nur für einzelne Funktionen — z. B. die Benachrichtigungs-E-Mail für die Frist-Workflows (Erinnerungen) oder IP/Pfade für den optionalen Bash-Skript-Export.'));
+    b.appendChild(document.createTextNode('. Hier unten bleibt nur, was der Generator wirklich braucht — v. a. die Erinnerungs-E-Mail für die Frist-Workflows.'));
     var h = sc.querySelector('h2');
     if (h) sc.insertBefore(b, h.nextSibling); else sc.insertBefore(b, sc.firstChild);
 
     var st = document.getElementById('setup-steps'); if (st) st.style.display = 'none';
-    var tk = document.getElementById('inp-token'); if (tk) tk.placeholder = '— im Portal nicht nötig (Proxy spritzt den Token ein) —';
-    var tw = document.getElementById('token-warn'); if (tw) tw.style.display = 'none';
+
+    // Im Portal-Modus wirkungslose Verbindungs-/Bash-Felder ausblenden (Proxy übernimmt die
+    // Verbindung; IP/Pfade nur für den optionalen Bash-Export). Sichtbar bleiben
+    // Benachrichtigungs-E-Mail + Paperless-Version.
+    ['inp-host', 'inp-token', 'inp-ip', 'inp-user', 'inp-base-path', 'inp-dc-path'].forEach(function (id) {
+      var el = document.getElementById(id);
+      var fg = el && el.closest('.field-group');
+      if (fg) fg.style.display = 'none';
+    });
+    // Preset laden/speichern (URL/Token) + Token-.env-Hinweis raus
+    sc.querySelectorAll('[onchange*="loadConnectionPreset"], [onclick*="saveConnectionPreset"]').forEach(function (el) {
+      var w = el.closest('label') || el; if (w && w.style) w.style.display = 'none';
+    });
+    Array.prototype.forEach.call(sc.querySelectorAll('div'), function (d) {
+      if (d.children.length <= 1 && d.textContent.indexOf('Token-Feld leer lassen') >= 0) d.style.display = 'none';
+    });
 
     // Benachrichtigungs-E-Mail als Pflichtfeld (fuer die Frist-Workflows)
     var em = document.getElementById('inp-notify-email');
