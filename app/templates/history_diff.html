@@ -1,0 +1,60 @@
+{% extends layout %}
+{% block content %}
+<div style="border:1px solid var(--border);border-radius:8px;padding:12px 14px;background:var(--bg2)">
+  <div style="font-size:13px;color:var(--text);margin-bottom:8px">Vergleich: Snapshot vom <strong>{{ label }}</strong> ↔ aktueller Stand</div>
+
+  {% if not rows %}
+    <p class="hint" style="margin:0">Keine vergleichbaren Kategorien im Snapshot.</p>
+  {% elif not any_change %}
+    <div class="msg ok" style="margin:0">✓ Identisch — der Snapshot entspricht exakt dem aktuellen Stand. Ein Wiederherstellen würde nichts ändern.</div>
+  {% else %}
+  <form method="post" action="{{ url_for('profiles_history_restore', pid=pid, ts=ts) }}"
+        onsubmit="return confirm('Ausgewählte Kategorien auf den Stand vom {{ label }} zurücksetzen? Der aktuelle Stand wird vorher gesichert.');">
+    <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+      <thead>
+        <tr style="text-align:left;color:var(--text-dim)">
+          <th style="padding:4px 6px;width:22px"></th>
+          <th style="padding:4px 6px">Kategorie</th>
+          <th style="padding:4px 6px;text-align:right">Snapshot</th>
+          <th style="padding:4px 6px;text-align:right">aktuell</th>
+          <th style="padding:4px 6px">Wiederherstellen bewirkt</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for r in rows %}
+        <tr style="border-top:1px solid var(--border)">
+          <td style="padding:6px">
+            {% if r.changed %}<input type="checkbox" name="keys" value="{{ r.key }}" checked style="width:auto">{% else %}<span style="color:var(--text-dim)">—</span>{% endif %}
+          </td>
+          <td style="padding:6px;color:var(--text)">{{ r.label }}</td>
+          <td style="padding:6px;text-align:right;font-family:monospace">{{ r.snap }}</td>
+          <td style="padding:6px;text-align:right;font-family:monospace">{{ r.cur }}</td>
+          <td style="padding:6px">
+            {% if not r.changed %}<span style="color:var(--text-dim)">unverändert</span>{% else %}
+              {% if r.added %}<span style="color:var(--ok)">+{{ r.added|length }} zurück</span>{% endif %}
+              {% if r.added and r.removed %} · {% endif %}
+              {% if r.removed %}<span style="color:var(--err)">−{{ r.removed|length }} entfernt</span>{% endif %}
+            {% endif %}
+          </td>
+        </tr>
+        {% if r.changed and (r.added or r.removed) %}
+        <tr style="border:0"><td></td><td colspan="4" style="padding:0 6px 6px;color:var(--text-dim);font-size:11.5px">
+          {% if r.added %}<div><span style="color:var(--ok)">zurück:</span> {{ r.added[:12]|join(', ') }}{% if r.added|length > 12 %} …+{{ r.added|length - 12 }}{% endif %}</div>{% endif %}
+          {% if r.removed %}<div><span style="color:var(--err)">weg:</span> {{ r.removed[:12]|join(', ') }}{% if r.removed|length > 12 %} …+{{ r.removed|length - 12 }}{% endif %}</div>{% endif %}
+        </td></tr>
+        {% endif %}
+      {% endfor %}
+      </tbody>
+    </table>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+      <button type="submit" style="width:auto;margin:0;padding:7px 13px;font-size:12.5px">↩ Ausgewählte wiederherstellen</button>
+    </div>
+  </form>
+
+  <form method="post" action="{{ url_for('profiles_history_restore', pid=pid, ts=ts) }}" style="margin-top:6px"
+        onsubmit="return confirm('KOMPLETTEN Snapshot vom {{ label }} wiederherstellen? Ersetzt die gesamte Konfiguration dieses Profils. Der aktuelle Stand wird vorher gesichert.');">
+    <button type="submit" style="width:auto;margin:0;padding:6px 12px;font-size:12px;background:var(--bg3);border:1px solid var(--border);color:var(--text-dim)">↩ Alles wiederherstellen (kompletter Snapshot)</button>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}

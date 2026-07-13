@@ -142,14 +142,16 @@
     {% if p.history %}
     <details style="margin-top:8px">
       <summary style="cursor:pointer;color:var(--text-dim);font-size:13px">Versionshistorie ({{ p.history|length }})</summary>
-      <p class="hint">Bei jedem „Profil speichern" wird der vorige Stand gesichert. Wiederherstellen sichert den aktuellen Stand vorher.</p>
+      <p class="hint">Bei jedem „Profil speichern" wird der vorige Stand gesichert. „Vergleichen" zeigt, was ein Wiederherstellen ändern würde — du kannst einzelne Kategorien auswählen. Der aktuelle Stand wird vor dem Wiederherstellen automatisch gesichert.</p>
       {% for h in p.history %}
-      <form method="post" action="{{ url_for('profiles_history_restore', pid=p.id, ts=h.ts) }}"
-            style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:4px 0"
-            onsubmit="return confirm('Konfiguration auf den Stand vom {{ h.label }} zurücksetzen?');">
-        <span style="font-size:12.5px;color:var(--text-dim);font-family:monospace">{{ h.label }}</span>
-        <button type="submit" style="width:auto;margin:0;padding:5px 10px;font-size:12px;background:var(--bg3);border:1px solid var(--border)">↩ Wiederherstellen</button>
-      </form>
+      <div style="margin:4px 0;border-top:1px solid var(--border);padding-top:6px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+          <span style="font-size:12.5px;color:var(--text-dim);font-family:monospace">{{ h.label }}</span>
+          <button type="button" onclick="plxDiff('{{ p.id }}','{{ h.ts }}',this)"
+                  style="width:auto;margin:0;padding:5px 10px;font-size:12px;background:var(--bg3);border:1px solid var(--border)">🔍 Vergleichen</button>
+        </div>
+        <div class="plx-diff" id="diff-{{ p.id }}-{{ h.ts }}" style="display:none;margin-top:8px"></div>
+      </div>
       {% endfor %}
     </details>
     {% endif %}
@@ -167,5 +169,15 @@
 </div>
 <script>
 function plxFilter(q){q=(q||'').toLowerCase();document.querySelectorAll('.plx-profile-card').forEach(function(c){c.style.display=(c.getAttribute('data-pname')||'').indexOf(q)>=0?'':'none';});}
+function plxDiff(pid,ts,btn){
+  var box=document.getElementById('diff-'+pid+'-'+ts);
+  if(!box) return;
+  if(box.style.display!=='none'){box.style.display='none';btn.textContent='🔍 Vergleichen';return;}
+  btn.textContent='… lädt';
+  fetch('/profiles/'+pid+'/history/'+ts+'/diff?embed=1',{credentials:'same-origin'})
+    .then(function(r){return r.text();})
+    .then(function(html){box.innerHTML=html;box.style.display='block';btn.textContent='▲ Schließen';})
+    .catch(function(){box.innerHTML='<div class="msg err">Vergleich konnte nicht geladen werden.</div>';box.style.display='block';btn.textContent='🔍 Vergleichen';});
+}
 </script>
 {% endblock %}

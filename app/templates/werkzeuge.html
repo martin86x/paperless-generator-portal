@@ -18,7 +18,7 @@
     {% set items = [
       ('Ohne Dokumenttyp', d.counts.no_type, '/documents/?document_type__isnull=1'),
       ('Ohne Korrespondent', d.counts.no_corr, '/documents/?correspondent__isnull=1'),
-      ('Ohne ASN', d.counts.no_asn, '/documents/?archive_serial_number__isnull=1'),
+      ('Dokumente ohne ASN-Nummer', d.counts.no_asn, '/documents/?archive_serial_number__isnull=1'),
       ('Im Posteingang', d.counts.inbox, '/documents/?is_in_inbox=1')
     ] %}
     {% for label, val, path in items %}
@@ -33,8 +33,9 @@
   </div>
 
   <!-- ASN -->
-  <div class="card" style="margin-top:14px">
-    <h2 style="margin-top:0">ASN-Lücken</h2>
+  <div class="card" style="margin-top:14px;border:1px solid var(--accent2)">
+    <h2 style="margin-top:0">🔢 ASN-Lücken finden</h2>
+    <p class="hint" style="margin-top:0">Fehlende Nummern in der laufenden ASN-Folge — z. B. wenn 100 und 102 vergeben sind, aber <strong>101 fehlt</strong>. (Nicht zu verwechseln mit „Dokumente ohne ASN-Nummer" oben — das sind Dokumente, denen noch gar keine ASN zugewiesen wurde.)</p>
     {% if d.asn is none %}
       <p class="hint" style="margin:0">Nicht abrufbar.</p>
     {% elif d.asn.count == 0 %}

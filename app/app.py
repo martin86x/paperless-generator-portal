@@ -55,7 +55,30 @@ SITE_DIR = os.environ.get("SITE_DIR", os.path.join(os.path.dirname(__file__), "s
 DEFAULT_ADMIN_USER = "admin"
 DEFAULT_ADMIN_PASS = "admin"
 
-PORTAL_VERSION = "1.0"                       # Portal-Release (Profil-System)
+def _read_version():
+    """Portal-Release aus app/VERSION lesen (Fallback '1.0')."""
+    try:
+        with open(os.path.join(os.path.dirname(__file__), "VERSION"), encoding="utf-8") as fh:
+            return fh.read().strip() or "1.0"
+    except OSError:
+        return "1.0"
+
+
+def _build_stamp():
+    """Deploy-Commit (sha + Datum), beim Rebuild nach $CONFIG_DIR/build_stamp.txt geschrieben.
+    Datei-Format: '<sha> <YYYY-MM-DD>'. Fehlt sie -> None. Zeigt an, welcher Commit wirklich
+    laeuft (der Container hat kein git; der Rebuild-Befehl/Host-Helper legt den Stamp ab)."""
+    try:
+        with open(os.path.join(CONFIG_DIR, "build_stamp.txt"), encoding="utf-8") as fh:
+            parts = fh.read().strip().split()
+        if parts:
+            return {"sha": parts[0], "date": parts[1] if len(parts) > 1 else ""}
+    except OSError:
+        pass
+    return None
+
+
+PORTAL_VERSION = _read_version()             # Portal-Release (app/VERSION)
 GITHUB_REPO = "martin86x/paperless-generator-portal"
 
 # Hop-by-hop-Header + solche, die requests bereits aufloest (Content-Encoding/-Length),
@@ -97,14 +120,20 @@ def save_config(cfg):
     os.replace(tmp, CONFIG_PATH)
 
 
-def _log_activity(kind, message):
-    """Append-only Aktivitaetsprotokoll (wann/was/Ergebnis) in /config/activity.log."""
+def _log_activity(kind, message, level="info", detail=None):
+    """Append-only Aktivitaetsprotokoll (wann/was/Ergebnis) in /config/activity.log.
+
+    level: info|ok|warn|err (fuer Einfaerbung im Protokoll). detail: optionaler
+    Langtext (aus-/einklappbar). Rueckwaertskompatibel — Altzeilen ohne level/detail
+    werden als 'info' ohne Detail angezeigt."""
     try:
         os.makedirs(CONFIG_DIR, exist_ok=True)
-        line = json.dumps({"ts": datetime.now().isoformat(timespec="seconds"),
-                           "kind": kind, "msg": message}, ensure_ascii=False)
+        rec = {"ts": datetime.now().isoformat(timespec="seconds"),
+               "kind": kind, "msg": message, "level": level}
+        if detail:
+            rec["detail"] = detail
         with open(ACTIVITY_PATH, "a", encoding="utf-8") as fh:
-            fh.write(line + "\n")
+            fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
     except OSError:
         pass
 
@@ -356,12 +385,54 @@ app.config.update(
     SESSION_REFRESH_EACH_REQUEST=True,       # gleitend: aktive Nutzung haelt die Session am Leben
 )
 
-PUBLIC_ENDPOINTS = {"login", "healthz", "static"}
+PUBLIC_ENDPOINTS = {"login", "login_recovery", "healthz", "static"}
 
 # ── Login-Rate-Limit (in-memory, pro IP) ──────────────────────────────────────
 _login_fails = {}
 LOGIN_MAX = 5
 LOGIN_WINDOW = 300  # Sekunden
+
+
+# ── Recovery-Codes (Passwort-Rückweg ohne E-Mail) ────────────────────────────
+# 10 Einmal-Codes; nur ihre Hashes liegen in config.json. Login per Code verbraucht
+# den getroffenen Code. Neu erzeugen (eingeloggt) macht alle alten ungültig.
+RECOVERY_CODE_COUNT = 10
+
+
+def _norm_recovery(code):
+    return (code or "").replace("-", "").replace(" ", "").strip().lower()
+
+
+def _gen_recovery_codes():
+    """Lesbare Einmal-Codes im Format xxxx-xxxx-xxxx (Hex). Rueckgabe: Klartext-Liste."""
+    out = []
+    for _ in range(RECOVERY_CODE_COUNT):
+        raw = secrets.token_hex(6)  # 12 Hex-Zeichen
+        out.append("%s-%s-%s" % (raw[0:4], raw[4:8], raw[8:12]))
+    return out
+
+
+def _set_recovery_codes(cfg, codes):
+    cfg["recovery_codes"] = [generate_password_hash(_norm_recovery(c)) for c in codes]
+    cfg["recovery_generated_at"] = datetime.now().isoformat(timespec="seconds")
+
+
+def _recovery_remaining(cfg=None):
+    return len((cfg or load_config()).get("recovery_codes") or [])
+
+
+def _consume_recovery_code(cfg, code):
+    """Code gegen gespeicherte Hashes pruefen; bei Treffer Hash entfernen -> True."""
+    norm = _norm_recovery(code)
+    if not norm:
+        return False
+    hashes = cfg.get("recovery_codes") or []
+    for i, h in enumerate(hashes):
+        if check_password_hash(h, norm):
+            hashes.pop(i)
+            cfg["recovery_codes"] = hashes
+            return True
+    return False
 
 
 def _login_blocked(ip):
@@ -485,11 +556,14 @@ def login():
             _login_fails.pop(ip, None)
             session.permanent = True
             session["logged_in"] = True
+            _log_activity("login", "Anmeldung erfolgreich", level="ok", detail="IP %s" % ip)
             # Erst-Einrichtung (Default-Passwort aktiv) -> gefuehrter Wizard.
             if cfg.get("is_default_pw"):
                 return redirect(url_for("wizard"))
             return redirect(url_for("index"))
         _login_note_fail(ip)
+        _log_activity("login", "Fehlgeschlagene Anmeldung", level="warn",
+                      detail="Benutzer '%s', IP %s" % (user, ip))
         error = "Falscher Benutzername oder falsches Passwort."
     return render_template("login.html", error=error)
 
@@ -498,6 +572,37 @@ def login():
 def logout():
     session.clear()
     return redirect(url_for("login"))
+
+
+@app.route("/login/recovery", methods=["GET", "POST"])
+def login_recovery():
+    """Anmeldung mit einem Recovery-Code, wenn das Passwort vergessen wurde. Der getroffene
+    Code wird verbraucht; danach soll der Nutzer im Konto ein neues Passwort setzen."""
+    error = None
+    if request.method == "POST":
+        ip = request.remote_addr or "?"
+        if _login_blocked(ip):
+            return render_template("login_recovery.html",
+                                   error="Zu viele Fehlversuche. Bitte einige Minuten warten."), 429
+        cfg = load_config()
+        user = request.form.get("username", "")
+        code = request.form.get("code", "")
+        if user == cfg.get("admin_user") and _consume_recovery_code(cfg, code):
+            save_config(cfg)
+            _login_fails.pop(ip, None)
+            session.permanent = True
+            session["logged_in"] = True
+            remaining = _recovery_remaining(cfg)
+            _log_activity("recovery", "Anmeldung per Recovery-Code", level="warn",
+                          detail="IP %s · verbleibende Codes: %d" % (ip, remaining))
+            return redirect(url_for("verwaltung", tab="konto",
+                                    msg="Mit Recovery-Code angemeldet — bitte jetzt ein neues "
+                                        "Passwort setzen. (%d Codes übrig)" % remaining))
+        _login_note_fail(ip)
+        _log_activity("recovery", "Recovery-Code abgelehnt", level="warn",
+                      detail="Benutzer '%s', IP %s" % (user, ip))
+        error = "Benutzername oder Code ist falsch."
+    return render_template("login_recovery.html", error=error)
 
 
 def _test_paperless(url, token):
@@ -669,7 +774,31 @@ def settings():
         save_config(cfg)
         return _back(msg="Passwort geändert.")
     return render_template("settings.html", is_default_pw=cfg.get("is_default_pw", False),
+                           recovery_remaining=_recovery_remaining(cfg),
+                           recovery_at=cfg.get("recovery_generated_at"),
                            msg=request.args.get("msg"), err=request.args.get("err"))
+
+
+@app.route("/verwaltung/recovery/generate", methods=["POST"])
+def recovery_generate():
+    """10 neue Recovery-Codes erzeugen (Re-Auth mit aktuellem Passwort). Klartext wird EINMALIG
+    angezeigt (danach nur noch Hashes gespeichert); alle vorher erzeugten Codes werden ungültig."""
+    cfg = load_config()
+    if not check_password_hash(cfg["admin_pw_hash"], request.form.get("current", "")):
+        return redirect(url_for("verwaltung", tab="konto",
+                                err="Aktuelles Passwort ist falsch — keine Codes erzeugt."))
+    codes = _gen_recovery_codes()
+    _set_recovery_codes(cfg, codes)
+    save_config(cfg)
+    _log_activity("recovery", "Recovery-Codes neu erzeugt (%d)" % len(codes), level="warn",
+                  detail="Alle vorher erzeugten Codes sind jetzt ungültig.")
+    # Klartext nur dieses eine Mal — Seite direkt rendern (kein Redirect, sonst weg).
+    return render_template("settings.html", is_default_pw=cfg.get("is_default_pw", False),
+                           recovery_remaining=len(codes),
+                           recovery_at=cfg.get("recovery_generated_at"),
+                           new_codes=codes,
+                           msg="10 Recovery-Codes erzeugt — jetzt sichern! Sie werden nur "
+                               "dieses eine Mal angezeigt.", err=None)
 
 
 @app.route("/")
@@ -760,8 +889,13 @@ def update_page():
         gh_err = "GitHub nicht erreichbar."
     # Der „innere" Befehl laeuft direkt auf der LXC-Shell; der volle wickelt ihn in
     # `pct exec <CTID> -- bash -c '…'` fuer die Proxmox-Host-Shell.
+    # Nach dem Reset (vor dem Build) den laufenden Commit als Stamp ins config-Volume
+    # schreiben — so zeigt der Version-Reiter, WELCHER Commit wirklich deployt ist.
+    stamp_cmd = ("printf '%s %s' \"$(git rev-parse --short HEAD)\" "
+                 "\"$(git show -s --format=%cd --date=short)\" > config/build_stamp.txt")
     inner_cmd = ("cd /opt/paperless-generator-portal && git fetch origin main && "
-                 "git reset --hard origin/main && docker compose up -d --build")
+                 "git reset --hard origin/main && " + stamp_cmd + " && "
+                 "docker compose up -d --build")
     full_cmd = "pct exec %s -- bash -c '%s'" % (lxc_id or "<CTID>", inner_cmd)
     upd_status = None
     try:
@@ -777,6 +911,7 @@ def update_page():
     return render_template("update.html", version=PORTAL_VERSION, latest=latest,
                            gh_err=gh_err, inner_cmd=inner_cmd, full_cmd=full_cmd,
                            lxc_id=lxc_id, repo=GITHUB_REPO, oneclick=oneclick,
+                           build_stamp=_build_stamp(),
                            msg=request.args.get("msg"), err=request.args.get("err"))
 
 
@@ -940,7 +1075,10 @@ def verwaltung_overview():
         ref = PROFILES_PATH if os.path.exists(PROFILES_PATH) else None
     last_backup = datetime.fromtimestamp(os.path.getmtime(ref)).strftime("%d.%m.%Y %H:%M") if ref else "—"
     _wc = _watcher_cfg()
-    portal = {"version": PORTAL_VERSION, "config_size": _fmt_size(_dir_size(CONFIG_DIR)),
+    _stamp = _build_stamp()
+    portal = {"version": PORTAL_VERSION,
+              "build": ("%s%s" % (_stamp["sha"], " · " + _stamp["date"] if _stamp["date"] else "")) if _stamp else "",
+              "config_size": _fmt_size(_dir_size(CONFIG_DIR)),
               "last_backup": last_backup,
               "watcher_on": _wc["enabled"], "watcher_last": _fmt_rel_ts(_watcher_state.get("last_run")),
               "watcher_alerts": len(_watcher_state.get("alerts_active") or ())}
@@ -1254,6 +1392,7 @@ _watcher_state = {
     "last_metrics": None,  # Unix-ts der letzten Kennzahl-Erfassung (Trends, gedrosselt)
     "last_digest": None,   # 'YYYY-MM-DD' des zuletzt gesendeten Tages-Digests
     "last_heartbeat": None,  # Unix-ts des letzten Heartbeat-Pings
+    "last_webhook": None,  # {ts, ok, detail, event} — letzte Webhook-Zustellung (Diagnose)
 }
 _watcher_started = False
 _watcher_lock_fh = None
@@ -1401,11 +1540,13 @@ def _maybe_alert(prof, pid, c):
             title = "Paperless-Wächter: %s (%s)" % (c["label"], name)
             _dispatch_notification(prof, c["event"], title, c["detail"])
             _fire_webhook(c["event"], name, "bad", c["detail"])
-            _log_activity("watcher", "Alarm %s/%s: %s" % (name, c["event"], c["detail"]))
+            _log_activity("watcher", "Alarm: %s (%s)" % (c["label"], name),
+                          level="err", detail=c["detail"])
     elif c["status"] == "ok" and key in active:
         active.discard(key)
         _fire_webhook(c["event"], name, "ok", "Entwarnung: " + c["detail"])
-        _log_activity("watcher", "Entwarnung %s/%s" % (name, c["event"]))
+        _log_activity("watcher", "Entwarnung: %s (%s)" % (c["label"], name),
+                      level="ok", detail=c["detail"])
 
 
 def _metrics_path(pid):
@@ -1584,8 +1725,17 @@ def _fire_webhook(event, profile, status, detail, wc=None):
     }
     try:
         r = requests.post(wc["url"], json=payload, timeout=10)
-        return (r.status_code < 400), "HTTP %d" % r.status_code
+        body = " ".join((r.text or "").split())[:200]   # Antwort-Body (gekuerzt) fuer Diagnose
+        ok = r.status_code < 400
+        out = "HTTP %d%s" % (r.status_code, (" · " + body) if body else "")
+        _watcher_state["last_webhook"] = {"ts": time.time(), "ok": ok, "detail": out, "event": event}
+        _log_activity("webhook", "Webhook %s (Ereignis: %s)" % ("gesendet" if ok else "abgelehnt", event),
+                      level=("ok" if ok else "err"), detail="%s\n%s" % (wc["url"], out))
+        return ok, out
     except requests.RequestException as exc:
+        _watcher_state["last_webhook"] = {"ts": time.time(), "ok": False, "detail": str(exc), "event": event}
+        _log_activity("webhook", "Webhook nicht erreichbar (Ereignis: %s)" % event,
+                      level="err", detail="%s\n%s" % (wc["url"], exc))
         return False, str(exc)
 
 
@@ -1729,9 +1879,14 @@ def waechter():
         "last_heartbeat": _fmt_rel_ts(_watcher_state.get("last_heartbeat")),
         "last_digest": _watcher_state.get("last_digest") or "—",
     }
+    lw = _watcher_state.get("last_webhook")
+    webhook_last = None
+    if lw:
+        webhook_last = {"ok": lw.get("ok"), "detail": lw.get("detail"),
+                        "event": lw.get("event"), "ts": _fmt_rel_ts(lw.get("ts"))}
     return render_template(
         "waechter.html", w=wc, wh=_webhook_cfg(), events=_NOTIFY_EVENTS,
-        results=results, status=status,
+        results=results, status=status, webhook_last=webhook_last,
         msg=request.args.get("msg"), err=request.args.get("err"))
 
 
@@ -2063,7 +2218,11 @@ def anwenden_post():
     _save_undo(aid, created)
     _log_activity("apply", "Anwenden auf %s: %d angelegt%s"
                   % (act.get("name"), len(created),
-                     (", %d Fehler" % len(errors)) if errors else ""))
+                     (", %d Fehler" % len(errors)) if errors else ""),
+                  level=("warn" if errors else "ok"),
+                  detail=("Angelegt:\n" + "\n".join("· %s (%s)" % (c["name"], c["endpoint"]) for c in created)
+                          + (("\n\nFehler:\n" + "\n".join("· " + e for e in errors)) if errors else ""))
+                  if created or errors else None)
     return render_template("anwenden_done.html", created=created, errors=errors, active=act)
 
 
@@ -2170,6 +2329,72 @@ def profiles_import():
     return redirect(url_for("verwaltung", tab="profiles", msg="Profile importiert (vorheriger Stand gesichert)."))
 
 
+# Kategorien der generator_config fuer Historie-Diff/selektiven Restore (Schluessel wie im
+# Generator-Export). Gekoppelte Nebenschluessel werden beim Restore mitgezogen.
+_CFG_DIFF_CATS = [
+    ("tags", "Tags"),
+    ("types", "Dokumenttypen"),
+    ("fields", "Benutzerdef. Felder"),
+    ("correspondents", "Korrespondenten"),
+    ("storagePaths", "Speicherpfade"),
+    ("workflows", "Arbeitsabläufe"),
+    ("fristConfigs", "Frist-Erinnerungen"),
+]
+_CFG_DIFF_COUPLED = {"tags": "tagMatch", "fields": "fieldGroups"}
+
+
+def _cfg_names(gc, key):
+    """Menge der Anzeigenamen (lowercase) einer Kategorie. Tags flach (Eltern + Kinder)."""
+    gc = gc or {}
+    out = set()
+    if key == "tags":
+        for par in (gc.get("tags") or []):
+            if isinstance(par, dict) and par.get("name"):
+                out.add(par["name"].strip().lower())
+                for ch in (par.get("children") or []):
+                    if isinstance(ch, dict) and ch.get("name"):
+                        out.add(ch["name"].strip().lower())
+        return out
+    for e in (gc.get(key) or []):
+        if isinstance(e, dict):
+            nm = e.get("name") or e.get("label") or e.get("title")
+            if nm:
+                out.add(str(nm).strip().lower())
+    return out
+
+
+def _history_diff_rows(cur, snap):
+    """Pro Kategorie: was ein Restore hinzufuegen (added) bzw. entfernen (removed) wuerde."""
+    rows = []
+    for key, label in _CFG_DIFF_CATS:
+        c = _cfg_names(cur, key)
+        s = _cfg_names(snap, key)
+        if not (c or s):
+            continue
+        added = sorted(s - c)    # im Snapshot, nicht aktuell -> kaemen durch Restore zurueck
+        removed = sorted(c - s)  # aktuell, nicht im Snapshot -> wuerden durch Restore entfernt
+        rows.append({"key": key, "label": label, "cur": len(c), "snap": len(s),
+                     "added": added, "removed": removed, "changed": bool(added or removed)})
+    return rows
+
+
+@app.route("/profiles/<pid>/history/<ts>/diff")
+def profiles_history_diff(pid, ts):
+    """Fragment: Vergleich eines Snapshots mit dem aktuellen Stand + Auswahl zum Restore."""
+    profs = load_profiles()
+    if pid not in profs:
+        return Response("Profil nicht gefunden", status=404)
+    path = os.path.join(_history_dir(pid), ts + ".json")
+    if not os.path.exists(path):
+        return Response("Snapshot nicht gefunden", status=404)
+    with open(path, encoding="utf-8") as fh:
+        snap = json.load(fh)
+    rows = _history_diff_rows(profs[pid].get("generator_config") or {}, snap)
+    return render_template("history_diff.html", pid=pid, ts=ts, label=_fmt_ts(ts),
+                           rows=rows, name=profs[pid].get("name") or pid,
+                           any_change=any(r["changed"] for r in rows))
+
+
 @app.route("/profiles/<pid>/history/<ts>/restore", methods=["POST"])
 def profiles_history_restore(pid, ts):
     profs = load_profiles()
@@ -2179,11 +2404,33 @@ def profiles_history_restore(pid, ts):
     if not os.path.exists(path):
         return redirect(url_for("verwaltung", tab="profiles", err="Snapshot nicht gefunden."))
     with open(path, encoding="utf-8") as fh:
-        cfg = json.load(fh)
-    _snapshot_history(pid, profs[pid].get("generator_config"))  # aktuellen Stand sichern
-    profs[pid]["generator_config"] = cfg
+        snap = json.load(fh)
+    keys = [k for k in request.form.getlist("keys") if k in dict(_CFG_DIFF_CATS)]
+    _snapshot_history(pid, profs[pid].get("generator_config"))  # aktuellen Stand vorher sichern
+    if keys:
+        base = dict(profs[pid].get("generator_config") or {})
+        for k in keys:
+            if k in snap:
+                base[k] = snap[k]
+            else:
+                base.pop(k, None)  # Kategorie im Snapshot leer -> im Ziel leeren
+            coupled = _CFG_DIFF_COUPLED.get(k)   # z. B. tags -> tagMatch mitziehen
+            if coupled:
+                if coupled in snap:
+                    base[coupled] = snap[coupled]
+                else:
+                    base.pop(coupled, None)
+        profs[pid]["generator_config"] = _strip_conn(base)
+        note = "%d Kategorie(n)" % len(keys)
+        detail = "Kategorien: " + ", ".join(dict(_CFG_DIFF_CATS).get(k, k) for k in keys)
+    else:
+        profs[pid]["generator_config"] = _strip_conn(snap)  # komplett
+        note, detail = "komplett", "vollständiger Snapshot"
     save_profiles(profs)
-    return redirect(url_for("verwaltung", tab="profiles", msg="Snapshot vom %s wiederhergestellt." % _fmt_ts(ts)))
+    _log_activity("restore", "Snapshot vom %s wiederhergestellt (%s)" % (_fmt_ts(ts), note),
+                  detail=detail)
+    return redirect(url_for("verwaltung", tab="profiles",
+                            msg="Snapshot vom %s wiederhergestellt (%s)." % (_fmt_ts(ts), note)))
 
 
 @app.route("/profiles/<pid>/flags", methods=["POST"])
@@ -2216,7 +2463,8 @@ def profiles_connection(pid):
         gc["notifyEmail"] = request.form.get("notify_email", "").strip()
         profs[pid]["generator_config"] = gc
     save_profiles(profs)
-    _log_activity("connection", "Verbindung geaendert: %s" % (profs[pid].get("name") or pid))
+    _log_activity("connection", "Verbindung geändert: %s" % (profs[pid].get("name") or pid),
+                  detail="Ziel-URL: %s" % (profs[pid].get("paperless_url") or "—"))
     return redirect(url_for("verwaltung", tab="profiles", msg="Verbindung gespeichert."))
 
 
@@ -2298,7 +2546,8 @@ def proxy(path):  # noqa: ARG001 (path steckt schon in request.path)
     prof = active_profile()
     # ── Sicherheits-Riegel (unabhaengig vom Client) ──
     if _is_document_delete():
-        _log_activity("blocked", "Dokument-Loeschung geblockt: %s %s" % (request.method, request.path))
+        _log_activity("blocked", "Dokument-Löschung geblockt", level="warn",
+                      detail="%s %s" % (request.method, request.path))
         return Response("Gesperrt: Dokument-Loeschung ist im Portal nicht erlaubt.", status=403)
     if prof.get("readonly") and request.method in WRITE_METHODS:
         return Response("Profil ist auf 'nur lesen' gesetzt — Schreibzugriff gesperrt.", status=403)

@@ -93,7 +93,14 @@
       <label>Webhook-URL</label>
       <input type="url" name="webhook_url" value="{{ wh.url }}" placeholder="https://n8n.example.com/webhook/paperless">
       <p class="hint">Payload: <code>{source, event, profile, status, detail, ts, portal_version}</code>.</p>
+      <div class="callout warn" style="font-size:12px">⚠️ <strong>n8n-Stolperfalle:</strong> Der <em>Test</em>-Webhook-URL von n8n lauscht nur, solange der Workflow im Editor geöffnet ist und du „Listen for Test Event" geklickt hast. Für Dauerbetrieb den Workflow <strong>aktivieren</strong> und die <strong>Production-URL</strong> (<code>/webhook/…</code> statt <code>/webhook-test/…</code>) eintragen.</div>
       <button type="submit" name="action" value="webhook_now" style="width:auto;padding:8px 14px;font-size:13px;background:var(--bg3);border:1px solid var(--border)">Webhook testen</button>
+      {% if webhook_last %}
+      <div class="msg {{ 'ok' if webhook_last.ok else 'err' }}" style="margin-top:10px;color:var(--text)">
+        Letzte Zustellung ({{ webhook_last.ts }}, Ereignis „{{ webhook_last.event }}"): {{ '✓' if webhook_last.ok else '✗' }}
+        <div style="font-family:monospace;font-size:11.5px;color:var(--text-dim);margin-top:3px;word-break:break-word">{{ webhook_last.detail }}</div>
+      </div>
+      {% endif %}
     </div>
   </form>
 

@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Recovery-Code — Paperless Generator Portal{% endblock %}
+{% block header %}{% endblock %}
+{% block content %}
+<form class="card" method="post" autocomplete="off">
+  <h1>Anmelden mit Recovery-Code</h1>
+  <p class="sub">Passwort vergessen? Nutze einen deiner Einmal-Codes.</p>
+  {% if error %}<div class="msg err">{{ error }}</div>{% endif %}
+  <label for="username">Benutzername</label>
+  <input type="text" id="username" name="username" value="admin" autofocus>
+  <label for="code">Recovery-Code</label>
+  <input type="text" id="code" name="code" placeholder="xxxx-xxxx-xxxx" style="font-family:monospace">
+  <button type="submit">Mit Code anmelden</button>
+  <p class="hint">Der Code funktioniert genau einmal. Nach dem Login bitte sofort ein neues
+    Passwort im Konto setzen. <a class="link" href="{{ url_for('login') }}">← Zurück zur normalen Anmeldung</a></p>
+</form>
+{% endblock %}

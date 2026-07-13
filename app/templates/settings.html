@@ -23,5 +23,42 @@
     <input type="password" id="repeat" name="repeat">
     <button type="submit">Passwort ändern</button>
   </form>
+
+  <hr style="border:none;border-top:1px solid var(--border);margin:22px 0">
+
+  <h2>Recovery-Codes</h2>
+  <p class="hint" style="margin-top:0">Einmal-Codes für den Fall, dass du dein Passwort vergisst.
+    Mit einem Code kommst du auf der Anmeldeseite über „Passwort vergessen?" rein und setzt ein
+    neues Passwort. Jeder Code funktioniert genau einmal. <strong>Sicher aufbewahren</strong>
+    (Passwortmanager/ausgedruckt) — sie sind wie ein Ersatzschlüssel.</p>
+
+  {% if new_codes %}
+  <div class="msg ok" style="margin:0 0 8px">Diese 10 Codes jetzt sichern — sie werden <strong>nur dieses eine Mal</strong> angezeigt:</div>
+  <div id="rc-codes" style="font-family:monospace;font-size:15px;line-height:1.9;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:12px 14px;letter-spacing:.5px">
+    {% for c in new_codes %}<div>{{ c }}</div>{% endfor %}
+  </div>
+  <div style="display:flex;gap:8px;margin-top:8px">
+    <button type="button" onclick="rcCopy(this)" style="width:auto;margin:0;padding:7px 13px;font-size:13px">Kopieren</button>
+    <button type="button" onclick="rcDownload()" style="width:auto;margin:0;padding:7px 13px;font-size:13px;background:var(--bg3);border:1px solid var(--border)">Als .txt speichern</button>
+  </div>
+  <script>
+  function rcText(){return Array.prototype.map.call(document.querySelectorAll('#rc-codes div'),function(d){return d.textContent;}).join('\n');}
+  function rcCopy(b){navigator.clipboard.writeText(rcText()).then(function(){var o=b.textContent;b.textContent='✓ kopiert';setTimeout(function(){b.textContent=o;},1500);});}
+  function rcDownload(){var a=document.createElement('a');a.href='data:text/plain;charset=utf-8,'+encodeURIComponent('Paperless-Portal Recovery-Codes\n(je Code einmal gültig — sicher aufbewahren)\n\n'+rcText()+'\n');a.download='paperless-portal-recovery-codes.txt';a.click();}
+  </script>
+  {% else %}
+    {% if recovery_remaining and recovery_remaining > 0 %}
+      <p class="hint" style="margin-top:0"><strong style="color:var(--accent2)">{{ recovery_remaining }} von 10</strong> Codes noch gültig{% if recovery_at %} · erzeugt am {{ recovery_at.replace('T',' ') }}{% endif %}.</p>
+    {% else %}
+      <div class="msg err" style="margin:0 0 8px;color:var(--text)">⚠ Noch keine Recovery-Codes erzeugt — ohne Codes gibt es keinen Passwort-Rückweg außer einem Voll-Backup-Restore.</div>
+    {% endif %}
+  {% endif %}
+
+  <form method="post" action="{{ url_for('recovery_generate') }}" autocomplete="off" style="margin-top:10px"
+        onsubmit="return confirm('Neue Codes erzeugen? Alle bisher erzeugten Recovery-Codes werden dadurch ungültig.');">
+    <label for="rc-current">Aktuelles Passwort (zur Bestätigung)</label>
+    <input type="password" id="rc-current" name="current">
+    <button type="submit" style="background:var(--bg3);border:1px solid var(--border)">{{ '10 neue Codes erzeugen (alte ungültig)' if recovery_remaining else '10 Recovery-Codes erzeugen' }}</button>
+  </form>
 </div>
 {% endblock %}

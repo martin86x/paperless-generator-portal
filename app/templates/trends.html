@@ -5,9 +5,17 @@
 <div style="width:100%;max-width:560px">
   <div class="card">
     <h1 style="margin:0;font-size:18px">Trends</h1>
-    <p class="sub" style="margin:8px 0 0">Kennzahlen über Zeit. Erfassung läuft automatisch mit dem Wächter (max. ~1×/Stunde) — oder manuell hier.</p>
-    {% if msg %}<div class="msg ok">{{ msg }}</div>{% endif %}
-    {% if err %}<div class="msg err">{{ err }}</div>{% endif %}
+    <p class="sub" style="margin:8px 0 0">Wie sich deine Instanzen über die Zeit entwickeln.</p>
+    <details style="margin-top:10px">
+      <summary style="cursor:pointer;font-size:13px;color:var(--text)">❓ Was zeigt mir das?</summary>
+      <div style="margin-top:8px;font-size:13px;color:var(--text-dim);line-height:1.55">
+        <p style="margin:0 0 8px">Das Portal merkt sich in regelmäßigen Abständen ein paar Zahlen deiner Paperless-Instanz: <strong>wie viele Dokumente</strong> insgesamt, wie viele im <strong>Posteingang</strong>, wie viele <strong>ohne Typ</strong> bzw. <strong>ohne Korrespondent</strong>. Aus diesen Momentaufnahmen entsteht die Kurve — sie zeigt <strong>Wachstum und Aufräum-Fortschritt</strong>, statt nur den heutigen Stand.</p>
+        <p style="margin:0 0 8px">📈 Beispiel: Die Gesamt-Kurve steigt → es kommen laufend Dokumente rein. Der „ohne Typ"-Wert sinkt über Tage → dein Matching/Aufräumen greift.</p>
+        <p style="margin:0"><strong style="color:var(--text)">Woher die Daten?</strong> Der <a class="link" href="{{ url_for('verwaltung', tab='waechter') }}">Wächter</a> erfasst sie automatisch (höchstens ~1×/Stunde, rein lesend). Ist der Wächter aus, bleibt es leer — dann hier „Jetzt erfassen" nutzen. Eine sichtbare Kurve braucht mindestens 2 Messpunkte, aussagekräftig wird sie über Stunden/Tage.</p>
+      </div>
+    </details>
+    {% if msg %}<div class="msg ok" style="margin-top:10px">{{ msg }}</div>{% endif %}
+    {% if err %}<div class="msg err" style="margin-top:10px">{{ err }}</div>{% endif %}
     <form method="post" action="{{ url_for('trends') }}" style="margin-top:10px">
       <button type="submit" style="width:auto;padding:8px 14px;font-size:13px;background:var(--bg3);border:1px solid var(--border)">Jetzt erfassen</button>
     </form>

@@ -8,7 +8,7 @@
     <p class="sub">Aktueller Portal-Stand, Abgleich mit GitHub und der fertige Update-Befehl für deinen Container.</p>
     {% if msg %}<div class="msg ok">{{ msg }}</div>{% endif %}
     {% if err %}<div class="msg err">{{ err }}</div>{% endif %}
-    <p class="hint">Installierte Version: <strong style="color:var(--accent2)">v{{ version }}</strong></p>
+    <p class="hint">Installierte Version: <strong style="color:var(--accent2)">v{{ version }}</strong>{% if build_stamp %} · Stand: <code>{{ build_stamp.sha }}</code>{% if build_stamp.date %} vom {{ build_stamp.date }}{% endif %}{% else %} · <span style="color:var(--text-dim)">Deploy-Commit unbekannt (nach dem nächsten Rebuild sichtbar)</span>{% endif %}</p>
 
     <h2>Auf GitHub</h2>
     {% if gh_err %}

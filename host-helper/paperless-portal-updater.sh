@@ -33,6 +33,11 @@ write_status() { # action result commit detail
     "$1" "$2" "$3" "$(date -Iseconds)" "$4" > "$CFG/update-status.json"
 }
 
+write_stamp() { # Deploy-Commit fuer die Versions-Anzeige im Portal (config-Volume)
+  printf '%s %s' "$(git rev-parse --short HEAD)" \
+    "$(git show -s --format=%cd --date=short)" > "$CFG/build_stamp.txt" || true
+}
+
 PREV="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 
 if [ "$ACTION" = "rollback" ]; then
@@ -41,7 +46,7 @@ if [ "$ACTION" = "rollback" ]; then
     write_status rollback error "$PREV" "kein Rollback-Ziel gespeichert"
     exit 0
   fi
-  if git reset --hard "$TARGET" && docker compose up -d --build; then
+  if git reset --hard "$TARGET" && write_stamp && docker compose up -d --build; then
     write_status rollback ok "$(git rev-parse --short HEAD)" ""
   else
     write_status rollback error "$PREV" "Rebuild fehlgeschlagen"
@@ -49,7 +54,7 @@ if [ "$ACTION" = "rollback" ]; then
 else
   # Vor dem Update den aktuellen Commit als Rollback-Ziel merken:
   echo "$PREV" > "$CFG/update-rollback-to"
-  if git fetch origin main && git reset --hard origin/main && docker compose up -d --build; then
+  if git fetch origin main && git reset --hard origin/main && write_stamp && docker compose up -d --build; then
     write_status update ok "$(git rev-parse --short HEAD)" ""
   else
     write_status update error "$PREV" "Update/Rebuild fehlgeschlagen"
