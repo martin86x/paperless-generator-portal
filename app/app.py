@@ -437,6 +437,34 @@ def require_login():
     return None
 
 
+def _setup_complete():
+    """Setup gilt als abgeschlossen, wenn das Default-Passwort ersetzt wurde UND das aktive
+    Profil eine Verbindung (URL+Token) hat. Sonst -> gefuehrtes Onboarding erzwingen."""
+    try:
+        if load_config().get("is_default_pw"):
+            return False
+        p = active_profile()
+        return bool(p.get("paperless_url") and p.get("paperless_token"))
+    except (OSError, ValueError):
+        return False
+
+
+@app.before_request
+def require_setup():
+    """Solange das Onboarding nicht abgeschlossen ist, jeden Seiten-GET auf /wizard leiten.
+    Ausgenommen: Wizard selbst, Login/Logout, static, healthz sowie /api + /portal (eigene
+    401-Behandlung / vom injizierten JS genutzt)."""
+    if request.endpoint in ("wizard", "login", "logout", "healthz", "static"):
+        return None
+    if request.path.startswith("/api") or request.path.startswith("/portal"):
+        return None
+    if not session.get("logged_in"):
+        return None  # require_login kuemmert sich
+    if not _setup_complete():
+        return redirect(url_for("wizard"))
+    return None
+
+
 @app.route("/healthz")
 def healthz():
     return "ok"
@@ -577,6 +605,8 @@ def wizard():
         name = request.form.get("name", "").strip() or (prof.get("name") or "Standard")
         url = request.form.get("paperless_url", "").strip().rstrip("/")
         tok = request.form.get("paperless_token", "").strip()
+        lxc = request.form.get("lxc_id", "").strip()
+        notify_email = request.form.get("notify_email", "").strip()
         if len(new) < 4:
             err = "Neues Passwort muss mindestens 4 Zeichen haben."
         elif new != rep:
@@ -590,11 +620,17 @@ def wizard():
             if code == 200:
                 cfg["admin_pw_hash"] = generate_password_hash(new)
                 cfg["is_default_pw"] = False
+                if lxc.isdigit():
+                    cfg["lxc_id"] = lxc          # Portal-Container fuer 1-Klick-Update (global)
                 save_config(cfg)
                 if aid in profs:
                     profs[aid]["name"] = name
                     profs[aid]["paperless_url"] = url
                     profs[aid]["paperless_token"] = tok
+                    if notify_email:
+                        gc = profs[aid].get("generator_config") or {}
+                        gc["notifyEmail"] = notify_email   # Frist-Workflows/Erinnerungen
+                        profs[aid]["generator_config"] = gc
                     save_profiles(profs)
                 return redirect(url_for("index"))
             elif code in (401, 403):
@@ -605,7 +641,9 @@ def wizard():
             else:
                 err = "Unerwartete Antwort von Paperless: HTTP %d." % code
     return render_template("wizard.html", name=(prof.get("name") or "Standard"),
-                           url=prof.get("paperless_url", ""), err=err)
+                           url=prof.get("paperless_url", ""), err=err,
+                           lxc_id=str(cfg.get("lxc_id") or ""),
+                           notify_email=(prof.get("generator_config") or {}).get("notifyEmail", ""))
 
 
 @app.route("/settings", methods=["GET", "POST"])

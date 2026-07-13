@@ -4,7 +4,7 @@
 {% block content %}
 <form class="card" method="post" autocomplete="off">
   <h1>Willkommen 👋</h1>
-  <p class="sub">Ersteinrichtung in zwei Schritten: Passwort setzen und die erste Paperless-Instanz verbinden. Der Token wird beim Speichern direkt geprüft.</p>
+  <p class="sub">Ersteinrichtung: Passwort setzen und die erste Paperless-Instanz als Profil anlegen. Der Token wird beim Speichern direkt geprüft. Ohne abgeschlossene Einrichtung geht es nicht in den Generator.</p>
   {% if err %}<div class="msg err">✗ {{ err }}</div>{% endif %}
 
   <h2>1 · Neues Passwort</h2>
@@ -23,6 +23,15 @@
   <label for="paperless_token">API-Token</label>
   <input type="password" id="paperless_token" name="paperless_token" required>
   <p class="hint">In Paperless unter <em>Einstellungen → Mein Profil → API-Token</em>. Wird server­seitig verschlüsselt gespeichert.</p>
+
+  <hr class="divider">
+  <h2>3 · Optional</h2>
+  <label for="notify_email">E-Mail für Workflows (Fristen/Erinnerungen)</label>
+  <input type="email" id="notify_email" name="notify_email" value="{{ notify_email }}" placeholder="deine@email.de">
+  <p class="hint">Wird für die Frist-Workflows des Generators verwendet (<code>PAPERLESS_EMAIL_FROM</code>). Später je Profil änderbar.</p>
+  <label for="lxc_id">Container-ID des Portals (CTID)</label>
+  <input type="text" id="lxc_id" name="lxc_id" value="{{ lxc_id }}" inputmode="numeric" placeholder="z. B. 230">
+  <p class="hint">Nur die Nummer des LXC-Containers, in dem <em>dieses Portal</em> läuft — für spätere Updates. Gilt portal­weit (ein Container für alle Instanzen).</p>
 
   <button type="submit">Einrichten &amp; loslegen →</button>
 </form>
