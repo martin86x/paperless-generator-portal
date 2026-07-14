@@ -11,6 +11,9 @@
  */
 (function () {
   var o = location.origin;
+  // Portal-Modus-Flag: der Generator (Health-Check) blendet damit Hinweise aus, die nur
+  // fuer den lokalen Datei-/PowerShell-Betrieb gelten (z.B. Windows-Pfad fuer SCP-Kopie).
+  window.PLX_PORTAL_MODE = true;
   var _loading = false;    // true, waehrend eine Config programmatisch angewendet wird
   var _dirty = false;      // ungespeicherte Aenderungen im Generator
   var _navigating = false; // absichtlicher Wechsel/Reload -> keine beforeunload-Warnung
@@ -304,6 +307,10 @@
       // Dirty-Tracking erst JETZT aktivieren (nach dem Laden), damit das Anwenden keinen Fehlalarm ausloest
       document.addEventListener('input', markDirty, true);
       setDirty(false);
+      // Health-Check jetzt deterministisch NACH dem Config-Apply erneut, damit die Profil-E-Mail
+      // (inp-notify-email) und die Ampel-Badge nicht durch ein Timing-Rennen mit dem festen
+      // 1900-ms-Timer faelschlich als "fehlt" gemeldet werden.
+      try { if (typeof runFullHealthCheck === 'function') runFullHealthCheck(); } catch (e) {}
     }).catch(function () { forceSameOrigin(); });
   }
 

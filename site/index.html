@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Paperless-ngx Setup Generator v3.92</title>
+<title>Paperless-ngx Setup Generator v3.93</title>
 <!-- Schriften inline (offline, kein Google-Fonts-CDN mehr; v3.78) -->
 <style>/* Google Fonts inline (v3.78) - Sora + JetBrains Mono (400/600/700), latin-Subset, base64. Ersetzt den @import; voll offline. */
 /* latin */
@@ -352,14 +352,14 @@ input.valid{border-color:var(--accent2)!important;}
   <button id="hamburger-btn" onclick="toggleSidebar()" aria-label="Navigation">
     <span></span><span></span><span></span>
   </button>
-  <span id="topbar-title">Setup Generator v3.92</span>
+  <span id="topbar-title">Setup Generator v3.93</span>
   <span id="topbar-conn-dot" class="sticky-conn-dot" title="Verbindungsstatus"></span>
-  <span id="topbar-badge">v3.92</span>
+  <span id="topbar-badge">v3.93</span>
 </div>
 <aside id="sidebar">
   <div class="sb-header">
     <div class="sb-logo">Paperless-ngx</div>
-    <div class="sb-title">Setup Generator v3.92</div>
+    <div class="sb-title">Setup Generator v3.93</div>
   </div>
   <nav class="sb-nav">
     <span class="sb-label">Konfiguration</span>
@@ -387,7 +387,7 @@ input.valid{border-color:var(--accent2)!important;}
 <main id="content">
 
   <div class="hero">
-    <div class="badge" id="hdr-badge">v3.92 &middot; Bash + Direkt &middot; REST API &middot; Stand: <span id="badge-date">14.07.2026</span></div>
+    <div class="badge" id="hdr-badge">v3.93 &middot; Bash + Direkt &middot; REST API &middot; Stand: <span id="badge-date">14.07.2026</span></div>
     <h1>Paperless-ngx<br>Setup Generator</h1>
     <p>Richtet eine frische Paperless-ngx-Instanz vollautomatisch ein &ndash; Tags, Dokumenttypen, Felder, Korrespondenten, Speicherpfade und Arbeitsabl&auml;ufe &ndash; per Bash-Skript oder direkt aus dem Browser via REST API.</p>
     <div style="margin-top:.6rem">
@@ -4066,7 +4066,7 @@ const AN_HINTS=[
   "Unscharfe Suche – toleriert Tippfehler",
   "Automatisch trainiert aus manuell beschrifteten Dokumenten"
 ];
-const GENERATOR_VERSION = "3.92";
+const GENERATOR_VERSION = "3.93";
 
 function updateVersionWarnings(){
   const v=document.getElementById("inp-plx-version");
@@ -4146,7 +4146,10 @@ function _buildHealthResults() {
   } else {
     ok('Generator läuft über HTTP – CORS kein Problem');
   }
-  if(!psPathHC) warn('Windows-Pfad nicht gesetzt – PowerShell-Befehl kann nicht generiert werden', 'Verbindung & Start → Windows-Pfad des Ordners eintragen');
+  // Windows-Pfad nur fuer lokalen Datei-/PowerShell-Betrieb (SCP-Kopie) relevant;
+  // im Portal-Modus laeuft alles serverseitig -> Hinweis unterdruecken.
+  if(window.PLX_PORTAL_MODE) { /* Windows-Pfad im Portal-Modus irrelevant */ }
+  else if(!psPathHC) warn('Windows-Pfad nicht gesetzt – PowerShell-Befehl kann nicht generiert werden', 'Verbindung & Start → Windows-Pfad des Ordners eintragen');
   else ok('Windows-Pfad gesetzt: '+psPathHC.substring(0,50)+(psPathHC.length>50?'\u2026':''));
 
   // ── CORS-Hinweis nur im Direktmodus ──
