@@ -989,7 +989,10 @@ def update_page():
         "pending": os.path.exists(UPDATE_REQUEST),
         "status": upd_status,
     }
-    upd = check_for_update()  # versionsbasierter Abgleich (gecacht), fuer den Update-Banner oben
+    # Version-Seite: FRISCH pruefen (force), sonst widerspricht der gecachte Banner dem
+    # live abgerufenen GitHub-Commit-Block darunter. Nutzt raw.githubusercontent -> kein
+    # API-Rate-Limit. Der leichte Kopfzeilen-Poller (inject.js) bleibt weiterhin gecacht.
+    upd = check_for_update(force=True)
     return render_template("update.html", version=PORTAL_VERSION, latest=latest,
                            gh_err=gh_err, inner_cmd=inner_cmd, full_cmd=full_cmd,
                            lxc_id=lxc_id, repo=GITHUB_REPO, oneclick=oneclick,
