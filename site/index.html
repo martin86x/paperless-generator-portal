@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Paperless-ngx Setup Generator v3.87</title>
+<title>Paperless-ngx Setup Generator v3.88</title>
 <!-- Schriften inline (offline, kein Google-Fonts-CDN mehr; v3.78) -->
 <style>/* Google Fonts inline (v3.78) - Sora + JetBrains Mono (400/600/700), latin-Subset, base64. Ersetzt den @import; voll offline. */
 /* latin */
@@ -352,14 +352,14 @@ input.valid{border-color:var(--accent2)!important;}
   <button id="hamburger-btn" onclick="toggleSidebar()" aria-label="Navigation">
     <span></span><span></span><span></span>
   </button>
-  <span id="topbar-title">Setup Generator v3.87</span>
+  <span id="topbar-title">Setup Generator v3.88</span>
   <span id="topbar-conn-dot" class="sticky-conn-dot" title="Verbindungsstatus"></span>
-  <span id="topbar-badge">v3.87</span>
+  <span id="topbar-badge">v3.88</span>
 </div>
 <aside id="sidebar">
   <div class="sb-header">
     <div class="sb-logo">Paperless-ngx</div>
-    <div class="sb-title">Setup Generator v3.87</div>
+    <div class="sb-title">Setup Generator v3.88</div>
   </div>
   <nav class="sb-nav">
     <span class="sb-label">Konfiguration</span>
@@ -388,7 +388,7 @@ input.valid{border-color:var(--accent2)!important;}
 <main id="content">
 
   <div class="hero">
-    <div class="badge" id="hdr-badge">v3.87 &middot; Bash + Direkt &middot; REST API &middot; Stand: <span id="badge-date">13.07.2026</span></div>
+    <div class="badge" id="hdr-badge">v3.88 &middot; Bash + Direkt &middot; REST API &middot; Stand: <span id="badge-date">14.07.2026</span></div>
     <h1>Paperless-ngx<br>Setup Generator</h1>
     <p>Richtet eine frische Paperless-ngx-Instanz vollautomatisch ein &ndash; Tags, Dokumenttypen, Felder, Korrespondenten, Speicherpfade und Arbeitsabl&auml;ufe &ndash; per Bash-Skript oder direkt aus dem Browser via REST API.</p>
     <div style="margin-top:.6rem">
@@ -2877,6 +2877,7 @@ function buildEditorTypes(){
     d.appendChild(hdr);d.appendChild(body);
     c.appendChild(d);
   });
+  _applyCompact("me-types-c");
 }
 
 function buildEditorTags(){
@@ -3487,7 +3488,7 @@ const _compactState = {}; // listId → true=kompakt
 function _applyCompact(listId) {
   const list = document.getElementById(listId);
   if(!list) return;
-  const items = Array.from(list.children).filter(el => !el.classList.contains('compact-toggle-btn'));
+  const items = Array.from(list.children).filter(el => !el.classList.contains('compact-toggle-btn') && !el.classList.contains('btn-add'));
   const LIMIT = 6;
   const isCompact = _compactState[listId] !== false;
   const hasMore = items.length > LIMIT;
@@ -4065,7 +4066,7 @@ const AN_HINTS=[
   "Unscharfe Suche – toleriert Tippfehler",
   "Automatisch trainiert aus manuell beschrifteten Dokumenten"
 ];
-const GENERATOR_VERSION = "3.87";
+const GENERATOR_VERSION = "3.88";
 
 function updateVersionWarnings(){
   const v=document.getElementById("inp-plx-version");
@@ -4883,21 +4884,32 @@ function renderFieldsEditor() {
   FIELD_GROUPS.forEach((grp, gi) => {
     const grpFields = FIELDS.filter(f => f[2] === grp.id);
     const grpDiv = document.createElement("div");
-    grpDiv.style.cssText = "margin-bottom:1rem;";
+    grpDiv.style.cssText = "margin-bottom:.4rem;border:1px solid var(--border);border-radius:8px;overflow:hidden;";
+    const grpCollapsed = grpFields.length>6;   // lange Gruppen (>6 Felder) standardmäßig zu
+    // Kopfzeile als kompakte, klickbare Karte (ganze Zeile toggelt)
     const hdr = document.createElement("div");
-    hdr.style.cssText = "display:flex;align-items:center;gap:.4rem;padding:.3rem 0 .4rem;border-bottom:1px solid var(--border);margin-bottom:.4rem";
+    hdr.style.cssText = "display:flex;align-items:center;gap:.5rem;padding:.42rem .6rem;background:rgba(79,142,247,.05);cursor:pointer;user-select:none;";
+    const grpChevron=document.createElement("span");
+    grpChevron.className="acc-arr";
+    grpChevron.style.cssText="color:var(--text-muted);font-size:.65rem;flex-shrink:0;width:.8rem;text-align:center";
+    grpChevron.textContent = grpCollapsed ? "▶" : "▼";
     const inp = document.createElement("input");
     inp.type="text"; inp.value=grp.label;
-    inp.style.cssText="font-size:.75rem;font-weight:700;color:var(--text-muted);background:none;border:none;text-transform:uppercase;letter-spacing:.1em;flex:1;padding:0;outline:none;";
+    inp.style.cssText="font-size:.75rem;font-weight:700;color:var(--text-muted);background:none;border:none;text-transform:uppercase;letter-spacing:.1em;flex:1;padding:0;outline:none;cursor:text";
+    inp.onclick=function(e){e.stopPropagation();};
     inp.oninput = (function(gi2){return function(){FIELD_GROUPS[gi2].label=this.value;};})(gi);
+    const cntBadge=document.createElement("span");
+    cntBadge.style.cssText="font-family:JetBrains Mono,monospace;font-size:.63rem;color:var(--accent);background:rgba(79,142,247,.12);border-radius:10px;padding:.1rem .45rem;white-space:nowrap;flex-shrink:0";
+    cntBadge.textContent = grpFields.length+" Felder";
     const addBtn = document.createElement("button"); addBtn.className="btn-add";
-    addBtn.style.cssText="font-size:.65rem;padding:.18rem .5rem;margin:0";
+    addBtn.style.cssText="font-size:.65rem;padding:.18rem .5rem;margin:0;flex-shrink:0";
     addBtn.textContent="+ Feld";
-    addBtn.onclick=(function(id){return function(){FIELDS.unshift(["Neues Feld","string",id]);renderFieldsEditor();};})(grp.id);
+    addBtn.onclick=(function(id){return function(e){e.stopPropagation();FIELDS.unshift(["Neues Feld","string",id]);renderFieldsEditor();};})(grp.id);
     const delBtn = document.createElement("button"); delBtn.className="btn-del";
-    delBtn.style.cssText="font-size:.65rem;padding:.15rem .4rem";
+    delBtn.style.cssText="font-size:.65rem;padding:.15rem .4rem;flex-shrink:0";
     delBtn.textContent="✕";
-    delBtn.onclick=(function(id){return function(){
+    delBtn.onclick=(function(id){return function(e){
+      e.stopPropagation();
       const cnt=FIELDS.filter(f=>f[2]===id).length;
       if(!confirm("Gruppe und "+cnt+" Feld(er) löschen?\n\nDie Felder werden auch aus allen Workflows entfernt.")) return;
       const removedNames=FIELDS.filter(f=>f[2]===id).map(f=>f[0]);
@@ -4907,16 +4919,12 @@ function renderFieldsEditor() {
       if(gi3>=0)FIELD_GROUPS.splice(gi3,1);
       renderFieldsEditor(); renderWorkflowEditor(); renderFristWorkflows();
     };})(grp.id);
-    const grpChevron=document.createElement("button");
-    grpChevron.style.cssText="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:.7rem;padding:0 .35rem;flex-shrink:0";
-    grpChevron.title="Gruppe ein-/ausklappen";
-    hdr.appendChild(grpChevron); hdr.appendChild(inp); hdr.appendChild(addBtn); hdr.appendChild(delBtn);
+    hdr.appendChild(grpChevron); hdr.appendChild(inp); hdr.appendChild(cntBadge); hdr.appendChild(addBtn); hdr.appendChild(delBtn);
     grpDiv.appendChild(hdr);
     const grpBody=document.createElement("div");
-    const grpCollapsed = grpFields.length>6;   // lange Gruppen (>6 Felder) standardmäßig zu
-    grpChevron.textContent = grpCollapsed ? "▶ "+grpFields.length : "▼";
+    grpBody.style.cssText="padding:.4rem .4rem .12rem;";
     if(grpCollapsed) grpBody.style.display="none";
-    grpChevron.onclick=(function(b,ch,n){return function(){const hid=b.style.display==="none";b.style.display=hid?"":"none";ch.textContent=hid?"▼":"▶ "+n;};})(grpBody,grpChevron,grpFields.length);
+    hdr.onclick=(function(b,ch){return function(){const hid=b.style.display==="none";b.style.display=hid?"":"none";ch.textContent=hid?"▼":"▶";};})(grpBody,grpChevron);
     grpFields.forEach(f => {
       const i = FIELDS.indexOf(f);
       const row = document.createElement("div");
