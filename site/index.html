@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Paperless-ngx Setup Generator v3.89</title>
+<title>Paperless-ngx Setup Generator v3.90</title>
 <!-- Schriften inline (offline, kein Google-Fonts-CDN mehr; v3.78) -->
 <style>/* Google Fonts inline (v3.78) - Sora + JetBrains Mono (400/600/700), latin-Subset, base64. Ersetzt den @import; voll offline. */
 /* latin */
@@ -352,14 +352,14 @@ input.valid{border-color:var(--accent2)!important;}
   <button id="hamburger-btn" onclick="toggleSidebar()" aria-label="Navigation">
     <span></span><span></span><span></span>
   </button>
-  <span id="topbar-title">Setup Generator v3.89</span>
+  <span id="topbar-title">Setup Generator v3.90</span>
   <span id="topbar-conn-dot" class="sticky-conn-dot" title="Verbindungsstatus"></span>
-  <span id="topbar-badge">v3.89</span>
+  <span id="topbar-badge">v3.90</span>
 </div>
 <aside id="sidebar">
   <div class="sb-header">
     <div class="sb-logo">Paperless-ngx</div>
-    <div class="sb-title">Setup Generator v3.89</div>
+    <div class="sb-title">Setup Generator v3.90</div>
   </div>
   <nav class="sb-nav">
     <span class="sb-label">Konfiguration</span>
@@ -387,7 +387,7 @@ input.valid{border-color:var(--accent2)!important;}
 <main id="content">
 
   <div class="hero">
-    <div class="badge" id="hdr-badge">v3.89 &middot; Bash + Direkt &middot; REST API &middot; Stand: <span id="badge-date">14.07.2026</span></div>
+    <div class="badge" id="hdr-badge">v3.90 &middot; Bash + Direkt &middot; REST API &middot; Stand: <span id="badge-date">14.07.2026</span></div>
     <h1>Paperless-ngx<br>Setup Generator</h1>
     <p>Richtet eine frische Paperless-ngx-Instanz vollautomatisch ein &ndash; Tags, Dokumenttypen, Felder, Korrespondenten, Speicherpfade und Arbeitsabl&auml;ufe &ndash; per Bash-Skript oder direkt aus dem Browser via REST API.</p>
     <div style="margin-top:.6rem">
@@ -1627,6 +1627,15 @@ IBAN DE12 3456 7890';runMatchTest();" style="font-size:.72rem;padding:.28rem .65
 
     <!-- ═══ ONLINE ═══ -->
     <div id="tools-pane-online" style="display:none">
+
+      <!-- Alle Tools durchlaufen (read-only Sweep) -->
+      <div style="margin-bottom:.8rem;padding:.8rem 1rem;background:rgba(79,142,247,.06);border:1px solid rgba(79,142,247,.25);border-radius:10px">
+        <div style="display:flex;align-items:center;gap:.7rem;flex-wrap:wrap">
+          <button id="btn-sweep" class="btn-gen" onclick="runAllTools()" style="font-size:.86rem;padding:.55rem 1.3rem">&#128640; Alle Tools durchlaufen</button>
+          <span style="font-size:.76rem;color:var(--text-muted)">F&uuml;hrt alle read-only Diagnose-Tools einmal aus &ndash; <strong>keine &Auml;nderungen</strong> an der Instanz. L&auml;uft automatisch auch nach einem Echten Lauf.</span>
+        </div>
+        <div id="sweep-panel" style="display:none;margin-top:.8rem"></div>
+      </div>
 
       <!-- Statistik-Dashboard -->
       <div class="acc" style="margin-bottom:.6rem">
@@ -4062,7 +4071,7 @@ const AN_HINTS=[
   "Unscharfe Suche – toleriert Tippfehler",
   "Automatisch trainiert aus manuell beschrifteten Dokumenten"
 ];
-const GENERATOR_VERSION = "3.89";
+const GENERATOR_VERSION = "3.90";
 
 function updateVersionWarnings(){
   const v=document.getElementById("inp-plx-version");
@@ -4168,10 +4177,10 @@ function _buildHealthResults() {
   else ok("Keine doppelten Kind-Tag-Namen");
   // Tag-Match enthält Komma
   const commaTagMatch = TAG_MATCH.filter(tm=>tm.algo>0&&tm.match&&tm.match.includes(','));
-  if(commaTagMatch.length) critical("Tag-Matching: Komma im Muster – Paperless nutzt Leerzeichen als Trenner: "+commaTagMatch.map(t=>t.name).join(", "), "Matching Tags → Komma durch Leerzeichen ersetzen");
+  if(commaTagMatch.length) critical("Tag-Matching: Komma im Muster – Paperless nutzt Leerzeichen als Trenner: "+commaTagMatch.map(t=>t.name).join(", "), "Tags & Kind-Tags → Matching ▶ → Komma durch Leerzeichen ersetzen");
   // Tag-Match leer bei Algo>0
   const tagMatchEmpty = TAG_MATCH.filter(tm=>tm.algo>0&&!tm.match.trim());
-  if(tagMatchEmpty.length) warn("Tag-Matching: Algorithmus gesetzt aber Match-Feld leer: "+tagMatchEmpty.map(t=>t.name).join(", "), "Matching Tags → Match-Begriff eintragen oder Algorithmus auf 'Manuell' (algo=6) setzen");
+  if(tagMatchEmpty.length) warn("Tag-Matching: Algorithmus gesetzt aber Match-Feld leer: "+tagMatchEmpty.map(t=>t.name).join(", "), "Tags & Kind-Tags → Matching ▶ → Match-Begriff eintragen oder Algorithmus auf 'Manuell' (algo=6) setzen");
   else ok("Alle Tag-Match-Felder korrekt befüllt");
   // Orphan TAG_MATCH – Regel für Tag der nicht in TAGS existiert
   const allTagNamesFlat = new Set(TAGS.flatMap(p=>[p.name.trim().toLowerCase(),...(p.children||[]).map(c=>c.name.trim().toLowerCase())]));
@@ -4202,23 +4211,23 @@ function _buildHealthResults() {
   emptyTypes.length ? warn("Typen ohne Namen: "+emptyTypes.length, "Dokumenttypen-Editor → leere Typ-Felder befüllen") : ok("Alle Typen haben Namen");
   // Leerer Match bei Algo>0 (außer Sonstiges)
   const nmTypes = TYPES.filter(t=>t.algo>0&&!t.match.trim()&&t.name!=="Sonstiges");
-  nmTypes.length ? warn("Typen mit leerem Match-Begriff: "+nmTypes.map(t=>t.name).join(", "), "Matching Dokumenttypen → Match-Begriff eintragen oder Algorithmus auf 'Manuell' (algo=6) setzen") : ok("Alle Typ-Matches befüllt");
+  nmTypes.length ? warn("Typen mit leerem Match-Begriff: "+nmTypes.map(t=>t.name).join(", "), "Dokumenttypen-Editor → Matching ▶ → Match-Begriff eintragen oder Algorithmus auf 'Manuell' (algo=6) setzen") : ok("Alle Typ-Matches befüllt");
   // Typen mit algo=0 und leerem Match – informativ (intentional manuelle Typen sind OK)
   const nonFallbackAlgo0 = TYPES.filter(t=>t.algo===0&&!t.match.trim()&&t.name!=="Sonstiges");
   if(nonFallbackAlgo0.length) warn("Typen ohne Auto-Matching (nur manuell zuweisbar): "+nonFallbackAlgo0.map(t=>t.name).join(", "), "Falls gewollt: ignorieren. Sonst Matching-Begriff eintragen.");
   // Sonstiges hat Algo>0 – das wäre ein Fehler
   const sonstigesWrong = TYPES.find(t=>t.name==="Sonstiges"&&t.algo>0);
-  if(sonstigesWrong) critical("'Sonstiges' hat Matching-Algorithmus gesetzt – blockiert alle anderen Typen da es auf JEDES Dokument matcht", "Matching Dokumenttypen → Algorithmus für 'Sonstiges' auf 'Keine' setzen");
+  if(sonstigesWrong) critical("'Sonstiges' hat Matching-Algorithmus gesetzt – blockiert alle anderen Typen da es auf JEDES Dokument matcht", "Dokumenttypen-Editor → Matching ▶ → Algorithmus für 'Sonstiges' auf 'Keine' setzen");
   // Kein Fallback-Typ (algo=0, leeres Match) vorhanden
   const fallbackTypes = TYPES.filter(t=>t.algo===0&&!t.match.trim());
   if(fallbackTypes.length===0) warn("Kein Fallback-Typ ohne Matching – Dokumente ohne Treffer bleiben ohne Dokumenttyp", "Dokumenttypen-Editor → Typ 'Sonstiges' mit Algorithmus 'Keine' und leerem Match anlegen");
   else ok("Fallback-Typ vorhanden: "+fallbackTypes.map(t=>t.name).join(", "));
   // Typ mit nur 1 Begriff bei algo=1 – unspezifisch, Überschneidungsrisiko
   const singleTermTypes = TYPES.filter(t=>t.algo===1&&t.match.trim()&&t.match.trim().split(/\s+/).filter(w=>!w.startsWith('"')).length===1);
-  if(singleTermTypes.length) warn("Typen mit nur einem Matching-Begriff – erhöhtes Überschneidungsrisiko: "+singleTermTypes.map(t=>'"'+t.name+'"').join(", "), "Matching Dokumenttypen → weitere spezifische Begriffe ergänzen (durch Leerzeichen trennen)");
+  if(singleTermTypes.length) warn("Typen mit nur einem Matching-Begriff – erhöhtes Überschneidungsrisiko: "+singleTermTypes.map(t=>'"'+t.name+'"').join(", "), "Dokumenttypen-Editor → Matching ▶ → weitere spezifische Begriffe ergänzen (durch Leerzeichen trennen)");
   // Typ-Match enthält Komma – Paperless nutzt Leerzeichen als Trenner
   const commaTypes = TYPES.filter(t=>t.algo>0&&t.match.includes(','));
-  if(commaTypes.length) critical("Matching-Muster enthält Komma – Paperless nutzt Leerzeichen als Trenner (Komma wird als Teil des Begriffs behandelt): "+commaTypes.map(t=>t.name).join(", "), "Matching Dokumenttypen → Komma durch Leerzeichen ersetzen");
+  if(commaTypes.length) critical("Matching-Muster enthält Komma – Paperless nutzt Leerzeichen als Trenner (Komma wird als Teil des Begriffs behandelt): "+commaTypes.map(t=>t.name).join(", "), "Dokumenttypen-Editor → Matching ▶ → Komma durch Leerzeichen ersetzen");
   // Doppelte Typen
   const typeNames = TYPES.map(t=>t.name.toLowerCase());
   const dupTypes = typeNames.filter((n,i)=>typeNames.indexOf(n)!==i);
@@ -4235,14 +4244,14 @@ function _buildHealthResults() {
   const typeOverlaps = Object.entries(typeMatchMap).filter(([w,ts])=>ts.length>1);
   if(typeOverlaps.length) {
     const topOverlaps = typeOverlaps.slice(0,3).map(([w,ts])=>'"'+w+'" in: '+ts.join(', ')).join(' | ');
-    warn("Matching-Begriffe in mehreren Typen ("+typeOverlaps.length+"): "+topOverlaps, "Matching Dokumenttypen → spezifischere Begriffe verwenden");
+    warn("Matching-Begriffe in mehreren Typen ("+typeOverlaps.length+"): "+topOverlaps, "Dokumenttypen-Editor → Matching ▶ → spezifischere Begriffe verwenden");
   } else ok("Keine Überschneidungen zwischen Typ-Matching-Begriffen");
   // algo:2 (Alle Begriffe) mit nur einem Begriff – identisch zu algo:1, vermutlich Fehler
   const algo2single = TYPES.filter(t=>t.algo===2&&t.match.trim()&&t.match.trim().split(/\s+/).filter(w=>!w.startsWith('"')).length===1);
-  if(algo2single.length) warn("Typen mit 'Alle Begriffe' (algo:2) aber nur einem Begriff – verhält sich wie algo:1: "+algo2single.map(t=>t.name).join(", "), "Matching Dokumenttypen → zweiten Begriff ergänzen oder Algorithmus auf 'Irgendein Begriff' (algo:1) ändern");
+  if(algo2single.length) warn("Typen mit 'Alle Begriffe' (algo:2) aber nur einem Begriff – verhält sich wie algo:1: "+algo2single.map(t=>t.name).join(", "), "Dokumenttypen-Editor → Matching ▶ → zweiten Begriff ergänzen oder Algorithmus auf 'Irgendein Begriff' (algo:1) ändern");
   // algo:2 in TAG_MATCH mit nur einem Begriff
   const tagAlgo2single = TAG_MATCH.filter(tm=>tm.algo===2&&tm.match&&tm.match.trim().split(/\s+/).filter(w=>!w.startsWith('"')).length===1);
-  if(tagAlgo2single.length) warn("TAG_MATCH 'Alle Begriffe' (algo:2) mit nur einem Begriff: "+tagAlgo2single.map(t=>t.name).join(", "), "Matching Tags → zweiten Begriff ergänzen oder algo:1 verwenden");
+  if(tagAlgo2single.length) warn("TAG_MATCH 'Alle Begriffe' (algo:2) mit nur einem Begriff: "+tagAlgo2single.map(t=>t.name).join(", "), "Tags & Kind-Tags → Matching ▶ → zweiten Begriff ergänzen oder algo:1 verwenden");
   // Regex (algo:4) mit deutschen Umlauten – OCR liefert oft ASCII-Ersetzungen
   const regexUmlaut = [...TYPES.filter(t=>t.algo===4&&/[äöüÄÖÜß]/.test(t.match)), ...TAG_MATCH.filter(tm=>tm.algo===4&&/[äöüÄÖÜß]/.test(tm.match)), ...CORRESPONDENTS.filter(c=>c.algo===4&&/[äöüÄÖÜß]/.test(c.match||''))];
   if(regexUmlaut.length) warn("Regex-Muster mit deutschen Umlauten – OCR-Text enthält oft 'ae/oe/ue' statt ä/ö/ü: "+regexUmlaut.map(t=>t.name).join(", "), "Regex anpassen: 'ä' → '(ä|ae)', 'ö' → '(ö|oe)', 'ü' → '(ü|ue)' oder case-insensitive Flag nutzen");
@@ -4582,6 +4591,36 @@ function _buildHealthResults() {
 return results;
 }
 
+// fix-Hinweis → Ziel-Sektion (für Klick-Sprung im Health-Panel)
+function _healthGoto(fix){
+  if(!fix) return null;
+  var map=[
+    ["Korrespondenten","s-edit-corr"],["Speicherpfade","s-edit-paths"],
+    ["Arbeitsabläufe","s-edit-workflows"],["Benutzerdefinierte Felder","s-prev-fields"],
+    ["Matching Dokumenttypen","s-edit-types"],["Dokumenttypen-Editor","s-edit-types"],
+    ["Dokumenttypen","s-edit-types"],["Matching Tags","s-edit-tags"],
+    ["Tags & Kind-Tags","s-edit-tags"],["Tags","s-edit-tags"],
+    ["Verbindung & Start","s-conn"]
+  ];
+  for(var i=0;i<map.length;i++){ if(fix.indexOf(map[i][0])!==-1) return map[i][1]; }
+  return null;
+}
+
+function _healthRow(r){
+  var icon  = r.ok===true?'✓':r.ok===false?(r.critical?'🔴':'✗'):'ℹ';
+  var color = r.ok===true?'var(--accent2)':r.ok===false?(r.critical?'#ff4444':'var(--danger)'):'var(--text-muted)';
+  var h = '<div style="display:flex;gap:.4rem;align-items:flex-start;padding:.28rem 0;border-bottom:1px solid rgba(42,49,72,.35);font-size:.8rem">'
+    +'<span style="flex-shrink:0;color:'+color+'">'+icon+'</span>'
+    +'<span style="color:'+color+';flex:1">'+r.msg+'</span>';
+  if(r.fix){
+    var gid=_healthGoto(r.fix);
+    if(gid) h += '<span onclick="goTo(\''+gid+'\')" style="flex-shrink:0;font-size:.68rem;color:var(--accent);background:rgba(79,142,247,.12);border:1px solid rgba(79,142,247,.3);border-radius:4px;padding:.1rem .4rem;cursor:pointer;white-space:nowrap" title="Zum Editor springen – '+escH(r.fix)+'">🔧 '+escH(r.fix)+'</span>';
+    else h += '<span style="flex-shrink:0;font-size:.68rem;color:var(--text-muted);background:rgba(79,142,247,.06);border:1px solid rgba(79,142,247,.15);border-radius:4px;padding:.1rem .4rem;cursor:default;white-space:nowrap" title="'+escH(r.fix)+'">🔍 '+escH(r.fix)+'</span>';
+  }
+  h += '</div>';
+  return h;
+}
+
 function runHealthCheck(){
   const results = _buildHealthResults();
   const wc = results.filter(r=>r.ok===false).length;
@@ -4589,28 +4628,41 @@ function runHealthCheck(){
   const container = document.getElementById("health-results");
   container.style.display = "block";
 
+  // Leitzahlen: Probleme zuerst
   let html = '<div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-bottom:.8rem">'
-    +'<div class="stat"><div class="stat-v" style="color:var(--accent2)">'+oc+'</div><div class="stat-l">✓ OK</div></div>'
     +'<div class="stat"><div class="stat-v" style="color:var(--danger)">'+wc+'</div><div class="stat-l">✗ Probleme</div></div>'
+    +'<div class="stat"><div class="stat-v" style="color:var(--accent2)">'+oc+'</div><div class="stat-l">✓ Bestanden</div></div>'
     +'</div>';
 
-  results.forEach(r=>{
-    if(r.ok===null && r.msg.startsWith('──')){
-      html+='<div style="font-size:.7rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);padding:.6rem 0 .2rem;border-top:1px solid var(--border);margin-top:.3rem">'+r.msg.replace('── ','').replace(' ──','')+'</div>';
-      return;
-    }
-    const icon  = r.ok===true?'✓':r.ok===false?(r.critical?'🔴':'✗'):'ℹ';
-    const color = r.ok===true?'var(--accent2)':r.ok===false?(r.critical?'#ff4444':'var(--danger)'):'var(--text-muted)';
-    html += '<div style="display:flex;gap:.4rem;align-items:flex-start;padding:.28rem 0;border-bottom:1px solid rgba(42,49,72,.35);font-size:.8rem">'
-      +'<span style="flex-shrink:0;color:'+color+'">'+icon+'</span>'
-      +'<span style="color:'+color+';flex:1">'+r.msg+'</span>';
-    if(r.fix) html += '<span style="flex-shrink:0;font-size:.68rem;color:var(--accent);background:rgba(79,142,247,.1);border:1px solid rgba(79,142,247,.25);border-radius:4px;padding:.1rem .4rem;cursor:default;white-space:nowrap" title="Lösung: '+r.fix+'">\u{1F50D} '+r.fix+'</span>';
-    html += '</div>';
-  });
+  // ── Block 1: Probleme (kritisch vor warn), immer offen ──
+  const problems = results.filter(r=>r.ok===false);
+  if(problems.length){
+    html += '<div style="font-size:.72rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--danger);margin:.2rem 0 .3rem">Zu beheben</div>';
+    problems.filter(r=>r.critical).forEach(r=>{ html+=_healthRow(r); });
+    problems.filter(r=>!r.critical).forEach(r=>{ html+=_healthRow(r); });
+  }
+
+  // ── Block 2: Bestanden + Infos (eingeklappt, wenn es Probleme gibt) ──
+  const rest = results.filter(r=>r.ok!==false);
+  if(rest.length){
+    let okHtml='';
+    rest.forEach(r=>{
+      if(r.ok===null && r.msg.startsWith('──')){
+        okHtml+='<div style="font-size:.7rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);padding:.5rem 0 .15rem;border-top:1px solid var(--border);margin-top:.25rem">'+r.msg.replace('── ','').replace(' ──','')+'</div>';
+      } else if(r.ok===true){
+        okHtml+=_healthRow(r);
+      } else {
+        okHtml+='<div style="font-size:.76rem;color:var(--text-muted);padding:.2rem 0">ℹ '+r.msg+'</div>';
+      }
+    });
+    html += '<details style="margin-top:.7rem"'+(problems.length?'':' open')+'>'
+      +'<summary style="cursor:pointer;font-size:.78rem;color:var(--accent2);font-weight:700;padding:.3rem 0;list-style:revert">✓ '+oc+' bestanden'+(problems.length?' – aufklappen':'')+'</summary>'
+      +'<div style="margin-top:.3rem">'+okHtml+'</div></details>';
+  }
 
   html += wc===0
     ? '<div class="callout tip" style="margin-top:.7rem">\u{1F389} Alles OK – bereit zum Generieren / Ausführen.</div>'
-    : '<div class="callout warn" style="margin-top:.7rem">⚠️ <strong>'+wc+' Problem'+(wc>1?'e':'')+' gefunden.</strong> Hover über \u{1F50D} für Lösungshinweise. Fehler beheben bevor du fortfährst.</div>';
+    : '<div class="callout warn" style="margin-top:.7rem">⚠️ <strong>'+wc+' Problem'+(wc>1?'e':'')+' gefunden.</strong> Klick auf 🔧 springt direkt zum betroffenen Editor. Beheben, dann erneut prüfen.</div>';
 
   container.innerHTML = html;
   return wc;
@@ -6167,13 +6219,28 @@ function renderWorkflowEditor() {
         row.style.cssText="display:grid;grid-template-columns:1fr 28px 28px 28px;gap:.25rem;align-items:center";
 
         const sel = document.createElement("select"); sel.style.cssText="padding:.22rem .4rem;font-size:.74rem;width:100%";
-        // Leere Option + alle Felder
+        // Leere Option + alle Felder – gruppiert nach FIELD_GROUPS (Überschriften wie Abschnitt 05)
         const emp = document.createElement("option"); emp.value=""; emp.textContent="– Feld wählen –"; sel.appendChild(emp);
-        allFieldNames.forEach(function(fn2){
-          const o=document.createElement("option");o.value=fn2;o.textContent=fn2;
-          if(fn2===fn)o.selected=true;
-          sel.appendChild(o);
-        });
+        (function(){
+          const mkOpt=function(nm){const o=document.createElement("option");o.value=nm;o.textContent=nm;if(nm===fn)o.selected=true;return o;};
+          if(typeof FIELD_GROUPS!=='undefined' && FIELD_GROUPS.length){
+            FIELD_GROUPS.forEach(function(grp){
+              const gf=FIELDS.filter(function(f){return f[2]===grp.id && f[0].trim();});
+              if(!gf.length) return;
+              const og=document.createElement("optgroup"); og.label=grp.label;
+              gf.forEach(function(f){ og.appendChild(mkOpt(f[0])); });
+              sel.appendChild(og);
+            });
+            const extra=FIELDS.filter(function(f){return f[0].trim() && !FIELD_GROUPS.some(function(g){return g.id===f[2];});});
+            if(extra.length){
+              const og=document.createElement("optgroup"); og.label="➕ Eigene Felder";
+              extra.forEach(function(f){ og.appendChild(mkOpt(f[0])); });
+              sel.appendChild(og);
+            }
+          } else {
+            allFieldNames.forEach(function(fn2){ sel.appendChild(mkOpt(fn2)); });
+          }
+        })();
         // Falls Feldname nicht in FIELDS → als "manuell" anzeigen
         if(fn && !allFieldNames.includes(fn)){
           const mo=document.createElement("option");mo.value=fn;mo.textContent=fn+" (manuell)";mo.selected=true;
@@ -7987,6 +8054,14 @@ ${!dryRun && cntErr===0 ? '<div style="margin-top:.7rem;font-size:.76rem;color:#
     } catch(e){ dlog('Post-Report nicht abrufbar: '+e.message,'warn'); }
   }
 
+  // ── Automatischer read-only Tool-Durchlauf nach echtem Lauf ──
+  // (führt alle nicht-mutierenden Diagnose-Tools einmal aus – wie vom User gewünscht)
+  if(realRun && !_authFailed && typeof runAllTools === 'function') {
+    dlog('', 'dim');
+    dlog('🚀 Starte automatischen Tool-Durchlauf (read-only Diagnosen) im Werkzeuge-Bereich…', 'head');
+    setTimeout(function(){ try { runAllTools(); } catch(e){} }, 1200);
+  }
+
   if(!dryRun && _directRollbackIds.length > 0) {
     document.getElementById('direct-rollback-section').style.display = 'block';
   }
@@ -9143,8 +9218,10 @@ function runFullHealthCheck() {
 
     // Health-Status global bereitstellen + Event feuern — die Portal-Kopfleiste (inject.js)
     // rendert daraus eine Ampel, die immer sichtbar ist (der Health-Check „geht sonst unter").
-    var _warn = ((typeof r !== 'undefined' && r) ? r.filter(function(x){ return x.critical !== true; }).length : 0)
-              + collisions.length + _crossConf.length;
+    // Nur ECHTE Warnungen zählen (ok===false, nicht kritisch) – nicht die ✓-OKs,
+    // Infos oder ──Überschriften──. crossConf ist "meist gewünscht" → kein Problem.
+    var _warn = ((typeof r !== 'undefined' && r) ? r.filter(function(x){ return x.ok === false && x.critical !== true; }).length : 0)
+              + collisions.length;
     window._lastHealthCriticalCount = _lastHealthCriticalCount;
     window._lastHealthWarnCount = _warn;
     try { document.dispatchEvent(new CustomEvent('plx:health', {detail:{critical:_lastHealthCriticalCount, warn:_warn}})); } catch(e){}
@@ -12172,6 +12249,95 @@ function renderApiCheatsheet() {
   html+=cmd('Dokumente im Posteingang',`curl ${h} "${base}/api/documents/?is_in_inbox=true&page_size=25"`);
   html+=cmd('Retagger ausführen (alle Dokumente neu klassifizieren)',`curl -X POST ${h} "${base}/api/tasks/" -H "Content-Type: application/json" -d '{"task_name":"document_create_classifier"}'`);
   _toolResult('ac-results',html);
+}
+
+// ════════════════════════════════════════════════════════════
+// „Alle Tools durchlaufen" – read-only Diagnose-Sweep
+// Führt nacheinander alle parameterfreien, NICHT-mutierenden Diagnose-Tools aus
+// und zeigt je Tool Status + eine gescrapte Ergebnis-Zeile. Merges/Reset/Sync/Import
+// (mutierend) und eingabeabhängige Tools (Doctype/Suche) sind bewusst NICHT dabei.
+// ════════════════════════════════════════════════════════════
+var _sweepRunning = false;
+async function runAllTools() {
+  if(_sweepRunning) return;
+  if(typeof switchToolsTab==='function') switchToolsTab('online');
+  var panel = document.getElementById('sweep-panel');
+  if(!panel) return;
+
+  var TOOLS = [
+    {fn:'runDupCheck',                label:'Dubletten-Check (Begriffe)', res:'dup-results'},
+    {fn:'runUnusedFieldsCheck',       label:'Ungenutzte Felder',          res:'unused-fields-results-online'},
+    {fn:'runKonsistenzCheck',         label:'Konsistenz-Check',           res:'kc-results'},
+    {fn:'runKlassifizierungsBericht', label:'Klassifizierungs-Bericht',   res:'kb-results'},
+    {fn:'runOrphanedTags',            label:'Verwaiste Tags',             res:'ot-results'},
+    {fn:'runFeldAuslastung',          label:'Feld-Auslastung',            res:'fa-results'},
+    {fn:'runDatumsAusreisser',        label:'Datums-Ausreißer',           res:'da-results'},
+    {fn:'runLeereDokumente',          label:'Leere Dokumente',            res:'ld-results'},
+    {fn:'runAsnGapFinder',            label:'ASN-Lücken-Finder',          res:'asn-gap-results'},
+    {fn:'runBulkAsnCheck',            label:'ASN-Bulk-Check',             res:'asn-bulk-results'},
+    {fn:'runWfApiCompare',            label:'Workflow-Abgleich (API)',    res:'ws-api-compare-results'},
+    {fn:'loadStats',                  label:'Statistik-Dashboard',        res:'stats-results'},
+    {fn:'runMatchingAudit',           label:'Matching-Audit',             res:'audit-results'}
+  ].filter(function(t){ return typeof window[t.fn]==='function'; });
+
+  _sweepRunning = true;
+  var startBtn = document.getElementById('btn-sweep');
+  if(startBtn){ startBtn.disabled=true; startBtn.dataset.orig=startBtn.textContent; startBtn.textContent='⏳ läuft…'; }
+
+  var rows = TOOLS.map(function(t,i){
+    return '<div style="display:flex;align-items:center;gap:.5rem;padding:.35rem .2rem;border-bottom:1px solid rgba(42,49,72,.35);font-size:.8rem">'
+      +'<span id="sweep-ico-'+i+'" style="width:1.2rem;flex-shrink:0">⏳</span>'
+      +'<span style="font-weight:600;min-width:180px;flex-shrink:0">'+t.label+'</span>'
+      +'<span id="sweep-sum-'+i+'" style="color:var(--text-muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">wartet…</span>'
+      +'<a id="sweep-jmp-'+i+'" onclick="_sweepJump(\''+t.res+'\')" style="display:none;font-size:.7rem;color:var(--accent);cursor:pointer;text-decoration:underline;flex-shrink:0">↧ Ergebnis</a>'
+      +'</div>';
+  }).join('');
+  panel.style.display='block';
+  panel.innerHTML = '<div style="font-weight:700;color:#fff;margin-bottom:.5rem">🚀 Tool-Durchlauf</div>'
+    +'<div>'+rows+'</div>'
+    +'<div id="sweep-foot" style="margin-top:.6rem;font-size:.78rem;color:var(--text-muted)">0 / '+TOOLS.length+' fertig…</div>';
+  panel.scrollIntoView({behavior:'smooth',block:'nearest'});
+
+  var done=0, problems=0;
+  for(var i=0;i<TOOLS.length;i++){
+    var t=TOOLS[i];
+    var ico=document.getElementById('sweep-ico-'+i);
+    var sum=document.getElementById('sweep-sum-'+i);
+    if(ico) ico.textContent='⏳';
+    if(sum) sum.textContent='läuft…';
+    var status='ok', headline='';
+    try {
+      await Promise.resolve(window[t.fn]());
+    } catch(e){ status='err'; headline='Fehler: '+((e&&e.message)||e); }
+    var el=document.getElementById(t.res);
+    if(status!=='err' && el){
+      var innerHtml=el.innerHTML||'';
+      if(/callout danger/.test(innerHtml)) status='err';
+      else if(/callout warn/.test(innerHtml)) status='warn';
+      headline=((el.innerText||el.textContent||'').replace(/\s+/g,' ').trim()).slice(0,140);
+    }
+    if(status==='err'||status==='warn') problems++;
+    done++;
+    if(ico) ico.textContent = status==='ok'?'✅':status==='warn'?'⚠️':'❌';
+    if(sum) sum.textContent = headline||'(kein Ergebnis)';
+    var jmp=document.getElementById('sweep-jmp-'+i); if(jmp && el) jmp.style.display='inline';
+    var foot=document.getElementById('sweep-foot'); if(foot) foot.textContent=done+' / '+TOOLS.length+' fertig'+(done<TOOLS.length?'…':'');
+  }
+  var footEnd=document.getElementById('sweep-foot');
+  if(footEnd) footEnd.innerHTML='<strong style="color:'+(problems?'var(--warn)':'var(--accent2)')+'">✓ Durchlauf fertig – '
+    +(problems? problems+' Tool(s) mit Hinweisen/Fehlern':'alle sauber')+'</strong>';
+  if(startBtn){ startBtn.disabled=false; startBtn.textContent=startBtn.dataset.orig||'🚀 Alle Tools durchlaufen'; }
+  _sweepRunning=false;
+}
+
+// Springt zum Ergebnis-Container eines Tools (öffnet dessen Akkordeon, scrollt hin)
+function _sweepJump(resId){
+  var el=document.getElementById(resId);
+  if(!el) return;
+  if(typeof switchToolsTab==='function') switchToolsTab('online');
+  var acc=el.closest('.acc');
+  if(acc){ var b=acc.querySelector('.acc-b'); var h=acc.querySelector('.acc-h'); if(b && !b.classList.contains('open') && h && typeof tacc==='function') tacc(h); }
+  setTimeout(function(){ el.scrollIntoView({behavior:'smooth',block:'center'}); }, 60);
 }
 
 async function runAsnGapFinder() {

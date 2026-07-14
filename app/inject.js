@@ -254,10 +254,17 @@
     }
   }
 
+  // Sentinel-Token (40 Hex): Der /api/-Proxy verwirft den Client-Authorization-Header und
+  // spritzt IMMER den echten Profil-Token ein. Die Instanz-Tools und der Health-Check
+  // brauchen aber clientseitig ein nicht-leeres, formal gültiges Token, sonst brechen sie
+  // mit „URL + Token eintragen" ab. Dieser Platzhalter erfüllt genau diesen Guard; der reale
+  // Token bleibt serverseitig. Wird NICHT persistiert (applyOrigin/plx_conn_preset bleiben leer).
+  var PLX_TOKEN_SENTINEL = '0000000000000000000000000000000000000000';
+
   function forceSameOrigin() {
     try {
       if (typeof _parseUrlToFields === 'function') _parseUrlToFields(o);
-      var t = document.getElementById('inp-token'); if (t) t.value = '';
+      var t = document.getElementById('inp-token'); if (t) t.value = PLX_TOKEN_SENTINEL;
       // KEIN testConnection() im Portal-Modus: es würde die Portal-Origin (Proxy) testen und
       // „✓ Verbindung OK – <portal>" zeigen (verbunden mit sich selbst). Der echte
       // Instanz-Status steht in Profile/Dashboard.
