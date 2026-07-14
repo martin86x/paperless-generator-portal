@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Paperless-ngx Setup Generator v3.91</title>
+<title>Paperless-ngx Setup Generator v3.92</title>
 <!-- Schriften inline (offline, kein Google-Fonts-CDN mehr; v3.78) -->
 <style>/* Google Fonts inline (v3.78) - Sora + JetBrains Mono (400/600/700), latin-Subset, base64. Ersetzt den @import; voll offline. */
 /* latin */
@@ -352,14 +352,14 @@ input.valid{border-color:var(--accent2)!important;}
   <button id="hamburger-btn" onclick="toggleSidebar()" aria-label="Navigation">
     <span></span><span></span><span></span>
   </button>
-  <span id="topbar-title">Setup Generator v3.91</span>
+  <span id="topbar-title">Setup Generator v3.92</span>
   <span id="topbar-conn-dot" class="sticky-conn-dot" title="Verbindungsstatus"></span>
-  <span id="topbar-badge">v3.91</span>
+  <span id="topbar-badge">v3.92</span>
 </div>
 <aside id="sidebar">
   <div class="sb-header">
     <div class="sb-logo">Paperless-ngx</div>
-    <div class="sb-title">Setup Generator v3.91</div>
+    <div class="sb-title">Setup Generator v3.92</div>
   </div>
   <nav class="sb-nav">
     <span class="sb-label">Konfiguration</span>
@@ -387,7 +387,7 @@ input.valid{border-color:var(--accent2)!important;}
 <main id="content">
 
   <div class="hero">
-    <div class="badge" id="hdr-badge">v3.91 &middot; Bash + Direkt &middot; REST API &middot; Stand: <span id="badge-date">14.07.2026</span></div>
+    <div class="badge" id="hdr-badge">v3.92 &middot; Bash + Direkt &middot; REST API &middot; Stand: <span id="badge-date">14.07.2026</span></div>
     <h1>Paperless-ngx<br>Setup Generator</h1>
     <p>Richtet eine frische Paperless-ngx-Instanz vollautomatisch ein &ndash; Tags, Dokumenttypen, Felder, Korrespondenten, Speicherpfade und Arbeitsabl&auml;ufe &ndash; per Bash-Skript oder direkt aus dem Browser via REST API.</p>
     <div style="margin-top:.6rem">
@@ -730,7 +730,7 @@ input.valid{border-color:var(--accent2)!important;}
     <p style="color:var(--text-muted);font-size:.83rem;margin-bottom:.8rem">
       F&uuml;r jeden Dokumenttyp wird ein Arbeitsablauf angelegt, der beim Import die passenden benutzerdefinierten Felder automatisch zuweist. Das Skript l&ouml;st die Feld-IDs und Typ-IDs zur Laufzeit &uuml;ber die API auf.
     </p>
-    <div class="callout warn">&#9888;&#65039; <strong>Auslöser &ldquo;Dokument aktualisiert&rdquo; ist zuverl&auml;ssiger</strong> als &ldquo;Dokument hinzugef&uuml;gt&rdquo; &ndash; die automatische Typzuweisung l&auml;uft asynchron und ist beim Hinzuf&uuml;gen-Trigger noch nicht abgeschlossen (Bug #12117). Empfohlen: beide Auslöser aktivieren.</div>
+    <div class="callout warn">&#9888;&#65039; <strong>Auslöser &ldquo;Dokument aktualisiert&rdquo; zus&auml;tzlich aktivieren, wenn nach Dokumenttyp gefiltert wird.</strong> Der klassifikatorbasierte Typ-/Korrespondenten-Abgleich l&auml;uft als separater Task <em>nach</em> der Consumption. Ein Workflow, der per <em>Hat Dokumenttyp</em> auf einen automatisch zugewiesenen Typ filtert, sieht diesen beim &ldquo;Hinzugef&uuml;gt&rdquo;-Trigger u.&nbsp;U. noch nicht. Empfohlen: beide Auslöser aktivieren.</div>
     <div class="callout warn">&#9888;&#65039; <strong>Felder kommen aus Benutzerdefinierte Felder.</strong> Neues Feld zuerst unter <strong>Benutzerdefinierte Felder</strong> (Sektion 05) anlegen &ndash; es erscheint dann automatisch im Dropdown hier. Eine &Auml;nderung hier hat keinen Einfluss auf Benutzerdefinierte Felder.</div>
     <div class="callout info">&#8505;&#65039; <strong>Felder werden nur zugewiesen</strong>, kein Standardwert wird gesetzt. Das ist eine API-Einschr&auml;nkung von Paperless-ngx (Stand Mai 2026). Die Felder erscheinen danach leer am Dokument und k&ouml;nnen manuell bef&uuml;llt werden.</div>
     <div class="editor-toolbar">
@@ -4066,7 +4066,7 @@ const AN_HINTS=[
   "Unscharfe Suche – toleriert Tippfehler",
   "Automatisch trainiert aus manuell beschrifteten Dokumenten"
 ];
-const GENERATOR_VERSION = "3.91";
+const GENERATOR_VERSION = "3.92";
 
 function updateVersionWarnings(){
   const v=document.getElementById("inp-plx-version");
@@ -4294,9 +4294,9 @@ function _buildHealthResults() {
   else ok("Alle aktiven Workflows setzen Felder oder Tags");
   const wfNoTrigger = wfEnabled.filter(w=>!w.trigger_added && !w.trigger_updated);
   // Trigger-Check wird weiter unten als Critical behandelt
-  // Workflow nur mit "hinzugefügt"-Trigger aber nicht "aktualisiert" – Bug #12117
+  // Workflow nur mit "hinzugefügt"-Trigger aber nicht "aktualisiert" – Typ-Matching läuft asynchron
   const wfOnlyAdded = wfEnabled.filter(w=>w.trigger_added && !w.trigger_updated);
-  if(wfOnlyAdded.length) warn("Workflows nur mit 'Dokument hinzugefügt' – Bug #12117: Typzuweisung läuft asynchron, Trigger greift zu früh: "+wfOnlyAdded.map(w=>w.name).join(", "), "Arbeitsabläufe → Zusätzlich 'Dokument aktualisiert' aktivieren");
+  if(wfOnlyAdded.length) warn("Workflows nur mit 'Dokument hinzugefügt': Typzuweisung läuft asynchron nach der Consumption, Filter 'Hat Dokumenttyp' greift ggf. zu früh: "+wfOnlyAdded.map(w=>w.name).join(", "), "Arbeitsabläufe → Zusätzlich 'Dokument aktualisiert' aktivieren");
   // Workflows: Dokumenttyp nicht in TYPES
   const allTypeNames = new Set(TYPES.map(t=>t.name.trim()));
   const wfBadType = wfEnabled.filter(w=>w.doctype&&w.doctype.trim()&&!allTypeNames.has(w.doctype.trim()));
@@ -6179,7 +6179,7 @@ function renderWorkflowEditor() {
     addedChk.style.cssText="margin-top:.15rem;flex-shrink:0";
     addedChk.onchange=(function(i2){return function(){WORKFLOWS[i2].trigger_added=this.checked;};})(i);
     const addedTxt = document.createElement("span");
-    addedTxt.innerHTML='<strong style="color:var(--text)">Dokument hinzugefügt</strong> (Typ 2)  <span style="font-size:.67rem;background:rgba(247,201,72,.12);color:#f0d68a;border:1px solid rgba(247,201,72,.25);border-radius:3px;padding:.05rem .3rem">⚠ Bug #12117 offen in v2.20.15 – Dokumenttyp-Filter greift ggf. nicht</span>';
+    addedTxt.innerHTML='<strong style="color:var(--text)">Dokument hinzugefügt</strong> (Typ 2)  <span style="font-size:.67rem;background:rgba(247,201,72,.12);color:#f0d68a;border:1px solid rgba(247,201,72,.25);border-radius:3px;padding:.05rem .3rem">⚠ Typ-Filter greift ggf. zu früh – Auto-Matching läuft erst nach Consumption</span>';
     addedRow.appendChild(addedChk); addedRow.appendChild(addedTxt);
 
     // Trigger: Dokument aktualisiert
@@ -6422,7 +6422,7 @@ function generateWorkflowScript(p) {
   p('echo "${YELLOW}=== Arbeitsabläufe anlegen ===${NC}"');
   p("# Hinweis: Felder werden nur zugewiesen, kein Standardwert gesetzt (API-Einschränkung Mai 2026)");
   p("# Dokumenttyp-Filter nutzt erweiterten Filter 'filter_has_document_type' (Erweiterte Filter → Hat Dokumenttyp)");
-  p("# Bug #12117 (offen v2.20.15): filter_has_document_type beim 'Dokument hinzugefügt'-Trigger greift erst nach Matching → Trigger 'Dokument aktualisiert' ist zuverlässiger");
+  p("# Hinweis: filter_has_document_type greift beim 'Dokument hinzugefügt'-Trigger evtl. zu früh, da das klassifikatorbasierte Typ-Matching als separater Task nach der Consumption läuft → 'Dokument aktualisiert' zusätzlich aktivieren");
   p("# Feldreihenfolge im Dokument = Datenbank-ID-Reihenfolge (= Anlagereihenfolge aus Schritt 4)");
   p("");
 
