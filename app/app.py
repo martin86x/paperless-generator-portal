@@ -972,7 +972,10 @@ def update_page():
     # `pct exec <CTID> -- bash -c '…'` fuer die Proxmox-Host-Shell.
     # Nach dem Reset (vor dem Build) den laufenden Commit als Stamp ins config-Volume
     # schreiben — so zeigt der Version-Reiter, WELCHER Commit wirklich deployt ist.
-    stamp_cmd = ("printf '%s %s' \"$(git rev-parse --short HEAD)\" "
+    # WICHTIG: printf mit DOPPELTEN Quotes ("%s %s"), NICHT einfachen. full_cmd wickelt
+    # inner_cmd in `bash -c '…'` (einfache Quotes) — einfache Quotes hier drin wuerden das
+    # aeussere Quoting vorzeitig beenden und der kopierte Befehl liefe nicht durch.
+    stamp_cmd = ("printf \"%s %s\" \"$(git rev-parse --short HEAD)\" "
                  "\"$(git show -s --format=%cd --date=short)\" > config/build_stamp.txt")
     inner_cmd = ("cd /opt/paperless-generator-portal && git fetch origin main && "
                  "git reset --hard origin/main && " + stamp_cmd + " && "
