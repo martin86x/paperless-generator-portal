@@ -8,6 +8,13 @@
     <p class="sub">Aktueller Portal-Stand, Abgleich mit GitHub und der fertige Update-Befehl für deinen Container.</p>
     {% if msg %}<div class="msg ok">{{ msg }}</div>{% endif %}
     {% if err %}<div class="msg err">{{ err }}</div>{% endif %}
+    {% if upd and upd.update_available %}
+      <div class="msg" style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.5);color:var(--text)">
+        ⬆ <strong>Update verfügbar:</strong> Version <strong>v{{ upd.latest }}</strong> ist auf GitHub — installiert ist v{{ upd.installed }}. Mit dem Befehl unten aktualisieren.
+      </div>
+    {% elif upd and upd.latest and not upd.error %}
+      <div class="msg ok">✓ Aktuell — v{{ upd.installed }} ist der neueste Stand.</div>
+    {% endif %}
     <p class="hint">Installierte Version: <strong style="color:var(--accent2)">v{{ version }}</strong>{% if build_stamp %} · Stand: <code>{{ build_stamp.sha }}</code>{% if build_stamp.date %} vom {{ build_stamp.date }}{% endif %}{% else %} · <span style="color:var(--text-dim)">Deploy-Commit unbekannt (nach dem nächsten Rebuild sichtbar)</span>{% endif %}</p>
 
     <h2>Auf GitHub</h2>

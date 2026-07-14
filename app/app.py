@@ -81,6 +81,75 @@ def _build_stamp():
 PORTAL_VERSION = _read_version()             # Portal-Release (app/VERSION)
 GITHUB_REPO = "martin86x/paperless-generator-portal"
 
+# Automatische Update-Pruefung: die installierte PORTAL_VERSION gegen app/VERSION auf main
+# vergleichen. Ergebnis wird im /config-Volume gecacht (TTL), damit GitHub bei jedem Seiten-
+# aufruf NICHT neu gefragt wird (unauth. Rate-Limit = 60/h) und der Check restart-fest ist.
+UPDATE_CHECK_CACHE = os.path.join(CONFIG_DIR, "update-check.json")
+UPDATE_CHECK_TTL = 6 * 3600                  # hoechstens alle 6 h wirklich bei GitHub nachsehen
+
+
+def _ver_tuple(s):
+    """'1.2.0' -> (1, 2, 0); nicht-numerische Teile -> 0. Fuer den Versionsvergleich."""
+    out = []
+    for part in str(s or "").strip().split("."):
+        try:
+            out.append(int(part))
+        except ValueError:
+            out.append(0)
+    return tuple(out) or (0,)
+
+
+def _fetch_latest_version():
+    """app/VERSION vom main-Branch holen (roh ueber raw.githubusercontent -> kein API-Rate-Limit).
+    Rueckgabe: Versions-String oder None bei Fehler/unplausibler Antwort."""
+    try:
+        r = requests.get(
+            "https://raw.githubusercontent.com/%s/main/app/VERSION" % GITHUB_REPO,
+            timeout=8)
+        if r.status_code == 200:
+            v = (r.text or "").strip()
+            # Plausibilitaet: nur Ziffern/Punkte, sonst ist es kein VERSION-Inhalt (z. B. 404-Seite)
+            if v and len(v) <= 20 and all(c.isdigit() or c == "." for c in v):
+                return v
+    except requests.RequestException:
+        pass
+    return None
+
+
+def _update_result(latest, checked_at, error, stale):
+    installed = PORTAL_VERSION
+    avail = bool(latest) and _ver_tuple(latest) > _ver_tuple(installed)
+    return {"installed": installed, "latest": latest, "update_available": avail,
+            "checked_at": int(checked_at or 0), "error": error, "stale": bool(stale),
+            "repo": GITHUB_REPO}
+
+
+def check_for_update(force=False):
+    """Versions-Check gegen GitHub mit Datei-Cache (TTL). Gibt IMMER ein Dict zurueck
+    (siehe _update_result). force=True umgeht den Cache. Bei GitHub-Fehler wird ein
+    vorhandener alter Cache als 'stale' zurueckgegeben, statt hart zu scheitern."""
+    now = int(time.time())
+    try:
+        with open(UPDATE_CHECK_CACHE, encoding="utf-8") as fh:
+            cached = json.load(fh)
+    except (OSError, ValueError):
+        cached = None
+    if cached and not force and (now - int(cached.get("checked_at", 0))) < UPDATE_CHECK_TTL:
+        return _update_result(cached.get("latest"), cached.get("checked_at"),
+                              cached.get("error"), stale=False)
+    latest = _fetch_latest_version()
+    if latest is None:
+        if cached and cached.get("latest"):
+            return _update_result(cached.get("latest"), cached.get("checked_at"),
+                                  "GitHub nicht erreichbar", stale=True)
+        return _update_result(None, now, "GitHub nicht erreichbar", stale=False)
+    try:
+        with open(UPDATE_CHECK_CACHE, "w", encoding="utf-8") as fh:
+            json.dump({"latest": latest, "checked_at": now, "error": None}, fh)
+    except OSError:
+        pass
+    return _update_result(latest, now, None, stale=False)
+
 # Hop-by-hop-Header + solche, die requests bereits aufloest (Content-Encoding/-Length),
 # duerfen nicht 1:1 an den Browser durchgereicht werden.
 EXCLUDED_RESP_HEADERS = {
@@ -920,11 +989,20 @@ def update_page():
         "pending": os.path.exists(UPDATE_REQUEST),
         "status": upd_status,
     }
+    upd = check_for_update()  # versionsbasierter Abgleich (gecacht), fuer den Update-Banner oben
     return render_template("update.html", version=PORTAL_VERSION, latest=latest,
                            gh_err=gh_err, inner_cmd=inner_cmd, full_cmd=full_cmd,
                            lxc_id=lxc_id, repo=GITHUB_REPO, oneclick=oneclick,
-                           build_stamp=_build_stamp(),
+                           build_stamp=_build_stamp(), upd=upd,
                            msg=request.args.get("msg"), err=request.args.get("err"))
+
+
+@app.route("/portal/update-check.json")
+def portal_update_check():
+    """Leichter Endpoint fuer das injizierte JS (inject.js): liefert den gecachten
+    Versions-Abgleich, damit die Kopfzeile proaktiv 'Update verfuegbar' anzeigen kann.
+    ?force=1 erzwingt eine frische Abfrage (Cache umgehen)."""
+    return jsonify(check_for_update(force=request.args.get("force") == "1"))
 
 
 @app.route("/verwaltung/update/trigger", methods=["POST"])

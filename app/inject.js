@@ -191,6 +191,11 @@
     var spacer = document.createElement('span');
     spacer.style.cssText = 'flex:1 1 auto'; n.appendChild(spacer); // drueckt Verwaltung/Logout nach rechts
 
+    // Slot fuer den Update-Hinweis (wird von checkForUpdate() gefuellt, wenn eine neuere
+    // Portal-Version auf GitHub vorliegt). Leer, solange alles aktuell ist.
+    var uslot = document.createElement('span');
+    uslot.id = 'plx-update-slot'; uslot.style.cssText = 'display:inline-flex'; n.appendChild(uslot);
+
     var mk = function (h, txt, col) {
       var a = document.createElement('a');
       a.href = h; a.textContent = txt;
@@ -320,6 +325,28 @@
     updateHealthBadge(d.critical || 0, d.warn || 0);
   });
 
+  // Automatische Update-Pruefung: fragt den (serverseitig gecachten) Versions-Abgleich ab
+  // und zeigt in der Kopfzeile eine Pille "⬆ Update vX.Y verfuegbar", die auf die Version-Seite
+  // verlinkt. GitHub wird serverseitig hoechstens alle 6 h wirklich kontaktiert (Cache).
+  function checkForUpdate() {
+    fetch('/portal/update-check.json').then(function (r) {
+      return r.ok ? r.json() : null;
+    }).then(function (d) {
+      var slot = document.getElementById('plx-update-slot');
+      if (!slot) return;
+      if (!d || !d.update_available) { slot.innerHTML = ''; return; }
+      if (slot.getAttribute('data-ver') === d.latest) return; // schon angezeigt
+      slot.setAttribute('data-ver', d.latest);
+      slot.innerHTML = '';
+      var a = document.createElement('a');
+      a.href = o + '/verwaltung?tab=version';
+      a.textContent = '⬆ Update v' + d.latest + ' verfügbar';
+      a.title = 'Neuere Portal-Version v' + d.latest + ' auf GitHub (installiert: v' + d.installed + ') — hier aktualisieren';
+      a.style.cssText = 'background:#7a4a1a;color:#ffd9a8;border:1px solid #a86a2b;border-radius:6px;padding:5px 10px;font-size:12px;font-weight:600;text-decoration:none;white-space:nowrap';
+      slot.appendChild(a);
+    }).catch(function () {});
+  }
+
   window.addEventListener('load', function () {
     try { buildNav(); } catch (e) {}
     loadProfilesIntoDropdown();
@@ -336,6 +363,9 @@
           updateHealthBadge(window._lastHealthCriticalCount || 0, window._lastHealthWarnCount || 0);
       } catch (e) {}
     }, 1900);
+    // Update-Hinweis: einmal kurz nach dem Laden, danach alle 6 h (falls der Tab offen bleibt).
+    setTimeout(checkForUpdate, 2500);
+    setInterval(checkForUpdate, 6 * 3600 * 1000);
   });
 
   window.addEventListener('beforeunload', function (e) {
