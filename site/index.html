@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Paperless-ngx Setup Generator v3.93</title>
+<title>Paperless-ngx Setup Generator v3.94</title>
 <!-- Schriften inline (offline, kein Google-Fonts-CDN mehr; v3.78) -->
 <style>/* Google Fonts inline (v3.78) - Sora + JetBrains Mono (400/600/700), latin-Subset, base64. Ersetzt den @import; voll offline. */
 /* latin */
@@ -352,14 +352,14 @@ input.valid{border-color:var(--accent2)!important;}
   <button id="hamburger-btn" onclick="toggleSidebar()" aria-label="Navigation">
     <span></span><span></span><span></span>
   </button>
-  <span id="topbar-title">Setup Generator v3.93</span>
+  <span id="topbar-title">Setup Generator v3.94</span>
   <span id="topbar-conn-dot" class="sticky-conn-dot" title="Verbindungsstatus"></span>
-  <span id="topbar-badge">v3.93</span>
+  <span id="topbar-badge">v3.94</span>
 </div>
 <aside id="sidebar">
   <div class="sb-header">
     <div class="sb-logo">Paperless-ngx</div>
-    <div class="sb-title">Setup Generator v3.93</div>
+    <div class="sb-title">Setup Generator v3.94</div>
   </div>
   <nav class="sb-nav">
     <span class="sb-label">Konfiguration</span>
@@ -387,7 +387,7 @@ input.valid{border-color:var(--accent2)!important;}
 <main id="content">
 
   <div class="hero">
-    <div class="badge" id="hdr-badge">v3.93 &middot; Bash + Direkt &middot; REST API &middot; Stand: <span id="badge-date">14.07.2026</span></div>
+    <div class="badge" id="hdr-badge">v3.94 &middot; Bash + Direkt &middot; REST API &middot; Stand: <span id="badge-date">14.07.2026</span></div>
     <h1>Paperless-ngx<br>Setup Generator</h1>
     <p>Richtet eine frische Paperless-ngx-Instanz vollautomatisch ein &ndash; Tags, Dokumenttypen, Felder, Korrespondenten, Speicherpfade und Arbeitsabl&auml;ufe &ndash; per Bash-Skript oder direkt aus dem Browser via REST API.</p>
     <div style="margin-top:.6rem">
@@ -4066,7 +4066,7 @@ const AN_HINTS=[
   "Unscharfe Suche – toleriert Tippfehler",
   "Automatisch trainiert aus manuell beschrifteten Dokumenten"
 ];
-const GENERATOR_VERSION = "3.93";
+const GENERATOR_VERSION = "3.94";
 
 function updateVersionWarnings(){
   const v=document.getElementById("inp-plx-version");
@@ -11225,35 +11225,71 @@ function runDupCheck() {
   const out = document.getElementById('dup-results');
   if(!out) return;
 
-  // Alle Match-Begriffe sammeln
-  const allTerms = {}; // term → [objekt-label, ...]
+  // Match-Begriffe je Objektart getrennt sammeln. Nur eine ECHTE Kollision liegt vor,
+  // wenn zwei Objekte DERSELBEN Art (Typ/Typ, Tag/Tag, Korr/Korr) denselben Begriff
+  // teilen – dann konkurrieren sie um denselben Slot. Ein Begriff, der z. B. in einem
+  // Typ UND einem Tag steht, ist unkritisch (verschiedene, unabhaengige Felder).
+  const allTerms = {}; // term → [{cls, name}, ...]
 
-  function addTerms(source, label) {
+  function addTerms(source, cls, name) {
     const terms = source.split(/\s+/).filter(Boolean).map(t=>t.toLowerCase().replace(/^"(.*)"$/,'$1'));
     terms.forEach(function(t) {
       if(!t || t.length < 3) return;
       if(!allTerms[t]) allTerms[t] = [];
-      if(!allTerms[t].includes(label)) allTerms[t].push(label);
+      if(!allTerms[t].some(o=>o.cls===cls&&o.name===name)) allTerms[t].push({cls:cls, name:name});
     });
   }
 
-  TYPES.forEach(function(t) { if(t.algo>0&&t.match) addTerms(t.match, 'Typ: '+t.name); });
-  TAG_MATCH.forEach(function(tm) { if(tm.algo>0&&tm.match) addTerms(tm.match, 'Tag: '+tm.name); });
-  CORRESPONDENTS.forEach(function(c) { if(c.algo>0&&c.match) addTerms(c.match, 'Korrespondent: '+c.name); });
+  TYPES.forEach(function(t) { if(t.algo>0&&t.match) addTerms(t.match, 'Typ', t.name); });
+  TAG_MATCH.forEach(function(tm) { if(tm.algo>0&&tm.match) addTerms(tm.match, 'Tag', tm.name); });
+  CORRESPONDENTS.forEach(function(c) { if(c.algo>0&&c.match) addTerms(c.match, 'Korrespondent', c.name); });
 
-  const dupes = Object.entries(allTerms).filter(([,arr])=>arr.length>1);
+  // In echte Kollisionen (gleiche Art ≥2) und unkritische Cross-Art-Ueberschneidungen trennen
+  const hard = []; // [term, byCls, collidingClasses]
+  const soft = []; // [term, objs]
+  Object.entries(allTerms).forEach(function([term, objs]) {
+    if(objs.length < 2) return;
+    const byCls = {};
+    objs.forEach(o=>{ (byCls[o.cls]=byCls[o.cls]||[]).push(o.name); });
+    const colliding = Object.keys(byCls).filter(c=>byCls[c].length>1);
+    if(colliding.length) hard.push([term, byCls, colliding]);
+    else soft.push([term, objs]);
+  });
 
-  if(!dupes.length) {
+  if(!hard.length && !soft.length) {
     out.innerHTML = '<div class="callout tip">&#9989; Keine Duplikate gefunden &ndash; alle Matching-Begriffe sind eindeutig.</div>';
     return;
   }
 
-  let html = '<div class="callout warn">&#9888;&#65039; <strong>'+dupes.length+' doppelter Begriff(e) gefunden</strong> &ndash; k&ouml;nnen zu Falsch-Zuweisungen f&uuml;hren.</div>';
-  html += '<table class="ptable" style="margin-top:.6rem"><thead><tr><th>Begriff</th><th>Objekte</th></tr></thead><tbody>';
-  dupes.sort((a,b)=>a[0].localeCompare(b[0])).forEach(function([term, labels]) {
-    html += '<tr><td><code style="font-size:.75rem;color:var(--warn)">'+escH(term)+'</code></td><td style="font-size:.76rem">'+labels.map(l=>'<span style="color:var(--text-muted)">'+escH(l)+'</span>').join('<br>')+'</td></tr>';
-  });
-  html += '</tbody></table>';
+  let html = '<div class="callout '+(hard.length?'warn':'tip')+'">'+
+    (hard.length
+      ? '&#9888;&#65039; <strong>'+hard.length+' echte Begriffs-Kollision(en)</strong> &ndash; gleiche Objektart konkurriert, Falsch-Zuweisung m&ouml;glich'
+      : '&#9989; <strong>Keine echten Kollisionen</strong> &ndash; alle Objekte einer Art sind eindeutig')+
+    (soft.length ? ' &middot; '+soft.length+' unkritische Cross-Art-&Uuml;berschneidung(en)' : '')+
+    '.</div>';
+
+  // Echte Kollisionen: Begriff + konkurrierende Objekte (nach Art gruppiert)
+  if(hard.length) {
+    html += '<table class="ptable" style="margin-top:.6rem"><thead><tr><th>Begriff</th><th>Konkurrierende Objekte (gleiche Art)</th></tr></thead><tbody>';
+    hard.sort((a,b)=>a[0].localeCompare(b[0])).forEach(function([term, byCls, colliding]) {
+      const cell = colliding.map(cls=>'<strong>'+cls+':</strong> '+byCls[cls].map(n=>escH(n)).join(', ')).join('<br>');
+      html += '<tr><td><code style="font-size:.75rem;color:var(--warn)">'+escH(term)+'</code></td><td style="font-size:.76rem">'+cell+'</td></tr>';
+    });
+    html += '</tbody></table>';
+    html += '<div style="font-size:.72rem;color:var(--text-muted);margin-top:.35rem">Fix: im jeweiligen Editor (Dokumenttypen / Tags / Korrespondenten) &rarr; Matching &rarr; den Begriff bei einem der genannten Objekte durch einen spezifischeren ersetzen oder entfernen.</div>';
+  }
+
+  // Unkritische Cross-Art-Ueberschneidungen: eingeklappt
+  if(soft.length) {
+    html += '<details style="margin-top:.6rem"><summary style="cursor:pointer;font-size:.8rem;color:var(--text-muted)">'+soft.length+' unkritische &Uuml;berschneidung(en) zwischen verschiedenen Objektarten (matchen unabh&auml;ngig &ndash; kein Konflikt)</summary>';
+    html += '<table class="ptable" style="margin-top:.4rem"><thead><tr><th>Begriff</th><th>Objekte</th></tr></thead><tbody>';
+    soft.sort((a,b)=>a[0].localeCompare(b[0])).forEach(function([term, objs]) {
+      const cell = objs.map(o=>'<span style="color:var(--text-muted)">'+o.cls+': '+escH(o.name)+'</span>').join('<br>');
+      html += '<tr><td><code style="font-size:.75rem">'+escH(term)+'</code></td><td style="font-size:.76rem">'+cell+'</td></tr>';
+    });
+    html += '</tbody></table></details>';
+  }
+
   out.innerHTML = html;
 }
 
