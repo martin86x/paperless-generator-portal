@@ -36,6 +36,23 @@
 
   function saveProfile() {
     if (typeof getConfigSnapshot !== 'function') return;
+    // Benachrichtigungs-E-Mail ist Pflicht (fuer Frist-Workflows) — hart erzwingen, nicht nur
+    // optisch. Ohne diese Pruefung liess sich ein Profil mit leerer Mail speichern -> beim
+    // naechsten Laden fehlte sie und der Health-Check meldete "E-Mail fehlt".
+    var emEl = document.getElementById('inp-notify-email');
+    var emVal = emEl ? emEl.value.trim() : '';
+    if (!emVal || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emVal)) {
+      toast(emVal ? 'E-Mail-Format ungültig – Profil nicht gespeichert' :
+                    'Benachrichtigungs-E-Mail fehlt (Pflichtfeld) – Profil nicht gespeichert', 4000);
+      if (emEl) {
+        try { emEl.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {}
+        try { emEl.focus(); } catch (e) {}
+        emEl.style.outline = '2px solid var(--danger)';
+        setTimeout(function () { emEl.style.outline = ''; }, 2600);
+        var ew = document.getElementById('plx-email-warn'); if (ew) ew.style.display = 'block';
+      }
+      return;
+    }
     var snap = getConfigSnapshot();
     fetch('/portal/config', {
       method: 'POST',
