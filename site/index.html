@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Paperless-ngx Setup Generator v3.90</title>
+<title>Paperless-ngx Setup Generator v3.91</title>
 <!-- Schriften inline (offline, kein Google-Fonts-CDN mehr; v3.78) -->
 <style>/* Google Fonts inline (v3.78) - Sora + JetBrains Mono (400/600/700), latin-Subset, base64. Ersetzt den @import; voll offline. */
 /* latin */
@@ -352,14 +352,14 @@ input.valid{border-color:var(--accent2)!important;}
   <button id="hamburger-btn" onclick="toggleSidebar()" aria-label="Navigation">
     <span></span><span></span><span></span>
   </button>
-  <span id="topbar-title">Setup Generator v3.90</span>
+  <span id="topbar-title">Setup Generator v3.91</span>
   <span id="topbar-conn-dot" class="sticky-conn-dot" title="Verbindungsstatus"></span>
-  <span id="topbar-badge">v3.90</span>
+  <span id="topbar-badge">v3.91</span>
 </div>
 <aside id="sidebar">
   <div class="sb-header">
     <div class="sb-logo">Paperless-ngx</div>
-    <div class="sb-title">Setup Generator v3.90</div>
+    <div class="sb-title">Setup Generator v3.91</div>
   </div>
   <nav class="sb-nav">
     <span class="sb-label">Konfiguration</span>
@@ -387,7 +387,7 @@ input.valid{border-color:var(--accent2)!important;}
 <main id="content">
 
   <div class="hero">
-    <div class="badge" id="hdr-badge">v3.90 &middot; Bash + Direkt &middot; REST API &middot; Stand: <span id="badge-date">14.07.2026</span></div>
+    <div class="badge" id="hdr-badge">v3.91 &middot; Bash + Direkt &middot; REST API &middot; Stand: <span id="badge-date">14.07.2026</span></div>
     <h1>Paperless-ngx<br>Setup Generator</h1>
     <p>Richtet eine frische Paperless-ngx-Instanz vollautomatisch ein &ndash; Tags, Dokumenttypen, Felder, Korrespondenten, Speicherpfade und Arbeitsabl&auml;ufe &ndash; per Bash-Skript oder direkt aus dem Browser via REST API.</p>
     <div style="margin-top:.6rem">
@@ -1628,14 +1628,9 @@ IBAN DE12 3456 7890';runMatchTest();" style="font-size:.72rem;padding:.28rem .65
     <!-- ═══ ONLINE ═══ -->
     <div id="tools-pane-online" style="display:none">
 
-      <!-- Alle Tools durchlaufen (read-only Sweep) -->
-      <div style="margin-bottom:.8rem;padding:.8rem 1rem;background:rgba(79,142,247,.06);border:1px solid rgba(79,142,247,.25);border-radius:10px">
-        <div style="display:flex;align-items:center;gap:.7rem;flex-wrap:wrap">
-          <button id="btn-sweep" class="btn-gen" onclick="runAllTools()" style="font-size:.86rem;padding:.55rem 1.3rem">&#128640; Alle Tools durchlaufen</button>
-          <span style="font-size:.76rem;color:var(--text-muted)">F&uuml;hrt alle read-only Diagnose-Tools einmal aus &ndash; <strong>keine &Auml;nderungen</strong> an der Instanz. L&auml;uft automatisch auch nach einem Echten Lauf.</span>
-        </div>
-        <div id="sweep-panel" style="display:none;margin-top:.8rem"></div>
-      </div>
+      <!-- Ergebnis-Panel des Tool-Sweeps – ausgel&ouml;st &uuml;ber "&#128640; Alle Tools" in der Portal-Kopfzeile
+           (bzw. automatisch nach einem Echten Lauf). Button liegt bewusst in der Kopfzeile. -->
+      <div id="sweep-panel" style="display:none;margin-bottom:.8rem;padding:.8rem 1rem;background:rgba(79,142,247,.06);border:1px solid rgba(79,142,247,.25);border-radius:10px"></div>
 
       <!-- Statistik-Dashboard -->
       <div class="acc" style="margin-bottom:.6rem">
@@ -4071,7 +4066,7 @@ const AN_HINTS=[
   "Unscharfe Suche – toleriert Tippfehler",
   "Automatisch trainiert aus manuell beschrifteten Dokumenten"
 ];
-const GENERATOR_VERSION = "3.90";
+const GENERATOR_VERSION = "3.91";
 
 function updateVersionWarnings(){
   const v=document.getElementById("inp-plx-version");
@@ -12281,7 +12276,8 @@ async function runAllTools() {
   ].filter(function(t){ return typeof window[t.fn]==='function'; });
 
   _sweepRunning = true;
-  var startBtn = document.getElementById('btn-sweep');
+  // Start-Button liegt in der Portal-Kopfzeile (inject.js: #plx-sweep-btn); Fallback auf #btn-sweep.
+  var startBtn = document.getElementById('plx-sweep-btn') || document.getElementById('btn-sweep');
   if(startBtn){ startBtn.disabled=true; startBtn.dataset.orig=startBtn.textContent; startBtn.textContent='⏳ läuft…'; }
 
   var rows = TOOLS.map(function(t,i){
@@ -12326,7 +12322,7 @@ async function runAllTools() {
   var footEnd=document.getElementById('sweep-foot');
   if(footEnd) footEnd.innerHTML='<strong style="color:'+(problems?'var(--warn)':'var(--accent2)')+'">✓ Durchlauf fertig – '
     +(problems? problems+' Tool(s) mit Hinweisen/Fehlern':'alle sauber')+'</strong>';
-  if(startBtn){ startBtn.disabled=false; startBtn.textContent=startBtn.dataset.orig||'🚀 Alle Tools durchlaufen'; }
+  if(startBtn){ startBtn.disabled=false; startBtn.textContent=startBtn.dataset.orig||'🚀 Alle Tools'; }
   _sweepRunning=false;
 }
 

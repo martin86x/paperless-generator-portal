@@ -169,6 +169,22 @@
     });
     n.appendChild(hb);
 
+    // "Alle Tools durchlaufen" – read-only Diagnose-Sweep, immer erreichbar in der Kopfzeile.
+    var sweep = document.createElement('button');
+    sweep.id = 'plx-sweep-btn';
+    sweep.title = 'Alle read-only Diagnose-Tools einmal durchlaufen (keine Änderungen an der Instanz)';
+    sweep.textContent = '🚀 Alle Tools';
+    sweep.style.cssText = 'background:#1f232c;color:#7aadff;border:1px solid #2b303b;border-radius:6px;padding:5px 10px;font-size:12px;cursor:pointer;white-space:nowrap';
+    sweep.addEventListener('click', function () {
+      try { if (typeof goTo === 'function') goTo('s-tools'); } catch (e) {}
+      try { if (typeof switchToolsTab === 'function') switchToolsTab('online'); } catch (e) {}
+      try {
+        if (typeof runAllTools === 'function') runAllTools();
+        else toast('Tool-Durchlauf noch nicht bereit – kurz warten / Seite neu laden', 3000);
+      } catch (e) {}
+    });
+    n.appendChild(sweep);
+
     var spacer = document.createElement('span');
     spacer.style.cssText = 'flex:1 1 auto'; n.appendChild(spacer); // drueckt Verwaltung/Logout nach rechts
 
