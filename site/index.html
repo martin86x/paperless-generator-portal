@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Paperless-ngx Setup Generator v3.88</title>
+<title>Paperless-ngx Setup Generator v3.89</title>
 <!-- Schriften inline (offline, kein Google-Fonts-CDN mehr; v3.78) -->
 <style>/* Google Fonts inline (v3.78) - Sora + JetBrains Mono (400/600/700), latin-Subset, base64. Ersetzt den @import; voll offline. */
 /* latin */
@@ -352,43 +352,42 @@ input.valid{border-color:var(--accent2)!important;}
   <button id="hamburger-btn" onclick="toggleSidebar()" aria-label="Navigation">
     <span></span><span></span><span></span>
   </button>
-  <span id="topbar-title">Setup Generator v3.88</span>
+  <span id="topbar-title">Setup Generator v3.89</span>
   <span id="topbar-conn-dot" class="sticky-conn-dot" title="Verbindungsstatus"></span>
-  <span id="topbar-badge">v3.88</span>
+  <span id="topbar-badge">v3.89</span>
 </div>
 <aside id="sidebar">
   <div class="sb-header">
     <div class="sb-logo">Paperless-ngx</div>
-    <div class="sb-title">Setup Generator v3.88</div>
+    <div class="sb-title">Setup Generator v3.89</div>
   </div>
   <nav class="sb-nav">
     <span class="sb-label">Konfiguration</span>
     <a class="sb-link" data-sid="s-conn" onclick="goTo('s-conn')"><span class='sb-num'>01</span>&#9881;&#65039; Verbindung &amp; Start</a>
     <a class="sb-link" data-sid="s-sel" onclick="goTo('s-sel')"><span class='sb-num'>02</span>&#9745;&#65039; Was soll angelegt werden?</a>
     <span class="sb-label">Editoren</span>
-    <a class="sb-link" data-sid="s-me-types" onclick="goTo('s-me-types')"><span class='sb-num'>03</span>&#128196; Matching &ndash; Dokumenttypen <span class="sb-count" id="sb-cnt-types">33</span></a>
-    <a class="sb-link" data-sid="s-edit-tags" onclick="goTo('s-edit-tags')"><span class='sb-num'>04</span>&#127991;&#65039; Tags &amp; Kind-Tags <span class="sb-count" id="sb-cnt-edit-tags">70</span></a>
-    <a class="sb-link" data-sid="s-edit-types" onclick="goTo('s-edit-types')"><span class='sb-num'>05</span>&#128196; Dokumenttypen <span class="sb-count" id="sb-cnt-edit-types">33</span></a>
-    <a class="sb-link" data-sid="s-prev-fields" onclick="goTo('s-prev-fields')"><span class='sb-num'>06</span>&#128193; Benutzerdefinierte Felder <span class="sb-count" id="sb-cnt-fields">57</span></a>
-    <a class="sb-link" data-sid="s-edit-workflows" onclick="goTo('s-edit-workflows')"><span class='sb-num'>07</span>&#9881;&#65039; Arbeitsabl&auml;ufe <span class="sb-count" id="sb-cnt-workflows">11</span></a>
-    <a class="sb-link" data-sid="s-edit-paths" onclick="goTo('s-edit-paths')"><span class='sb-num'>08</span>&#128193; Speicherpfade <span class="sb-count" id="sb-cnt-paths">5</span></a>
-    <a class="sb-link" data-sid="s-edit-corr" onclick="goTo('s-edit-corr')"><span class='sb-num'>09</span>&#128100; Korrespondenten <span class="sb-count" id="sb-cnt-corr">15</span></a>
+    <a class="sb-link" data-sid="s-edit-tags" onclick="goTo('s-edit-tags')"><span class='sb-num'>03</span>&#127991;&#65039; Tags &amp; Kind-Tags <span class="sb-count" id="sb-cnt-edit-tags">70</span></a>
+    <a class="sb-link" data-sid="s-edit-types" onclick="goTo('s-edit-types')"><span class='sb-num'>04</span>&#128196; Dokumenttypen <span class="sb-count" id="sb-cnt-edit-types">33</span></a>
+    <a class="sb-link" data-sid="s-prev-fields" onclick="goTo('s-prev-fields')"><span class='sb-num'>05</span>&#128193; Benutzerdefinierte Felder <span class="sb-count" id="sb-cnt-fields">57</span></a>
+    <a class="sb-link" data-sid="s-edit-workflows" onclick="goTo('s-edit-workflows')"><span class='sb-num'>06</span>&#9881;&#65039; Arbeitsabl&auml;ufe <span class="sb-count" id="sb-cnt-workflows">11</span></a>
+    <a class="sb-link" data-sid="s-edit-paths" onclick="goTo('s-edit-paths')"><span class='sb-num'>07</span>&#128193; Speicherpfade <span class="sb-count" id="sb-cnt-paths">5</span></a>
+    <a class="sb-link" data-sid="s-edit-corr" onclick="goTo('s-edit-corr')"><span class='sb-num'>08</span>&#128100; Korrespondenten <span class="sb-count" id="sb-cnt-corr">15</span></a>
     <span class="sb-label">Verwalten</span>
     <a class="sb-link" onclick="exportConfig()"><span class='sb-num' style="color:var(--accent2);background:rgba(56,217,169,.1);border-color:rgba(56,217,169,.2)">&#128190;</span>Konfiguration speichern <span class="kbd">Ctrl+S</span></a>
     <a class="sb-link" onclick="importConfig()"><span class='sb-num'>&#128196;</span>Konfiguration laden</a>
     <a class="sb-link" onclick="showChangelogModal()"><span class='sb-num'>&#128221;</span>Changelog</a>
     <span class="sb-label">Ausgabe</span>
-    <a class="sb-link" onclick="goTo('s-gen')"><span class='sb-num'>10</span>&#9889; Skript generieren</a>
+    <a class="sb-link" onclick="goTo('s-gen')"><span class='sb-num'>09</span>&#9889; Skript generieren</a>
     <a class="sb-link" data-sid="s-direct" onclick="goTo('s-direct')"><span class='sb-num' style="color:var(--accent2);background:rgba(56,217,169,.1);border-color:rgba(56,217,169,.25)">&#9654;</span>Direkt-Ausf&uuml;hrung</a>
-    <a class="sb-link" onclick="goTo('s-out')" id="sb-link-out" style="display:none"><span class='sb-num'>11</span>&#128220; Generiertes Bash-Skript</a>
-    <a class="sb-link" onclick="goTo('s-howto')"><span class='sb-num'>12</span>&#128218; So wendest du das Skript an</a>
-    <a class="sb-link" onclick="switchToolsTab('offline');goTo('s-tools')"><span class='sb-num'>13</span>&#128736;&#65039; Werkzeuge</a>
+    <a class="sb-link" onclick="goTo('s-out')" id="sb-link-out" style="display:none"><span class='sb-num'>10</span>&#128220; Generiertes Bash-Skript</a>
+    <a class="sb-link" onclick="goTo('s-howto')"><span class='sb-num'>11</span>&#128218; So wendest du das Skript an</a>
+    <a class="sb-link" onclick="switchToolsTab('offline');goTo('s-tools')"><span class='sb-num'>12</span>&#128736;&#65039; Werkzeuge</a>
   </nav>
 </aside>
 <main id="content">
 
   <div class="hero">
-    <div class="badge" id="hdr-badge">v3.88 &middot; Bash + Direkt &middot; REST API &middot; Stand: <span id="badge-date">14.07.2026</span></div>
+    <div class="badge" id="hdr-badge">v3.89 &middot; Bash + Direkt &middot; REST API &middot; Stand: <span id="badge-date">14.07.2026</span></div>
     <h1>Paperless-ngx<br>Setup Generator</h1>
     <p>Richtet eine frische Paperless-ngx-Instanz vollautomatisch ein &ndash; Tags, Dokumenttypen, Felder, Korrespondenten, Speicherpfade und Arbeitsabl&auml;ufe &ndash; per Bash-Skript oder direkt aus dem Browser via REST API.</p>
     <div style="margin-top:.6rem">
@@ -679,18 +678,8 @@ input.valid{border-color:var(--accent2)!important;}
     </div>
   </div>
 
-    <div class="section" id="s-me-types">
-    <h2><span class="num">03</span> Matching-Editor &ndash; Dokumenttypen</h2>
-    <p style="color:var(--text-muted);font-size:.83rem;margin-bottom:1rem;">Match-Begriffe direkt bearbeiten. Mehrere Begriffe durch Leerzeichen trennen. Phrasen in <code>"Anf&uuml;hrungszeichen"</code>. &Auml;nderungen werden sofort &uuml;bernommen und automatisch gespeichert.</p>
-    <div class="callout tip">&#128161; <strong>Algorithmus-Empfehlung:</strong> <em>Irgendein Wort</em> f&uuml;r fast alle Typen. <em>Alle W&ouml;rter</em> nur wenn ein einzelner Begriff zu viele Falsch-Treffer liefert (z.B. &bdquo;Vertrag&ldquo;).</div>
-    <div class="editor-toolbar" style="margin-bottom:.6rem">
-      <button class="btn-sort" onclick="sortTypes()">&#8593;&#8595; Alphabetisch sortieren</button>
-    </div>
-    <div id="me-types-c"></div>
-  </div>
-
     <div class="section" id="s-edit-tags">
-    <h2><span class="num">04</span> Tags &amp; Kind-Tags bearbeiten</h2>
+    <h2><span class="num">03</span> Tags &amp; Kind-Tags bearbeiten</h2>
     <div id="inbox-warn" class="callout warn" style="display:none">&#9888;&#65039; <strong>Kein Posteingang-Tag definiert!</strong> Klicke bei einem Eltern-Tag auf den <strong>📥</strong>-Button um ihn als Posteingang-Tag zu markieren. Ohne Posteingang-Tag lernt das Auto-Matching nicht.</div>
     <p style="color:var(--text-muted);font-size:.83rem;margin-bottom:.5rem">Eltern-Tags und Kind-Tags hinzuf&uuml;gen, umbenennen, Farbe &auml;ndern oder l&ouml;schen. Matching-Regeln pro Kind-Tag &uuml;ber den <strong>Matching ▶</strong>-Button. Eltern-Tags nicht matchen &ndash; sie werden automatisch gesetzt wenn ein Kind-Tag greift.</p>
     <div class="editor-toolbar">
@@ -705,8 +694,9 @@ input.valid{border-color:var(--accent2)!important;}
   </div>
 
     <div class="section" id="s-edit-types">
-    <h2><span class="num">05</span> Dokumenttypen bearbeiten</h2>
-    <p style="color:var(--text-muted);font-size:.83rem;margin-bottom:.8rem">Typen hinzuf&uuml;gen, umbenennen oder l&ouml;schen. Die Matching-Regeln werden in Matching Dokumenttypen separat bearbeitet.</p>
+    <h2><span class="num">04</span> Dokumenttypen bearbeiten</h2>
+    <p style="color:var(--text-muted);font-size:.83rem;margin-bottom:.8rem">Typen hinzuf&uuml;gen, umbenennen, l&ouml;schen oder sortieren. Die <strong>Match-Begriffe</strong> bearbeitest du direkt pro Typ &uuml;ber den <strong>&bdquo;Matching &#9654;&ldquo;</strong>-Ausklapp.</p>
+    <div class="callout tip">&#128161; <strong>Algorithmus-Empfehlung:</strong> <em>Irgendein Wort</em> f&uuml;r fast alle Typen. <em>Alle W&ouml;rter</em> nur wenn ein einzelner Begriff zu viele Falsch-Treffer liefert (z.B. &bdquo;Vertrag&ldquo;).</div>
     <div class="editor-toolbar">
       <button class="btn-add" onclick="addDocType()">+ Dokumenttyp hinzuf&uuml;gen</button>
       <button class="btn-sort" onclick="sortTypesAlpha()">&#8593;&#8595; Alphabetisch sortieren</button>
@@ -718,7 +708,7 @@ input.valid{border-color:var(--accent2)!important;}
   </div>
 
     <div class="section" id="s-prev-fields">
-    <h2><span class="num">06</span> Benutzerdefinierte Felder bearbeiten</h2>
+    <h2><span class="num">05</span> Benutzerdefinierte Felder bearbeiten</h2>
     <p style="color:var(--text-muted);font-size:.83rem;margin-bottom:.8rem">Alle 38 Felder aus der Einrichtungsanleitung &ndash; gruppiert nach Dokumenttyp. Felder hinzuf&uuml;gen, umbenennen oder l&ouml;schen.</p>
     <div class="callout danger">&#9888;&#65039; <strong>Datentyp nach dem Anlegen nicht &auml;nderbar.</strong> Sorgf&auml;ltig pr&uuml;fen bevor das Skript ausgef&uuml;hrt wird.</div>
     <div class="editor-toolbar">
@@ -736,12 +726,12 @@ input.valid{border-color:var(--accent2)!important;}
   <!-- ARBEITSABLÄUFE EDITOR -->
   <!-- ═══════════════════════════════════════════════════════════ -->
     <div class="section" id="s-edit-workflows">
-    <h2><span class="num">07</span> &#9881;&#65039; Arbeitsabl&auml;ufe &ndash; Felder automatisch setzen</h2>
+    <h2><span class="num">06</span> &#9881;&#65039; Arbeitsabl&auml;ufe &ndash; Felder automatisch setzen</h2>
     <p style="color:var(--text-muted);font-size:.83rem;margin-bottom:.8rem">
       F&uuml;r jeden Dokumenttyp wird ein Arbeitsablauf angelegt, der beim Import die passenden benutzerdefinierten Felder automatisch zuweist. Das Skript l&ouml;st die Feld-IDs und Typ-IDs zur Laufzeit &uuml;ber die API auf.
     </p>
     <div class="callout warn">&#9888;&#65039; <strong>Auslöser &ldquo;Dokument aktualisiert&rdquo; ist zuverl&auml;ssiger</strong> als &ldquo;Dokument hinzugef&uuml;gt&rdquo; &ndash; die automatische Typzuweisung l&auml;uft asynchron und ist beim Hinzuf&uuml;gen-Trigger noch nicht abgeschlossen (Bug #12117). Empfohlen: beide Auslöser aktivieren.</div>
-    <div class="callout warn">&#9888;&#65039; <strong>Felder kommen aus Benutzerdefinierte Felder.</strong> Neues Feld zuerst unter <strong>Benutzerdefinierte Felder</strong> (Sektion 06) anlegen &ndash; es erscheint dann automatisch im Dropdown hier. Eine &Auml;nderung hier hat keinen Einfluss auf Benutzerdefinierte Felder.</div>
+    <div class="callout warn">&#9888;&#65039; <strong>Felder kommen aus Benutzerdefinierte Felder.</strong> Neues Feld zuerst unter <strong>Benutzerdefinierte Felder</strong> (Sektion 05) anlegen &ndash; es erscheint dann automatisch im Dropdown hier. Eine &Auml;nderung hier hat keinen Einfluss auf Benutzerdefinierte Felder.</div>
     <div class="callout info">&#8505;&#65039; <strong>Felder werden nur zugewiesen</strong>, kein Standardwert wird gesetzt. Das ist eine API-Einschr&auml;nkung von Paperless-ngx (Stand Mai 2026). Die Felder erscheinen danach leer am Dokument und k&ouml;nnen manuell bef&uuml;llt werden.</div>
     <div class="editor-toolbar">
       <button class="btn-add" onclick="addWorkflow()">+ Arbeitsablauf hinzuf&uuml;gen</button>
@@ -871,7 +861,7 @@ input.valid{border-color:var(--accent2)!important;}
   </div>
 
     <div class="section" id="s-edit-paths">
-    <h2><span class="num">08</span> Speicherpfade bearbeiten</h2>
+    <h2><span class="num">07</span> Speicherpfade bearbeiten</h2>
     <p style="color:var(--text-muted);font-size:.83rem;margin-bottom:.8rem">Speicherpfade steuern wo Dokumente im <code>media/</code>-Verzeichnis abgelegt werden. Auf Variablen klicken um sie in den Pfad einzuf&uuml;gen.</p>
     <div class="callout warn">&#9888;&#65039; <strong>Vorsicht:</strong> &Auml;nderungen an Speicherpfaden verschieben Paperless alle betroffenen Dokumente automatisch. Bei gro&szlig;en Archiven kann das Zeit kosten.</div>
     <h3 style="margin-top:1rem">Verf&uuml;gbare Variablen <span style="font-size:.65rem;font-weight:400;color:var(--text-muted)">(Jinja2-Format ab Paperless v2.13 – auf Chip klicken zum Einf&uuml;gen)</span></h3>
@@ -895,7 +885,7 @@ input.valid{border-color:var(--accent2)!important;}
   </div>
 
     <div class="section" id="s-edit-corr">
-    <h2><span class="num">09</span> Korrespondenten bearbeiten</h2>
+    <h2><span class="num">08</span> Korrespondenten bearbeiten</h2>
     <p style="color:var(--text-muted);font-size:.83rem;margin-bottom:.8rem">Absender und Empf&auml;nger &ndash; Firmen, Beh&ouml;rden, Personen. Jedes Dokument hat genau einen Korrespondenten. Namen und Matching-Regeln anpassen.</p>
     <div class="callout tip">&#128161; <strong>Tipp:</strong> F&uuml;r <em>Exakt</em>-Eintr&auml;ge (Arbeitgeber, Bank, Vermieter) den genauen Firmennamen aus dem Briefkopf eintragen bevor du das Skript generierst.</div>
     <div class="editor-toolbar">
@@ -911,7 +901,7 @@ input.valid{border-color:var(--accent2)!important;}
 
 
     <div class="section" id="s-gen">
-    <h2><span class="num">10</span> Skript generieren</h2>
+    <h2><span class="num">09</span> Skript generieren</h2>
 
     <div style="background:var(--bg3);border:1px solid rgba(56,217,169,.35);border-radius:10px;padding:1.1rem 1.3rem;margin-bottom:1.4rem">
       <div style="font-size:.75rem;font-weight:700;color:var(--accent2);letter-spacing:.1em;text-transform:uppercase;margin-bottom:.75rem">&#128190; Was du herunterladen musst</div>
@@ -1054,7 +1044,7 @@ input.valid{border-color:var(--accent2)!important;}
   </div>
 
     <div class="section" id="s-out" style="display:none">
-    <h2><span class="num">11</span> Generiertes Bash-Skript &ndash; bereit zum Herunterladen</h2>
+    <h2><span class="num">10</span> Generiertes Bash-Skript &ndash; bereit zum Herunterladen</h2>
     <div class="out-hdr"><h3>paperless-setup.sh</h3><div style="display:flex;gap:.5rem"><button class="cbtn" id="cbtn" onclick="copyScript()">Kopieren</button><button class="cbtn" onclick="dlScript()">&#8595; Als .sh herunterladen</button></div></div>
     <pre id="sout"></pre>
 
@@ -1074,7 +1064,7 @@ input.valid{border-color:var(--accent2)!important;}
   </div>
 
     <div class="section" id="s-howto">
-    <h2><span class="num">12</span> So wendest du das Skript an</h2>
+    <h2><span class="num">11</span> So wendest du das Skript an</h2>
 
     <h3>Schritt 1 – Skript generieren &amp; herunterladen</h3>
     <p style="color:var(--text-muted);font-size:.84rem">URL und Token eingeben, Auswahl treffen, dann unten auf <strong>&#9889; Bash-Skript generieren</strong> klicken. Danach &rarr; <strong>&#8595; Als .sh herunterladen</strong>.</p>
@@ -1144,7 +1134,7 @@ input.valid{border-color:var(--accent2)!important;}
   <div id="s-instanz-import" style="scroll-margin-top:1.5rem"></div>
 
     <div class="section" id="s-tools">
-    <h2><span class="num">13</span> &#128736;&#65039; Werkzeuge</h2>
+    <h2><span class="num">12</span> &#128736;&#65039; Werkzeuge</h2>
 
     <!-- Tab-Leiste -->
     <div id="tools-tabs" style="display:flex;gap:.35rem;margin-bottom:1.2rem;border-bottom:1px solid var(--border);padding-bottom:.6rem;flex-wrap:wrap">
@@ -2824,7 +2814,13 @@ function toggleHeroDetails() {
   if(lbl) lbl.textContent = open ? 'Details ausblenden' : 'Details & Funktionen einblenden';
 }
 
-function buildEditorTypes(){
+// buildEditorTypes() – Legacy-No-Op (v3.88): Der separate "Matching – Dokumenttypen"-
+// Editor (Sektion 03, Container #me-types-c) wurde in den Dokumenttypen-Editor
+// (Sektion 04, renderTypeEditor) zusammengeführt. Match-Begriffe werden dort pro Typ
+// über den "Matching ▶"-Ausklapp bearbeitet. Funktion bleibt als harmloser No-Op
+// erhalten, damit bestehende Aufrufer nicht angefasst werden müssen.
+function buildEditorTypes(){ /* zusammengeführt in renderTypeEditor() */ }
+function _buildEditorTypes_DEAD(){
   const c=document.getElementById("me-types-c");
   if(!c) return;
   c.innerHTML="";
@@ -4066,7 +4062,7 @@ const AN_HINTS=[
   "Unscharfe Suche – toleriert Tippfehler",
   "Automatisch trainiert aus manuell beschrifteten Dokumenten"
 ];
-const GENERATOR_VERSION = "3.88";
+const GENERATOR_VERSION = "3.89";
 
 function updateVersionWarnings(){
   const v=document.getElementById("inp-plx-version");
@@ -4322,7 +4318,7 @@ function _buildHealthResults() {
   const allFieldNamesSet = new Set(FIELDS.map(f=>f[0].trim()).filter(Boolean));
   WORKFLOWS.filter(w=>w.enabled).forEach(function(wf){
     wf.fields.filter(fn=>fn&&fn.trim()).forEach(function(fn){
-      if(!allFieldNamesSet.has(fn)) warn('Workflow "'+wf.name+'": Feld "'+fn+'" nicht in Sektion 06', 'Benutzerdefinierte Felder → Feld anlegen oder Arbeitsabläufe → Feld entfernen');
+      if(!allFieldNamesSet.has(fn)) warn('Workflow "'+wf.name+'": Feld "'+fn+'" nicht in Sektion 05', 'Benutzerdefinierte Felder → Feld anlegen oder Arbeitsabläufe → Feld entfernen');
     });
   });
   // Doppelte Felder innerhalb Workflow
@@ -4387,7 +4383,7 @@ function _buildHealthResults() {
     // Felder prüfen
     (wf.fields||[]).filter(fn=>fn&&fn.trim()).forEach(function(fn){
       if(!allFieldNamesLC.has(fn.trim().toLowerCase())){
-        critical('Workflow "'+wf.name+'": Feld "'+fn+'" nicht in Sektion 06 vorhanden – API-Fehler beim Anlegen','Benutzerdefinierte Felder → Feld anlegen, dann erneut prüfen');
+        critical('Workflow "'+wf.name+'": Feld "'+fn+'" nicht in Sektion 05 vorhanden – API-Fehler beim Anlegen','Benutzerdefinierte Felder → Feld anlegen, dann erneut prüfen');
         wfRefOk=false;
       }
     });
@@ -5233,7 +5229,7 @@ function validate() {
 
   // Posteingang-Warnung
   if(!TAGS.some(t => t.isInbox))
-    warns.push("Kein Posteingang-Tag definiert (\u{1F4E5} Button in Sektion 04). Auto-Matching lernt nur aus Dokumenten ohne Posteingang-Tag.");
+    warns.push("Kein Posteingang-Tag definiert (\u{1F4E5} Button in Sektion 03). Auto-Matching lernt nur aus Dokumenten ohne Posteingang-Tag.");
 
   // Duplikate → Fehler, nicht Warnung
   const tagNames = TAGS.flatMap(p=>[p.name,...p.children.map(c=>c.name)]);
@@ -7359,7 +7355,6 @@ function updateSidebarCompletion() {
   const checks = {
     's-conn':        function(){ return _connState === 'ok'; },
     's-sel':         function(){ return true; }, // immer konfigurierbar
-    's-me-types':    function(){ return typeof TYPES !== 'undefined' && TYPES.length > 0; },
     's-edit-tags':   function(){ return typeof TAGS !== 'undefined' && TAGS.length > 0 && TAGS.some(function(t){return t.isInbox;}); },
     's-edit-types':  function(){ return typeof TYPES !== 'undefined' && TYPES.length > 0; },
     's-prev-fields': function(){ return typeof CUSTOM_FIELDS !== 'undefined' && CUSTOM_FIELDS.length > 0; },
@@ -10710,7 +10705,7 @@ function _auditTable(results, filter) {
       var hasTyp = r.issues.some(function(i){ return i.cat==='TYP'; });
       var hasKorr = r.issues.some(function(i){ return i.cat==='KORR'; });
       html += '<div style="margin-top:.25rem">';
-      if(hasTyp) html += '<a onclick="goTo(\'s-me-types\')" style="font-size:.68rem;color:var(--accent2);cursor:pointer;text-decoration:underline;margin-right:.5rem">&#8594; Typ-Matching</a>';
+      if(hasTyp) html += '<a onclick="goTo(\'s-edit-types\')" style="font-size:.68rem;color:var(--accent2);cursor:pointer;text-decoration:underline;margin-right:.5rem">&#8594; Typ-Matching</a>';
       if(hasKorr) html += '<a onclick="goTo(\'s-edit-corr\')" style="font-size:.68rem;color:var(--accent2);cursor:pointer;text-decoration:underline">&#8594; Korrespondenten</a>';
       html += '</div>';
     } else {
@@ -11781,7 +11776,7 @@ async function runWfActionsVerify() {
     html += '</div>';
 
     if(missing.length) {
-      html += '<div class="callout warn" style="margin-top:.55rem">&#9888;&#65039; <strong>'+missing.length+' Feld(er) fehlen in der Instanz</strong> – bitte zuerst über Sektion 07 deployen.</div>';
+      html += '<div class="callout warn" style="margin-top:.55rem">&#9888;&#65039; <strong>'+missing.length+' Feld(er) fehlen in der Instanz</strong> – bitte zuerst über Sektion 06 deployen.</div>';
     } else {
       html += '<div class="callout tip" style="margin-top:.55rem">&#10003; Alle '+found.length+' Custom Fields in der Instanz vorhanden.</div>';
     }
