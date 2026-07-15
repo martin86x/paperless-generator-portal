@@ -6,7 +6,7 @@
 
   <div class="card">
     <h1 style="margin:0;font-size:18px">Wächter</h1>
-    <p class="sub" style="margin:8px 0 0">Periodische, <strong>rein lesende</strong> Checks über alle Profile mit hinterlegter Instanz. Bei Auffälligkeit gibt es eine Meldung über die aktivierten <a class="link" href="{{ url_for('notifications') }}">Benachrichtigungs&shy;kanäle</a> — nur beim Wechsel in einen schlechten Zustand, kein Dauerfeuer. Der Wächter schreibt <strong>nie</strong> in eine Instanz.</p>
+    <p class="sub" style="margin:8px 0 0">Periodische, <strong>rein lesende</strong> Checks über alle Profile mit hinterlegter Instanz. Bei Auffälligkeit gibt es eine Meldung über die aktivierten <a class="link" href="{{ url_for('notifications') }}">Benachrichtigungs&shy;kanäle</a> — wann genau, regelt die <strong>Eskalation</strong> weiter unten (Alarm erst nach mehreren schlechten Läufen, kein Dauerfeuer, Entwarnung beim Zurückkommen). Der Wächter schreibt <strong>nie</strong> in eine Instanz.</p>
     {% if msg %}<div class="msg ok">{{ msg }}</div>{% endif %}
     {% if err %}<div class="msg err">{{ err }}</div>{% endif %}
   </div>
@@ -22,6 +22,23 @@
       {% if status.active_alerts %} · <span style="color:var(--err)">{{ status.active_alerts }} offene Auffälligkeit(en)</span>{% endif %}
     </div>
     {% if status.error %}<div class="msg err" style="margin-top:8px">Letzter Fehler: {{ status.error }}</div>{% endif %}
+    {% if board.open %}
+    <div style="margin-top:10px;border-top:1px solid var(--border);padding-top:8px">
+      {% for a in board.open %}
+      <div style="font-size:12.5px;padding:3px 0">
+        <span style="color:var(--err)">●</span> <strong>{{ a.label }}</strong> · {{ a.profile }}
+        <div style="color:var(--text-dim);margin-left:14px">seit {{ a.since }} offen · {{ a.reps }} Erinnerung(en) · nächste {{ a.next }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% if board.watching %}
+    <div style="margin-top:8px;font-size:12.5px;color:var(--text-dim)">
+      {% for a in board.watching %}
+      <div>○ {{ a.label }} · {{ a.profile }} — in Beobachtung ({{ a.fail }}/{{ a.need }} schlechte Läufe, noch kein Alarm)</div>
+      {% endfor %}
+    </div>
+    {% endif %}
   </div>
 
   <form method="post" action="{{ url_for('waechter') }}">
@@ -62,6 +79,38 @@
         <button type="submit" name="action" value="run_now" style="width:auto;padding:10px 18px;background:var(--bg3);border:1px solid var(--border)">Jetzt prüfen</button>
       </div>
       <p class="hint">„Jetzt prüfen" speichert und führt sofort einen Lauf aus (meldet bei Auffälligkeit — gut zum Testen).</p>
+    </div>
+
+    <!-- Eskalation -->
+    <div class="card" style="margin-top:14px">
+      <h2 style="margin-top:0">Eskalation</h2>
+      <p class="hint" style="margin:0 0 12px">Regelt, <em>wann</em> gemeldet wird — nicht <em>was</em> geprüft wird. Ziel: keine Fehlalarme bei einem einzelnen Aussetzer, aber auch kein Vergessen, wenn ein Problem tagelang steht.</p>
+
+      <label>Alarm erst nach … schlechten Läufen in Folge</label>
+      <input type="text" name="fail_threshold" value="{{ w.fail_threshold }}" inputmode="numeric" placeholder="2">
+      <p class="hint">1–10. Schützt vor Fehlalarm durch einen einzelnen Aussetzer (Neustart, kurze Netz-Störung). Preis: Der Alarm kommt später — bei {{ w.fail_threshold }} Läufen und {{ w.interval_min }} min Intervall frühestens nach <strong>{{ (w.fail_threshold - 1) * w.interval_min }} min</strong>. Wer sofort wissen will, dass die Instanz weg ist, trägt 1 ein.</p>
+
+      <label>Entwarnung erst nach … guten Läufen in Folge</label>
+      <input type="text" name="ok_threshold" value="{{ w.ok_threshold }}" inputmode="numeric" placeholder="1">
+      <p class="hint">1–10. Höher als 1 verhindert Alarm-Entwarnung-Alarm-Pingpong bei einer wackeligen Instanz.</p>
+
+      <label>Erinnerung alle … Minuten, solange offen</label>
+      <input type="text" name="repeat_min" value="{{ w.repeat_min }}" inputmode="numeric" placeholder="0">
+      <p class="hint"><strong>0 = keine Erinnerung</strong> (wie bisher: einmal melden, dann Ruhe). Sonst wird erinnert, solange das Problem besteht — hilft, wenn die erste Meldung nachts unterging.</p>
+
+      <label style="display:flex;align-items:center;gap:8px;margin:12px 0 0;font-size:14px;color:var(--text)">
+        <input type="checkbox" name="repeat_backoff" value="1" style="width:auto"{% if w.repeat_backoff %} checked{% endif %}> Abstand je Erinnerung verdoppeln
+      </label>
+      <div style="font-size:12px;color:var(--text-dim);margin:4px 0 0 26px">Empfohlen. Bei {{ w.repeat_min or 60 }} min heißt das: nach {{ w.repeat_min or 60 }} min, dann {{ (w.repeat_min or 60) * 2 }} min, dann {{ (w.repeat_min or 60) * 4 }} min … gedeckelt auf 24 h. Ohne Haken bleibt der Abstand konstant.</div>
+
+      <label style="margin-top:16px">Priorität anheben ab der … Erinnerung</label>
+      <input type="text" name="escalate_after" value="{{ w.escalate_after }}" inputmode="numeric" placeholder="3">
+      <p class="hint">0 = nie anheben. Sonst geht die Meldung ab dieser Erinnerung eine Stufe lauter raus (z. B. „1 Hoch" → „2 Notfall" — Pushover wiederholt dann, bis du quittierst). Die Grundpriorität je Ereignis steht bei den <a class="link" href="{{ url_for('notifications') }}">Benachrichtigungen</a>.</p>
+
+      <label style="display:flex;align-items:center;gap:8px;margin:0;font-size:14px;color:var(--text)">
+        <input type="checkbox" name="recovery_notify" value="1" style="width:auto"{% if w.recovery_notify %} checked{% endif %}> Entwarnung über die Kanäle melden
+      </label>
+      <div style="font-size:12px;color:var(--text-dim);margin:4px 0 0 26px">Meldet „behoben" samt Ausfalldauer, eine Stufe leiser als der Alarm. Ohne Haken landet die Entwarnung nur im Protokoll und im Webhook.</div>
     </div>
 
     <!-- Digest + Heartbeat -->

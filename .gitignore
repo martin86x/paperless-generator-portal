@@ -3,3 +3,6 @@ config/
 *.tmp
 __pycache__/
 *.pyc
+
+# Test-venv
+.venv/

@@ -1418,11 +1418,14 @@ def _notify_email(c, subject, body):
         return False, str(exc)
 
 
-def _dispatch_notification(prof, event, title, message, only=None):
+def _dispatch_notification(prof, event, title, message, only=None, bump=0):
     """An alle aktivierten (bzw. mit ``only`` gewaehlten) Kanaele senden.
-    Rueckgabe: (priority, [(kanal, ok, detail), ...]). Entschluesselt Secrets hier zentral."""
+    Rueckgabe: (priority, [(kanal, ok, detail), ...]). Entschluesselt Secrets hier zentral.
+    ``bump`` verschiebt die Prioritaet dieses einen Versands (Eskalation +1, Entwarnung −1)."""
     n = _notif_of(prof)
     prio = _clamp_prio(n["priorities"].get(event, _NOTIFY_DEFAULT_PRIO.get(event, 0)))
+    if bump:
+        prio = _clamp_prio(prio + bump, prio)
     results = []
     if (only in (None, "pushover")) and n["pushover"]["enabled"]:
         c = {"token": _dec(n["pushover"]["token"]), "user": _dec(n["pushover"]["user"])}
@@ -1528,7 +1531,16 @@ _WATCHER_DEFAULTS = {
     "digest_enabled": False,
     "digest_hour": 8,          # Ortszeit-Stunde fuer den taeglichen Status-Digest
     "heartbeat_url": "",       # Dead-Man's-Switch: URL wird nach jedem Zyklus gepingt
+    # Eskalation (Z2)
+    "fail_threshold": 2,       # so viele schlechte Laeufe in Folge -> erst dann Alarm
+    "ok_threshold": 1,         # so viele gute Laeufe in Folge -> erst dann Entwarnung
+    "repeat_min": 0,           # Erinnerungsabstand in Minuten (0 = keine Erinnerung)
+    "repeat_backoff": True,    # Abstand je Erinnerung verdoppeln (gedeckelt auf 24 h)
+    "escalate_after": 3,       # ab der N-ten Erinnerung Prioritaet +1 (0 = nie)
+    "recovery_notify": True,   # Entwarnung auch ueber die Kanaele melden
 }
+_ESC_MAX_GAP_MIN = 1440   # Erinnerungsabstand nie groesser als 24 h
+_ESC_MAX_DOUBLE = 12      # Backoff-Verdopplungen deckeln (2**12 * base reicht immer)
 # Laufzeit-Zustand des Waechters (nur im Prozess, der die Sperre haelt). Fuer die UI +
 # Alarm-Entprellung (nur bei Zustandswechsel ok->schlecht senden, nicht jede Runde).
 _watcher_state = {
@@ -1537,6 +1549,10 @@ _watcher_state = {
     "next_run": None,    # Unix-ts des naechsten faelligen Laufs
     "results": {},       # pid -> {name, ts, checks:[{event,label,status,detail}]}
     "alerts_active": set(),   # {(pid, event)} — aktuell gemeldete Auffaelligkeiten
+    # 'pid|event' -> {fail, ok, since, last, reps} — Streaks + Erinnerungstakt der
+    # Eskalation. Getrennt von alerts_active, weil hier auch Kandidaten stehen, die
+    # die Alarmschwelle noch nicht gerissen haben.
+    "alert_meta": {},
     "last_error": None,
     "last_metrics": None,  # Unix-ts der letzten Kennzahl-Erfassung (Trends, gedrosselt)
     "last_digest": None,   # 'YYYY-MM-DD' des zuletzt gesendeten Tages-Digests
@@ -1571,6 +1587,12 @@ def _watcher_cfg():
         "digest_enabled": bool(w.get("digest_enabled", False)),
         "digest_hour": max(0, min(23, _watch_int(w.get("digest_hour"), 8))),
         "heartbeat_url": (w.get("heartbeat_url") or "").strip(),
+        "fail_threshold": max(1, min(10, _watch_int(w.get("fail_threshold"), 2))),
+        "ok_threshold": max(1, min(10, _watch_int(w.get("ok_threshold"), 1))),
+        "repeat_min": max(0, min(_ESC_MAX_GAP_MIN, _watch_int(w.get("repeat_min"), 0))),
+        "repeat_backoff": bool(w.get("repeat_backoff", True)),
+        "escalate_after": max(0, min(20, _watch_int(w.get("escalate_after"), 3))),
+        "recovery_notify": bool(w.get("recovery_notify", True)),
     }
 
 
@@ -1724,24 +1746,110 @@ def _chk_task_fail(url, token):
                           len(fails), ", ".join(names), more)}
 
 
-def _maybe_alert(prof, pid, c):
-    """Nur bei Zustandswechsel melden: ok->bad sendet, bad->ok entwarnt (kein Spam)."""
+def _fmt_dur(sec):
+    """Dauer in Klartext: '45 min', '3 h', '2 d 5 h'."""
+    sec = int(max(0, sec or 0))
+    if sec < 3600:
+        return "%d min" % (sec // 60)
+    if sec < 86400:
+        return "%d h" % (sec // 3600)
+    return "%d d %d h" % (sec // 86400, (sec % 86400) // 3600)
+
+
+def _alert_meta(pid, event):
+    """Streak-/Takt-Eintrag zu (Profil, Ereignis) — wird bei Bedarf angelegt."""
+    m = _watcher_state.setdefault("alert_meta", {})
+    return m.setdefault("%s|%s" % (pid, event),
+                        {"fail": 0, "ok": 0, "since": None, "last": None, "reps": 0})
+
+
+def _repeat_gap_min(wc, reps):
+    """Abstand bis zur naechsten Erinnerung in Minuten. Mit Backoff verdoppelt er sich
+    je gesendeter Erinnerung (1×, 2×, 4× …), gedeckelt auf 24 h."""
+    gap = wc["repeat_min"]
+    if wc["repeat_backoff"]:
+        gap *= 2 ** min(reps, _ESC_MAX_DOUBLE)
+    return min(gap, _ESC_MAX_GAP_MIN)
+
+
+def _maybe_alert(prof, pid, c, wc=None):
+    """Eskalation (Z2). Alarm erst nach ``fail_threshold`` schlechten Laeufen in Folge
+    (Flapping-Schutz), danach Erinnerungen mit wachsendem Abstand statt Dauerfeuer, ab
+    ``escalate_after`` Erinnerungen eine Stufe lauter, und beim Zurueckkommen einmal
+    Entwarnung. 'unknown' friert die Streaks ein — wir wissen es schlicht nicht."""
+    wc = wc or _watcher_cfg()
     key = (pid, c["event"])
     active = _watcher_state["alerts_active"]
+    meta = _alert_meta(pid, c["event"])
     name = prof.get("name") or pid
+    now = time.time()
+
+    if c["status"] not in ("bad", "ok"):
+        return
+
     if c["status"] == "bad":
+        meta["ok"] = 0
+        meta["fail"] = (meta.get("fail") or 0) + 1
         if key not in active:
+            if meta["fail"] < wc["fail_threshold"]:
+                return  # noch in Beobachtung — koennte ein einzelner Aussetzer sein
             active.add(key)
-            title = "Paperless-Wächter: %s (%s)" % (c["label"], name)
-            _dispatch_notification(prof, c["event"], title, c["detail"])
+            meta.update({"since": now, "last": now, "reps": 0})
+            _dispatch_notification(prof, c["event"],
+                                   "Paperless-Wächter: %s (%s)" % (c["label"], name),
+                                   c["detail"])
             _fire_webhook(c["event"], name, "bad", c["detail"])
             _log_activity("watcher", "Alarm: %s (%s)" % (c["label"], name),
                           level="err", detail=c["detail"])
-    elif c["status"] == "ok" and key in active:
-        active.discard(key)
-        _fire_webhook(c["event"], name, "ok", "Entwarnung: " + c["detail"])
-        _log_activity("watcher", "Entwarnung: %s (%s)" % (c["label"], name),
-                      level="ok", detail=c["detail"])
+            return
+        # Bereits gemeldet -> hoechstens erinnern.
+        if not wc["repeat_min"]:
+            return
+        if not meta.get("last"):
+            meta["last"] = now  # Bestandsalarm ohne Takt (z. B. direkt nach Update)
+            return
+        if now - meta["last"] < _repeat_gap_min(wc, meta.get("reps") or 0) * 60:
+            return
+        meta["reps"] = (meta.get("reps") or 0) + 1
+        meta["last"] = now
+        bump = 1 if (wc["escalate_after"] and meta["reps"] >= wc["escalate_after"]) else 0
+        msg = "%s\n\nSeit %s offen (%d. Erinnerung)." % (
+            c["detail"], _fmt_dur(now - (meta.get("since") or now)), meta["reps"])
+        _dispatch_notification(prof, c["event"],
+                               "Paperless-Wächter: %s (%s) — weiterhin offen" % (c["label"], name),
+                               msg, bump=bump)
+        _log_activity("watcher", "Erinnerung %d: %s (%s)" % (meta["reps"], c["label"], name),
+                      level="err", detail=msg)
+        return
+
+    # status == 'ok'
+    meta["fail"] = 0
+    if key not in active:
+        meta["ok"] = 0
+        return
+    meta["ok"] = (meta.get("ok") or 0) + 1
+    if meta["ok"] < wc["ok_threshold"]:
+        return  # noch nicht stabil genug fuer die Entwarnung
+    active.discard(key)
+    dur = _fmt_dur(now - (meta.get("since") or now))
+    meta.update({"ok": 0, "since": None, "last": None, "reps": 0})
+    if wc["recovery_notify"]:
+        _dispatch_notification(prof, c["event"],
+                               "Paperless-Wächter: %s (%s) — behoben" % (c["label"], name),
+                               "Wieder in Ordnung nach %s.\n%s" % (dur, c["detail"]),
+                               bump=-1)
+    _fire_webhook(c["event"], name, "ok", "Entwarnung: " + c["detail"])
+    _log_activity("watcher", "Entwarnung: %s (%s)" % (c["label"], name),
+                  level="ok", detail="Offen gewesen: %s\n%s" % (dur, c["detail"]))
+
+
+def _prune_alert_state(live_pids):
+    """Zustand zu geloeschten/abgeschalteten Profilen verwerfen, sonst waechst er ewig."""
+    meta = _watcher_state.get("alert_meta") or {}
+    for k in [k for k in meta if k.split("|", 1)[0] not in live_pids]:
+        meta.pop(k, None)
+    for key in [k for k in _watcher_state["alerts_active"] if k[0] not in live_pids]:
+        _watcher_state["alerts_active"].discard(key)
 
 
 def _metrics_path(pid):
@@ -1946,7 +2054,9 @@ def _run_watch_cycle(wc, dispatch=True):
             _append_watch(pid, checks, now)  # Historie: Uptime/Timeline im Waechter-Reiter
         if dispatch:
             for c in checks:
-                _maybe_alert(p, pid, c)
+                _maybe_alert(p, pid, c, wc)
+    if dispatch:
+        _prune_alert_state(set(results))
     _watcher_state["results"] = results
     _watcher_state["last_run"] = time.time()
     _record_metrics()  # Trends miterfassen (gedrosselt)
@@ -2123,17 +2233,54 @@ def _watcher_boot():
 
 
 def _fmt_rel_ts(ts):
-    """Unix-ts -> 'vor X' / '—' fuer die Waechter-Statusanzeige."""
+    """Unix-ts -> 'vor X' (Vergangenheit) / 'in X' (Zukunft) / '—'.
+    Zukunft muss mit: 'naechster Lauf' liegt immer voraus und stand sonst als
+    'vor -3540 s' in der Statuszeile."""
     if not ts:
         return "—"
     delta = int(time.time() - ts)
-    if delta < 60:
-        return "vor %d s" % delta
-    if delta < 3600:
-        return "vor %d min" % (delta // 60)
-    if delta < 86400:
-        return "vor %d h" % (delta // 3600)
-    return datetime.fromtimestamp(ts).strftime("%d.%m. %H:%M")
+    ahead = delta < 0
+    d = abs(delta)
+    if d >= 86400:
+        return datetime.fromtimestamp(ts).strftime("%d.%m. %H:%M")
+    if d < 60:
+        s = "%d s" % d
+    elif d < 3600:
+        s = "%d min" % (d // 60)
+    else:
+        s = "%d h" % (d // 3600)
+    return ("in " + s) if ahead else ("vor " + s)
+
+
+def _alert_board(st, wc):
+    """Eskalations-Uebersicht fuer die UI: was ist offen (seit wann, wievielte Erinnerung,
+    naechste faellig) und was ist erst in Beobachtung (Streak unter der Alarmschwelle)."""
+    labels = dict(_NOTIFY_EVENTS)
+    try:
+        profs = load_profiles()
+    except (OSError, ValueError):
+        profs = {}
+    meta = st.get("alert_meta") or {}
+    active = st.get("alerts_active") or ()
+    now = time.time()
+    open_, watching = [], []
+    for pid, ev in sorted(active):
+        m = meta.get("%s|%s" % (pid, ev)) or {}
+        nxt = "—"
+        if wc["repeat_min"] and m.get("last"):
+            due = m["last"] + _repeat_gap_min(wc, m.get("reps") or 0) * 60
+            nxt = ("in " + _fmt_dur(due - now)) if due > now else "fällig"
+        open_.append({"profile": (profs.get(pid) or {}).get("name") or pid,
+                      "label": labels.get(ev, ev), "reps": m.get("reps") or 0, "next": nxt,
+                      "since": _fmt_dur(now - m["since"]) if m.get("since") else "—"})
+    for k, m in sorted(meta.items()):
+        pid, _, ev = k.partition("|")
+        if (pid, ev) in active or not (m.get("fail") or 0):
+            continue
+        watching.append({"profile": (profs.get(pid) or {}).get("name") or pid,
+                         "label": labels.get(ev, ev), "fail": m["fail"],
+                         "need": wc["fail_threshold"]})
+    return {"open": open_, "watching": watching}
 
 
 @app.route("/verwaltung/waechter", methods=["GET", "POST"])
@@ -2149,6 +2296,12 @@ def waechter():
             "digest_enabled": bool(f.get("digest_enabled")),
             "digest_hour": max(0, min(23, _watch_int(f.get("digest_hour"), 8))),
             "heartbeat_url": (f.get("heartbeat_url", "") or "").strip(),
+            "fail_threshold": max(1, min(10, _watch_int(f.get("fail_threshold"), 2))),
+            "ok_threshold": max(1, min(10, _watch_int(f.get("ok_threshold"), 1))),
+            "repeat_min": max(0, min(_ESC_MAX_GAP_MIN, _watch_int(f.get("repeat_min"), 0))),
+            "repeat_backoff": bool(f.get("repeat_backoff")),
+            "escalate_after": max(0, min(20, _watch_int(f.get("escalate_after"), 3))),
+            "recovery_notify": bool(f.get("recovery_notify")),
         }
         cfg = load_config()
         cfg["watcher"] = w
@@ -2200,6 +2353,7 @@ def waechter():
     return render_template(
         "waechter.html", w=wc, wh=_webhook_cfg(), events=_NOTIFY_EVENTS,
         results=results, status=status, webhook_last=webhook_last,
+        board=_alert_board(st, wc),
         hist=_watch_history_cards(request.args.get("range", "30d")),
         hrng=_watch_range(request.args.get("range", "30d")),
         msg=request.args.get("msg"), err=request.args.get("err"))
