@@ -1,0 +1,15 @@
+{% if not rows %}
+  <p class="hint" style="margin:0">Noch keine Snapshots — sie entstehen beim Anwenden einer Konfiguration.</p>
+{% else %}
+  <p class="hint">Vor jedem „Anwenden" wird der Objektbestand der Instanz gesichert. Das ist ein <strong>Beleg zum Nachschlagen</strong>, kein Wiederherstellungspunkt: Paperless vergibt beim Anlegen neue IDs, gelöschte Zuordnungen zu Dokumenten kämen dadurch nicht zurück. Zurücknehmen lässt sich nur, was das Portal selbst angelegt hat („rückgängig" auf der Anwenden-Seite). Die {{ rows|length }} jüngsten werden aufgehoben.</p>
+  {% for r in rows %}
+  <div style="margin:4px 0;border-top:1px solid var(--border);padding-top:6px;display:flex;align-items:center;justify-content:space-between;gap:8px">
+    <span style="min-width:0">
+      <span style="font-size:12.5px;color:var(--text-dim);font-family:monospace">{{ r.label }}</span>
+      <span style="display:block;font-size:11.5px;color:var(--text-dim)">{{ r.summary }}</span>
+    </span>
+    <a class="link" href="{{ url_for('profiles_snapshot_download', pid=pid, ts=r.ts) }}"
+       style="flex:none;padding:5px 10px;font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;text-decoration:none">⬇ JSON</a>
+  </div>
+  {% endfor %}
+{% endif %}

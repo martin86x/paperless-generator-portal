@@ -352,13 +352,86 @@ hs = A._list_history(hpid)
 eq("und die Anzeige führt den jüngsten Stand oben",
    json.load(open(os.path.join(hd, hs[0] + ".json"), encoding="utf-8"))["v"], A.HISTORY_MAX)
 
-# Ehrlichkeit der UI: es gibt bewusst KEINEN Restore aus diesen Dateien.
-_src = open(os.path.join(os.path.dirname(_HERE), "app", "app.py"), encoding="utf-8").read()
-check("SNAP_DIR hat weiterhin keinen Leser — kein Restore-Pfad",
-      "SNAP_DIR" in _src and _src.count("SNAP_DIR") == 2)
+# Ehrlichkeit: die Snapshots sind lesbar, aber es gibt bewusst KEINEN Restore aus ihnen.
+# Kein Schreibweg heisst hier konkret: die Snapshot-Routen nehmen nur GET entgegen.
+_snap_rules = [r for r in A.app.url_map.iter_rules() if "snapshot" in (r.endpoint or "")]
+check("es gibt Snapshot-Routen (Liste + Download)", len(_snap_rules) == 2)
+for _r in _snap_rules:
+    eq("%s ist GET-only — kein Weg, aus einem Snapshot zu schreiben" % _r.endpoint,
+       sorted(_r.methods - {"HEAD", "OPTIONS"}), ["GET"])
 _tpl = open(os.path.join(os.path.dirname(_HERE), "app", "templates", "anwenden.html"),
             encoding="utf-8").read()
-check("und die Seite verspricht keinen Restore-Punkt mehr", "Restore-Punkt" not in _tpl)
+check("und die Anwenden-Seite verspricht keinen Restore-Punkt mehr", "Restore-Punkt" not in _tpl)
+
+
+# ── 5b. Leerläufe hinterlassen keinen Snapshot ───────────────────────────────
+print("Snapshot bei Leerlauf")
+reset()
+SRV.post_fail = {"tags"}  # nichts geht durch
+client().post("/anwenden", data={"password": PW, "item": ["tags|Finanzen"]})
+eq("ein Lauf, der nichts anlegt, hinterlässt KEINEN Snapshot (er dokumentiert nichts)",
+   snap_files(), [])
+SRV.post_fail = set()
+client().post("/anwenden", data={"password": PW, "item": ["tags|Finanzen"]})
+eq("ein erfolgreicher Lauf schon", len(snap_files()), 1)
+
+reset()
+SRV.post_fail = {"correspondents"}  # Teilerfolg: Tag geht, Korrespondent nicht
+client().post("/anwenden", data={"password": PW,
+                                 "item": ["tags|Finanzen", "correspondents|Telekom"]})
+eq("bei Teilerfolg bleibt der Snapshot (genau dann will man den Vorher-Stand)",
+   len(snap_files()), 1)
+
+
+# ── 5c. Snapshots ansehen und herunterladen ──────────────────────────────────
+print("Snapshot-Liste + Download")
+reset()
+SRV.seed("tags", "Bestand")
+SRV.seed("correspondents", "AltKunde")
+client().post("/anwenden", data={"password": PW, "item": ["tags|Finanzen"]})
+ts = snap_files()[0][:-5]
+
+r = client().get("/profiles/%s/snapshots" % PID)
+page = r.data.decode("utf-8")
+eq("die Liste liefert 200", r.status_code, 200)
+check("sie nennt den Zeitstempel lesbar", A._fmt_ts(ts) in page)
+check("und den Umfang je Kategorie", "1 Tags" in page and "1 Korrespondenten" in page)
+check("leere Kategorien werden nicht aufgeführt", "0 Typen" not in page)
+check("mit Download-Link", "/snapshots/%s/download" % ts in page)
+check("die Seite sagt, dass es KEIN Wiederherstellungspunkt ist", "kein Wiederherstellungspunkt" in page)
+
+r = client().get("/profiles/%s/snapshots/%s/download" % (PID, ts))
+eq("der Download liefert 200", r.status_code, 200)
+check("als Anhang mit sprechendem Namen",
+      "attachment" in r.headers.get("Content-Disposition", "")
+      and ts in r.headers.get("Content-Disposition", ""))
+eq("als JSON", r.headers.get("Content-Type"), "application/json")
+snap = json.loads(r.data.decode("utf-8"))
+eq("und enthält den Stand VOR dem Schreiben", [t["name"] for t in snap["tags"]], ["Bestand"])
+
+# Die Zahl fuers Akkordeon-Label darf die Profil-Seite nichts kosten (kein json.load).
+eq("_list_snapshots liefert die Zeitstempel, jüngster zuerst", A._list_snapshots(PID), [ts])
+eq("ein Profil ohne Snapshots liefert eine leere Liste", A._list_snapshots("gibtsnicht"), [])
+r = client().get("/profiles/gibtsnicht/snapshots")
+eq("Liste eines unbekannten Profils -> 404", r.status_code, 404)
+
+print("Snapshot-Download: Riegel")
+for bad in ("../../config", "..", "20260715T120000/../../x", "nicht-ein-ts", ""):
+    r = client().get("/profiles/%s/snapshots/%s/download" % (PID, bad))
+    check("Pfad-Ausbruch abgewiesen: %r -> %d" % (bad, r.status_code),
+          r.status_code in (404, 308))
+r = client().get("/profiles/%s/snapshots/20260101T000000/download" % PID)
+eq("ein nicht existierender (aber gültiger) Zeitstempel -> 404", r.status_code, 404)
+r = client().get("/profiles/..%2F..%2Fetc/snapshots/" + ts + "/download")
+check("Traversal über die Profil-ID -> kein Fund", r.status_code in (404, 308))
+
+c = client(logged_in=False)
+r = c.get("/profiles/%s/snapshots" % PID)
+eq("ohne Login gibt es keine Liste", (r.status_code, "/login" in r.headers.get("Location", "")),
+   (302, True))
+r = c.get("/profiles/%s/snapshots/%s/download" % (PID, ts))
+eq("und keinen Download", r.status_code, 302)
+check("die Datei leckt dabei keine Bytes", b"Bestand" not in r.data)
 
 
 # ── 6. Rückgängig ────────────────────────────────────────────────────────────

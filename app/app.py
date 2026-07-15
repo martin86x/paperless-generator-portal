@@ -1035,6 +1035,8 @@ def profiles():
             "notif": ", ".join(notif_bits),
             "watch": pw,
             "history": [{"ts": ts, "label": _fmt_ts(ts)} for ts in _list_history(pid)],
+            # nur zaehlen (listdir) — der Inhalt kostet json.load und kommt per fetch
+            "snapshots": len(_list_snapshots(pid)),
         })
     items.sort(key=lambda x: x["name"].lower())
     return render_template("profiles.html", profiles=items,
@@ -3378,6 +3380,47 @@ def _save_instance_snapshot(pid, snap):
             os.remove(os.path.join(d, files.pop(0)))
         except OSError:
             break
+    return path
+
+
+_SNAP_LABELS = [("tags", "Tags"), ("document_types", "Typen"),
+                ("correspondents", "Korrespondenten"), ("storage_paths", "Speicherpfade"),
+                ("custom_fields", "Custom Fields")]
+
+
+def _list_snapshots(pid):
+    """Zeitstempel der Instanz-Snapshots, jüngster zuerst. Billig — nur Dateinamen."""
+    try:
+        return sorted((f[:-5] for f in os.listdir(os.path.join(SNAP_DIR, pid))
+                       if f.endswith(".json")), key=_ts_key, reverse=True)
+    except (FileNotFoundError, NotADirectoryError):
+        return []
+
+
+def _snapshot_path(pid, ts):
+    """Pfad zu einem Snapshot — oder None. Riegel: pid und ts muessen sauber sein.
+
+    Flask's <ts> laesst zwar keine Slashes durch, aber der Pfad wird hier aus zwei
+    URL-Teilen gebaut; der Riegel steht deshalb an der Quelle statt sich auf den
+    Routen-Converter zu verlassen."""
+    if not _valid_pid(pid) or not re.match(r"\A\d{8}T\d{6}(-\d+)?\Z", ts or ""):
+        return None
+    path = os.path.join(SNAP_DIR, pid, ts + ".json")
+    return path if os.path.isfile(path) else None
+
+
+def _snapshot_summary(pid, ts):
+    """Umfang eines Snapshots: [(Label, Anzahl), …]. Liest die Datei — nur auf Anfrage."""
+    path = _snapshot_path(pid, ts)
+    if not path:
+        return None
+    try:
+        with open(path, encoding="utf-8") as fh:
+            snap = json.load(fh)
+    except (OSError, ValueError):
+        return None
+    return [(label, len(snap.get(key) or [])) for key, label in _SNAP_LABELS
+            if snap.get(key)]
 
 
 def _api_create(url, token, endpoint, payload):
@@ -3552,7 +3595,7 @@ def anwenden_post():
     gc = act.get("generator_config") or {}
     selected = set(selected)
     snap = _instance_snapshot(url, token)
-    _save_instance_snapshot(aid, snap)  # Restore-Punkt VOR dem Schreiben
+    snap_path = _save_instance_snapshot(aid, snap)  # Ist-Stand VOR dem Schreiben sichern
     # Name→ID der vorhandenen Tags (fuer Kind→Eltern-Verknuepfung); waechst mit neu Angelegten.
     tagid = {row["name"].strip().lower(): row["id"]
              for row in snap.get("tags", [])
@@ -3584,6 +3627,14 @@ def anwenden_post():
                     tagid[e["name"].strip().lower()] = oid
             else:
                 errors.append("%s: %s" % (e["name"], err))
+    if not created and snap_path:
+        # Nichts angelegt -> der Snapshot bildet einen Stand ab, der sich nie geaendert
+        # hat. Er dokumentiert nichts und wuerde im SNAP_MAX-Fenster einen echten
+        # verdraengen. Teilerfolge bleiben — dort will man den Vorher-Stand gerade.
+        try:
+            os.remove(snap_path)
+        except OSError:
+            pass
     _append_undo(aid, created)
     _log_activity("apply", "Anwenden auf %s: %d angelegt%s"
                   % (act.get("name"), len(created),
@@ -3648,6 +3699,39 @@ def anwenden_undo():
                           "Namen. Zeigt das Profil noch auf dieselbe Paperless-Instanz?\n"
                           + "\n".join("· " + f for f in fremd)) if fremd else None)
     return redirect(url_for("protokoll"))
+
+
+@app.route("/profiles/<pid>/snapshots")
+def profiles_snapshots(pid):
+    """Liste der Instanz-Snapshots eines Profils (HTML-Fragment, per fetch nachgeladen).
+
+    Bewusst NICHT in der Profil-Seite mitgerendert: die Zahlen kosten je Snapshot ein
+    json.load (bis 20 x ~63 KB pro Profil). Die Seite soll schnell bleiben — geladen
+    wird erst beim Aufklappen, genau wie beim Historie-Vergleich."""
+    if pid not in load_profiles():
+        return Response("Profil nicht gefunden.", status=404)
+    rows = []
+    for ts in _list_snapshots(pid):
+        summary = _snapshot_summary(pid, ts)
+        rows.append({"ts": ts, "label": _fmt_ts(ts),
+                     "summary": ", ".join("%d %s" % (n, lb) for lb, n in summary)
+                                if summary else "leer (Instanz war nicht erreichbar)"})
+    return render_template("snapshots.html", pid=pid, rows=rows)
+
+
+@app.route("/profiles/<pid>/snapshots/<ts>/download")
+def profiles_snapshot_download(pid, ts):
+    """Snapshot als JSON herunterladen. Login genuegt — die Datei haelt keine Geheimnisse
+    (keine Tokens, keine Dokumente), nur den Objektbestand der Instanz."""
+    if pid not in load_profiles():
+        return Response("Profil nicht gefunden.", status=404)
+    path = _snapshot_path(pid, ts)
+    if not path:
+        return Response("Snapshot nicht gefunden.", status=404)
+    with open(path, encoding="utf-8") as fh:
+        body = fh.read()
+    return Response(body, mimetype="application/json", headers={
+        "Content-Disposition": "attachment; filename=paperless-instanz-snapshot-%s.json" % ts})
 
 
 @app.route("/profiles", methods=["POST"])

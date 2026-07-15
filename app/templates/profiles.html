@@ -155,6 +155,13 @@
       {% endfor %}
     </details>
     {% endif %}
+
+    {% if p.snapshots %}
+    <details style="margin-top:8px" ontoggle="plxSnaps('{{ p.id }}',this)">
+      <summary style="cursor:pointer;color:var(--text-dim);font-size:13px">Instanz-Snapshots ({{ p.snapshots }})</summary>
+      <div id="snaps-{{ p.id }}" style="margin-top:6px"><p class="hint" style="margin:0">… lädt</p></div>
+    </details>
+    {% endif %}
   </div>
   {% endfor %}
 
@@ -178,6 +185,18 @@ function plxDiff(pid,ts,btn){
     .then(function(r){return r.text();})
     .then(function(html){box.innerHTML=html;box.style.display='block';btn.textContent='▲ Schließen';})
     .catch(function(){box.innerHTML='<div class="msg err">Vergleich konnte nicht geladen werden.</div>';box.style.display='block';btn.textContent='🔍 Vergleichen';});
+}
+// Snapshot-Liste erst beim Aufklappen holen: die Umfangszahlen kosten je Snapshot ein
+// json.load — die Profil-Seite soll davon nichts merken. Nur einmal laden.
+function plxSnaps(pid,det){
+  if(!det.open) return;
+  var box=document.getElementById('snaps-'+pid);
+  if(!box || box.getAttribute('data-loaded')) return;
+  box.setAttribute('data-loaded','1');
+  fetch('/profiles/'+pid+'/snapshots',{credentials:'same-origin'})
+    .then(function(r){return r.text();})
+    .then(function(html){box.innerHTML=html;})
+    .catch(function(){box.innerHTML='<div class="msg err">Snapshots konnten nicht geladen werden.</div>';box.removeAttribute('data-loaded');});
 }
 </script>
 {% endblock %}
