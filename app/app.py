@@ -21,7 +21,7 @@ import threading
 import time
 import zipfile
 from datetime import datetime, timedelta
-from urllib.parse import urlparse
+from urllib.parse import parse_qsl, urlparse
 
 try:
     import fcntl  # POSIX-Dateisperre fuer den Single-Worker-Waechter (fehlt unter Windows/Tests)
@@ -3737,13 +3737,41 @@ def portal_profiles_list():
     })
 
 
+_DELETE_METHODS = ("delete", "delete_documents")
+_BULK_EDIT_PATH = "/api/documents/bulk_edit"
+
+
+def _bulk_method():
+    """Das 'method'-Feld eines bulk_edit-Rumpfs ziehen — egal, wie der Client es kodiert.
+    Rueckgabe: der Name klein und ohne Rand-Leerzeichen, oder None = Rumpf unlesbar.
+
+    request.get_json() allein reicht NICHT: bei einem Content-Type ausser
+    application/json liefert es None, der Proxy schickt den Rumpf aber unveraendert weiter
+    (data=request.get_data()). Riegel und Paperless muessen denselben Byte-Strom beurteilen,
+    sonst laesst sich der Riegel durch das blosse Umdeklarieren des Content-Type umgehen."""
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        raw = request.get_data(as_text=True) or ""
+        try:
+            body = json.loads(raw)          # JSON, nur falsch deklariert
+        except ValueError:
+            body = dict(parse_qsl(raw))     # formular-kodiert
+    if not isinstance(body, dict):
+        return None
+    if "method" not in body:
+        return None
+    return str(body.get("method") or "").strip().lower()
+
+
 def _is_document_delete():
     """True, wenn der Request ein Dokument loeschen wuerde — harter Sicherheits-Riegel."""
     if request.method == "DELETE" and request.path.startswith("/api/documents/"):
         return True
-    if request.method == "POST" and request.path.rstrip("/") == "/api/documents/bulk_edit":
-        body = request.get_json(silent=True) or {}
-        if str(body.get("method", "")).lower() in ("delete", "delete_documents"):
+    if request.method == "POST" and request.path.rstrip("/") == _BULK_EDIT_PATH:
+        m = _bulk_method()
+        # Unlesbarer Rumpf -> sperren. Ein ehrlicher Client schickt hier immer lesbares
+        # JSON; wer das nicht tut, bekommt keinen Freifahrtschein am Riegel vorbei.
+        if m is None or m in _DELETE_METHODS:
             return True
     return False
 
