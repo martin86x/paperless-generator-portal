@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Paperless-ngx Setup Generator v3.94</title>
+<title>Paperless-ngx Setup Generator v3.95</title>
 <!-- Schriften inline (offline, kein Google-Fonts-CDN mehr; v3.78) -->
 <style>/* Google Fonts inline (v3.78) - Sora + JetBrains Mono (400/600/700), latin-Subset, base64. Ersetzt den @import; voll offline. */
 /* latin */
@@ -352,14 +352,14 @@ input.valid{border-color:var(--accent2)!important;}
   <button id="hamburger-btn" onclick="toggleSidebar()" aria-label="Navigation">
     <span></span><span></span><span></span>
   </button>
-  <span id="topbar-title">Setup Generator v3.94</span>
+  <span id="topbar-title">Setup Generator v3.95</span>
   <span id="topbar-conn-dot" class="sticky-conn-dot" title="Verbindungsstatus"></span>
-  <span id="topbar-badge">v3.94</span>
+  <span id="topbar-badge">v3.95</span>
 </div>
 <aside id="sidebar">
   <div class="sb-header">
     <div class="sb-logo">Paperless-ngx</div>
-    <div class="sb-title">Setup Generator v3.94</div>
+    <div class="sb-title">Setup Generator v3.95</div>
   </div>
   <nav class="sb-nav">
     <span class="sb-label">Konfiguration</span>
@@ -387,7 +387,7 @@ input.valid{border-color:var(--accent2)!important;}
 <main id="content">
 
   <div class="hero">
-    <div class="badge" id="hdr-badge">v3.94 &middot; Bash + Direkt &middot; REST API &middot; Stand: <span id="badge-date">14.07.2026</span></div>
+    <div class="badge" id="hdr-badge">v3.95 &middot; Bash + Direkt &middot; REST API &middot; Stand: <span id="badge-date">15.07.2026</span></div>
     <h1>Paperless-ngx<br>Setup Generator</h1>
     <p>Richtet eine frische Paperless-ngx-Instanz vollautomatisch ein &ndash; Tags, Dokumenttypen, Felder, Korrespondenten, Speicherpfade und Arbeitsabl&auml;ufe &ndash; per Bash-Skript oder direkt aus dem Browser via REST API.</p>
     <div style="margin-top:.6rem">
@@ -1845,6 +1845,72 @@ IBAN DE12 3456 7890';runMatchTest();" style="font-size:.72rem;padding:.28rem .65
       </div></div>
     </div>
 
+    <!-- Doku-Dubletten-Check -->
+    <div class="acc" style="margin-bottom:.6rem">
+      <div class="acc-h" onclick="tacc(this)">
+        <span style="font-size:1rem">&#128203;</span>
+        <span style="font-weight:700;color:#fff">Doku-Dubletten-Check</span>
+        <span style="font-size:.72rem;color:var(--text-muted);margin-left:.4rem">Doppelt eingelesene Dokumente finden</span>
+        <span class="acc-arr">&#9654;</span>
+      </div>
+      <div class="acc-b"><div style="padding:.9rem 1rem;background:var(--bg)">
+        <p style="color:var(--text-muted);font-size:.83rem;margin-bottom:.7rem">Findet Dokumente die mehrfach in der Instanz liegen &ndash; z.B. nach einem doppelten Import oder einem erneut eingescannten Beleg. <strong style="color:var(--text)">Rein lesend, es wird nichts gel&ouml;scht.</strong></p>
+
+        <div class="callout info" style="margin-bottom:.7rem;font-size:.77rem">
+          &#8505;&#65039; Paperless gibt <strong>keine Pr&uuml;fsumme</strong> &uuml;ber die API heraus. Die Erkennung l&auml;uft daher &uuml;ber vier Merkmale, nach Verl&auml;sslichkeit gestaffelt:
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:.4rem;margin-top:.5rem">
+            <div style="background:rgba(247,111,111,.07);border:1px solid rgba(247,111,111,.2);border-radius:6px;padding:.45rem .65rem">
+              <div style="font-size:.68rem;font-weight:700;color:var(--danger);margin-bottom:.2rem">Verl&auml;sslichkeit hoch</div>
+              <div style="font-size:.73rem;color:var(--text-muted);line-height:1.5"><strong style="color:var(--text)">Identischer OCR-Text</strong> oder <strong style="color:var(--text)">gleicher Dateiname</strong> &ndash; fast immer eine echte Dublette.</div>
+            </div>
+            <div style="background:rgba(247,201,72,.07);border:1px solid rgba(247,201,72,.2);border-radius:6px;padding:.45rem .65rem">
+              <div style="font-size:.68rem;font-weight:700;color:var(--warn);margin-bottom:.2rem">Verl&auml;sslichkeit mittel / niedrig</div>
+              <div style="font-size:.73rem;color:var(--text-muted);line-height:1.5"><strong style="color:var(--text)">Gleicher Titel</strong> bzw. <strong style="color:var(--text)">gleiche Eckdaten</strong> (Korrespondent + Datum + Seitenzahl) &ndash; bitte selbst nachsehen.</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:.7rem;flex-wrap:wrap;margin-bottom:.8rem">
+          <label style="font-size:.78rem;color:var(--text-muted)">Max. Dokumente:</label>
+          <input type="number" id="docdup-limit" value="500" min="0" max="99999" style="width:5.5rem;padding:.3rem .55rem;font-size:.82rem;background:var(--bg3);border:1px solid var(--border);border-radius:5px;color:var(--text)">
+          <span style="font-size:.71rem;color:var(--text-muted)">(0&nbsp;=&nbsp;alle &ndash; l&auml;dt den OCR-Text jedes Dokuments, bei gro&szlig;en Instanzen langsam)</span>
+          <button class="btn-gen" onclick="runDocDupCheck()" style="font-size:.82rem;padding:.5rem 1.2rem">&#128203; Dubletten suchen</button>
+        </div>
+        <div id="docdup-results"></div>
+      </div></div>
+    </div>
+
+    <!-- OCR-Qualitäts-Report -->
+    <div class="acc" style="margin-bottom:.6rem">
+      <div class="acc-h" onclick="tacc(this)">
+        <span style="font-size:1rem">&#128209;</span>
+        <span style="font-weight:700;color:#fff">OCR-Qualit&auml;ts-Report</span>
+        <span style="font-size:.72rem;color:var(--text-muted);margin-left:.4rem">Wie gut ist der erkannte Text wirklich?</span>
+        <span class="acc-arr">&#9654;</span>
+      </div>
+      <div class="acc-b"><div style="padding:.9rem 1rem;background:var(--bg)">
+        <p style="color:var(--text-muted);font-size:.83rem;margin-bottom:.7rem">Bewertet den OCR-Text jedes Dokuments und zeigt, wo die Texterkennung gescheitert ist. Geht &uuml;ber <em>Leere Dokumente</em> hinaus: erkennt auch Dokumente <strong style="color:var(--text)">mit</strong> Text, dessen Text aber unbrauchbar ist. <strong style="color:var(--text)">Rein lesend.</strong></p>
+
+        <div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:.7rem 1rem;margin-bottom:.8rem">
+          <div style="font-size:.69rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.5rem">Worauf gepr&uuml;ft wird</div>
+          <div style="display:flex;flex-direction:column;gap:.35rem;font-size:.78rem;color:var(--text-muted)">
+            <div><span style="color:var(--danger);font-weight:700">Kein Text</span> &ndash; gar nichts erkannt. Meist ein reines Bild-PDF ohne OCR-Durchlauf.</div>
+            <div><span style="color:var(--danger);font-weight:700">Zeichensalat</span> &ndash; mehr als 12&nbsp;% unlesbare Zeichen. Deutet auf eine falsche OCR-Sprache hin.</div>
+            <div><span style="color:var(--warn);font-weight:700">Zerrissene W&ouml;rter</span> &ndash; auff&auml;llig viele Ein-Zeichen-Fetzen. Typisch bei schlechtem Scan oder Schr&auml;glage.</div>
+            <div><span style="color:var(--warn);font-weight:700">Sehr wenig Text</span> &ndash; unter 120 Zeichen pro Seite. Kann korrekt sein (z.B. Deckblatt), lohnt aber einen Blick.</div>
+          </div>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:.7rem;flex-wrap:wrap;margin-bottom:.8rem">
+          <label style="font-size:.78rem;color:var(--text-muted)">Max. Dokumente:</label>
+          <input type="number" id="ocr-limit" value="500" min="0" max="99999" style="width:5.5rem;padding:.3rem .55rem;font-size:.82rem;background:var(--bg3);border:1px solid var(--border);border-radius:5px;color:var(--text)">
+          <span style="font-size:.71rem;color:var(--text-muted)">(0&nbsp;=&nbsp;alle)</span>
+          <button class="btn-gen" onclick="runOcrReport()" style="font-size:.82rem;padding:.5rem 1.2rem">&#128209; Report erstellen</button>
+        </div>
+        <div id="ocr-quality-results"></div>
+      </div></div>
+    </div>
+
     <!-- Dokumenten-Suche -->
     <div class="acc" style="margin-bottom:.6rem">
       <div class="acc-h" onclick="tacc(this)">
@@ -1932,6 +1998,69 @@ IBAN DE12 3456 7890';runMatchTest();" style="font-size:.72rem;padding:.28rem .65
           <button class="btn-gen" onclick="runTagMerge()" style="font-size:.78rem;background:var(--danger);border-color:var(--danger)">&#127991; Zusammenführen</button>
         </div>
         <div id="tm-results"></div>
+      </div></div>
+    </div>
+
+    <!-- Massen-Tag-Zuweisung -->
+    <div class="acc" style="margin-bottom:.6rem;border:1px solid rgba(247,201,72,.25)" id="acc-online-MassenTag">
+      <div class="acc-h" onclick="tacc(this)" style="background:rgba(247,201,72,.04)">
+        <span style="font-size:1rem">&#127991;</span>
+        <span style="font-weight:700;color:#fff">Massen-Tag-Zuweisung</span>
+        <span style="font-size:.68rem;font-weight:700;padding:.06rem .38rem;border-radius:4px;color:#f7c948;background:rgba(247,201,72,.12);border:1px solid rgba(247,201,72,.3);margin-left:.5rem;white-space:nowrap">schreibt Tags</span>
+        <span style="font-size:.72rem;color:var(--text-muted);margin-left:.4rem">Tags auf viele Dokumente gleichzeitig setzen oder entfernen</span>
+        <span class="acc-arr">&#9654;</span>
+      </div>
+      <div class="acc-b"><div style="padding:.9rem 1rem;background:var(--bg)">
+        <p style="color:var(--text-muted);font-size:.83rem;margin-bottom:.7rem">Filtert Dokumente in der Instanz und setzt bzw. entfernt bei allen Treffern dieselben Tags &ndash; z.B. um nachtr&auml;glich alle Rechnungen eines Korrespondenten zu markieren.</p>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin-bottom:.9rem">
+          <div style="background:rgba(56,217,169,.07);border:1px solid rgba(56,217,169,.2);border-radius:6px;padding:.55rem .75rem">
+            <div style="font-size:.68rem;font-weight:700;color:#38d9a9;text-transform:uppercase;letter-spacing:.06em;margin-bottom:.3rem">&#10003; Was ge&auml;ndert wird</div>
+            <div style="font-size:.75rem;color:var(--text-muted);line-height:1.6">Ausschlie&szlig;lich die <strong style="color:var(--text)">Tag-Zuweisung</strong> der gefilterten Dokumente &ndash; und nur dort, wo sich wirklich etwas &auml;ndert.</div>
+          </div>
+          <div style="background:rgba(79,142,247,.07);border:1px solid rgba(79,142,247,.2);border-radius:6px;padding:.55rem .75rem">
+            <div style="font-size:.68rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.3rem">&#10007; Was unber&uuml;hrt bleibt</div>
+            <div style="font-size:.75rem;color:var(--text-muted);line-height:1.6">Titel, Typ, Korrespondent, Dateien. Es werden <strong style="color:var(--text)">keine Tags neu angelegt</strong> und keine Dokumente gel&ouml;scht.</div>
+          </div>
+        </div>
+
+        <div style="margin-bottom:.8rem">
+          <button class="btn-sec" onclick="loadBulkTagFilters()" style="font-size:.75rem">&#128233; Filter aus Instanz laden</button>
+          <span id="bt-filter-status" style="font-size:.72rem;color:var(--text-muted);margin-left:.5rem">noch nicht geladen</span>
+        </div>
+
+        <div style="font-size:.69rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.4rem">1. Welche Dokumente?</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.7rem;margin-bottom:.5rem">
+          <div><span class="flabel" style="font-size:.73rem">Dokumenttyp</span><select id="bt-doctype" style="width:100%;font-size:.8rem"><option value="">— alle Dokumenttypen —</option></select></div>
+          <div><span class="flabel" style="font-size:.73rem">Korrespondent</span><select id="bt-corr" style="width:100%;font-size:.8rem"><option value="">— alle Korrespondenten —</option></select></div>
+        </div>
+        <div class="field-group"><span class="flabel" style="font-size:.73rem">Volltext-Suche (optional)</span><input type="text" id="bt-query" placeholder="z.B. Stromabschlag" style="width:100%;font-size:.8rem"></div>
+        <div style="display:flex;gap:1.2rem;flex-wrap:wrap;margin:.5rem 0 .9rem">
+          <label style="display:flex;align-items:center;gap:.4rem;font-size:.8rem;cursor:pointer"><input type="checkbox" id="bt-inbox" style="width:.9rem;height:.9rem"> nur Posteingang</label>
+          <label style="display:flex;align-items:center;gap:.4rem;font-size:.8rem;cursor:pointer"><input type="checkbox" id="bt-untagged" style="width:.9rem;height:.9rem"> nur Dokumente ganz ohne Tag</label>
+        </div>
+
+        <div style="font-size:.69rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.4rem">2. Was soll passieren?</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.7rem;margin-bottom:.5rem">
+          <div>
+            <span class="flabel" style="font-size:.73rem">&#10133; Tags hinzuf&uuml;gen</span>
+            <input type="text" id="bt-add" placeholder="z.B. Steuer, Wichtig" style="width:100%;font-size:.8rem" list="bt-add-list">
+          </div>
+          <div>
+            <span class="flabel" style="font-size:.73rem">&#10134; Tags entfernen</span>
+            <input type="text" id="bt-remove" placeholder="z.B. Posteingang" style="width:100%;font-size:.8rem" list="bt-remove-list">
+          </div>
+        </div>
+        <datalist id="bt-add-list"></datalist>
+        <datalist id="bt-remove-list"></datalist>
+        <div style="font-size:.71rem;color:var(--text-muted);margin-bottom:.9rem">Mehrere Tags mit Komma trennen. Die Tags m&uuml;ssen in der Instanz bereits existieren.</div>
+
+        <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-bottom:.8rem;align-items:center">
+          <button class="btn-sec" onclick="runBulkTag(true)" style="font-size:.82rem;padding:.5rem 1.2rem">&#128064; Schritt 1: Dry-Run</button>
+          <span style="font-size:.72rem;color:var(--text-muted)">&#8594; erst nach Pr&uuml;fung:</span>
+          <button class="btn-gen" onclick="runBulkTag(false)" style="font-size:.82rem;padding:.5rem 1.2rem;background:var(--danger);border-color:var(--danger)">&#9654;&#65039; Schritt 2: Echter Lauf</button>
+        </div>
+        <div id="bulktag-results"></div>
       </div></div>
     </div>
 
@@ -2136,6 +2265,9 @@ IBAN DE12 3456 7890';runMatchTest();" style="font-size:.72rem;padding:.28rem .65
   <a class="rsb-link rsb-online" onclick="openToolAcc('online','Statistik')">&#128202; Statistik</a>
   <a class="rsb-link rsb-online" onclick="openToolAcc('online','Instanz-Importer')">&#128640; Instanz-Importer</a>
   <a class="rsb-link rsb-online" onclick="openToolAcc('online','Matching-Audit')">&#128300; Matching-Audit</a>
+  <a class="rsb-link rsb-online" onclick="openToolAcc('online','Doku-Dubletten')">&#128203; Doku-Dubletten</a>
+  <a class="rsb-link rsb-online" onclick="openToolAcc('online','OCR-Qualit')">&#128209; OCR-Qualit&auml;t</a>
+  <a class="rsb-link rsb-online" onclick="openToolAcc('online','Massen-Tag')">&#127991; Massen-Tags</a>
   <a class="rsb-link rsb-online" onclick="openToolAcc('online','ASN-L')">&#128270; ASN-L&uuml;cken</a>
   <a class="rsb-link rsb-online" onclick="openToolAcc('online','Migrations')">&#128260; Migration</a>
   <a class="rsb-link rsb-online" onclick="openToolAcc('online','Matching-Regeln')">&#128257; Regeln aktualisieren</a>
@@ -4066,7 +4198,7 @@ const AN_HINTS=[
   "Unscharfe Suche – toleriert Tippfehler",
   "Automatisch trainiert aus manuell beschrifteten Dokumenten"
 ];
-const GENERATOR_VERSION = "3.94";
+const GENERATOR_VERSION = "3.95";
 
 function updateVersionWarnings(){
   const v=document.getElementById("inp-plx-version");
@@ -12307,6 +12439,8 @@ async function runAllTools() {
     {fn:'runFeldAuslastung',          label:'Feld-Auslastung',            res:'fa-results'},
     {fn:'runDatumsAusreisser',        label:'Datums-Ausreißer',           res:'da-results'},
     {fn:'runLeereDokumente',          label:'Leere Dokumente',            res:'ld-results'},
+    {fn:'runOcrReport',               label:'OCR-Qualitäts-Report',       res:'ocr-quality-results'},
+    {fn:'runDocDupCheck',             label:'Doku-Dubletten-Check',       res:'docdup-results'},
     {fn:'runAsnGapFinder',            label:'ASN-Lücken-Finder',          res:'asn-gap-results'},
     {fn:'runBulkAsnCheck',            label:'ASN-Bulk-Check',             res:'asn-bulk-results'},
     {fn:'runWfApiCompare',            label:'Workflow-Abgleich (API)',    res:'ws-api-compare-results'},
@@ -12375,6 +12509,417 @@ function _sweepJump(resId){
   setTimeout(function(){ el.scrollIntoView({behavior:'smooth',block:'center'}); }, 60);
 }
 
+// ════════════════════════════════════════════════════════════
+// DOKUMENT-WERKZEUGE – Dubletten-Check, OCR-Qualität, Massen-Tags
+// Nutzt die geteilten Helfer aus 09b-tools-instance.js
+// (_getApiConn/_toolResult/_toolLoading/_toolError/_resultCard).
+// Paperless liefert KEINEN checksum-Wert über die API (auch nicht via
+// ?fields=) – Dubletten werden daher über Text/Dateiname/Titel/Eckdaten
+// erkannt, gestaffelt nach Verlässlichkeit.
+// ════════════════════════════════════════════════════════════
+
+// 53-Bit-Hash (cyrb53) – hält Fingerabdrücke klein statt ganze OCR-Texte als Map-Key zu halten
+function _dqHash(str) {
+  var h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+  for(var i=0, ch; i<str.length; i++) {
+    ch = str.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1>>>16), 2246822507) ^ Math.imul(h2 ^ (h2>>>13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2>>>16), 2246822507) ^ Math.imul(h1 ^ (h1>>>13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1>>>0)).toString(36);
+}
+
+// Seitenweise laden mit ?fields= (spart Payload) – limit 0 = alle
+async function _dqFetchDocs(url, headers, fields, limit, onProgress) {
+  var docs = [], next = url + '/api/documents/?page_size=250&ordering=id&fields=' + fields;
+  while(next) {
+    var d = await fetch(next, {headers, signal: AbortSignal.timeout(15000)}).then(function(r){
+      if(!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    });
+    docs = docs.concat(d.results || []);
+    if(onProgress) onProgress(docs.length, d.count || 0);
+    if(limit && docs.length >= limit) { docs = docs.slice(0, limit); break; }
+    next = d.next;
+  }
+  return docs;
+}
+
+function _dqNormText(s) { return (s||'').toLowerCase().replace(/\s+/g,' ').trim(); }
+function _dqNormTitle(s) {
+  return (s||'').toLowerCase()
+    .replace(/\.(pdf|png|jpe?g|tiff?|docx?)$/,'')
+    .replace(/[^a-z0-9äöüß]+/g,' ').trim();
+}
+
+// ── Doku-Dubletten-Check ──
+// Staffelung: identischer Text > gleicher Dateiname > gleicher Titel > gleiche Eckdaten.
+// Ein Paar wird nur in der höchsten zutreffenden Stufe gemeldet.
+var _DUP_TIERS = [
+  {key:'content', label:'Identischer OCR-Text', conf:'hoch',    color:'var(--danger)', hint:'Der erkannte Text stimmt zeichengenau überein – fast sicher dasselbe Dokument.'},
+  {key:'file',    label:'Gleicher Dateiname',   conf:'hoch',    color:'var(--danger)', hint:'Original-Dateiname identisch – typisch für versehentlichen Doppel-Import.'},
+  {key:'title',   label:'Gleicher Titel',       conf:'mittel',  color:'var(--warn)',   hint:'Titel identisch (Groß/Kleinschreibung und Sonderzeichen ignoriert).'},
+  {key:'meta',    label:'Gleiche Eckdaten',     conf:'niedrig', color:'var(--accent)', hint:'Korrespondent + Datum + Seitenzahl identisch – kann auch Zufall sein.'}
+];
+
+async function runDocDupCheck() {
+  var out = 'docdup-results';
+  var {url, token, headers} = _getApiConn();
+  if(!url || !token) { _toolError(out, 'URL + Token in Sektion 01 eintragen.'); return; }
+  var limit = parseInt((document.getElementById('docdup-limit')||{value:'500'}).value, 10);
+  if(isNaN(limit) || limit < 0) limit = 500;
+
+  _toolResult(out, '<div style="color:var(--text-muted);font-size:.78rem">&#8987; Lade Dokumente...</div>');
+  try {
+    var docs = await _dqFetchDocs(url, headers, 'id,title,content,created,page_count,correspondent,original_file_name', limit,
+      function(n, total){ _toolResult(out, '<div style="color:var(--text-muted);font-size:.78rem">&#8987; '+n+(total?' / '+(limit?Math.min(limit,total):total):'')+' Dokumente geladen...</div>'); });
+
+    if(docs.length < 2) {
+      _toolResult(out, '<div class="callout info">&#8505;&#65039; Nur '+docs.length+' Dokument(e) in der Instanz &ndash; f&uuml;r einen Dubletten-Vergleich werden mindestens 2 ben&ouml;tigt.</div>');
+      return;
+    }
+
+    // Pro Stufe gruppieren
+    var buckets = {};
+    _DUP_TIERS.forEach(function(t){ buckets[t.key] = {}; });
+    docs.forEach(function(d) {
+      var txt = _dqNormText(d.content);
+      if(txt.length >= 40) _dqPush(buckets.content, _dqHash(txt), d);
+      var fn = (d.original_file_name||'').trim().toLowerCase();
+      if(fn) _dqPush(buckets.file, fn, d);
+      var ti = _dqNormTitle(d.title);
+      if(ti) _dqPush(buckets.title, ti, d);
+      if(d.correspondent) _dqPush(buckets.meta, d.correspondent+'|'+(d.created||'')+'|'+(d.page_count||0), d);
+    });
+
+    // Paare nur in der höchsten zutreffenden Stufe melden
+    var seenPairs = {}, tierGroups = [], totalGroups = 0, affected = {};
+    _DUP_TIERS.forEach(function(t) {
+      var groups = [];
+      Object.keys(buckets[t.key]).forEach(function(k) {
+        var g = buckets[t.key][k];
+        if(g.length < 2) return;
+        var fresh = false;
+        for(var i=0;i<g.length;i++) for(var j=i+1;j<g.length;j++) {
+          var pk = Math.min(g[i].id,g[j].id)+'-'+Math.max(g[i].id,g[j].id);
+          if(!seenPairs[pk]) { seenPairs[pk] = true; fresh = true; }
+        }
+        if(fresh) {
+          groups.push(g);
+          g.forEach(function(d){ affected[d.id] = true; });
+        }
+      });
+      if(groups.length) {
+        groups.sort(function(a,b){ return b.length - a.length; });
+        totalGroups += groups.length;
+        tierGroups.push({tier:t, groups:groups});
+      }
+    });
+
+    if(!totalGroups) {
+      _toolResult(out, '<div class="callout tip">&#10003; Keine Dubletten-Verdachtsf&auml;lle unter '+docs.length+' gepr&uuml;ften Dokumenten.</div>');
+      return;
+    }
+
+    var html = '<div class="stats-bar" style="margin-bottom:.7rem">';
+    html += '<div class="stat"><div class="stat-v" style="color:var(--text)">'+docs.length+'</div><div class="stat-l">Gepr&uuml;ft</div></div>';
+    html += '<div class="stat"><div class="stat-v" style="color:var(--warn)">'+totalGroups+'</div><div class="stat-l">Verdachts-Gruppen</div></div>';
+    html += '<div class="stat"><div class="stat-v" style="color:var(--danger)">'+Object.keys(affected).length+'</div><div class="stat-l">Betroffene Dok.</div></div>';
+    html += '</div>';
+    html += '<div class="callout info" style="margin-bottom:.7rem;font-size:.75rem">&#8505;&#65039; Paperless liefert keine Pr&uuml;fsumme &uuml;ber die API &ndash; die Erkennung l&auml;uft daher &uuml;ber Text, Dateiname, Titel und Eckdaten. <strong>Nichts wird automatisch gel&ouml;scht</strong>, bitte jede Gruppe selbst pr&uuml;fen.</div>';
+
+    tierGroups.forEach(function(tg) {
+      html += '<div style="margin-bottom:.9rem">';
+      html += '<div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.35rem;flex-wrap:wrap">';
+      html += '<span style="font-size:.72rem;font-weight:700;color:'+tg.tier.color+';text-transform:uppercase;letter-spacing:.08em">'+tg.tier.label+'</span>';
+      html += '<span style="font-size:.66rem;font-weight:700;padding:.05rem .35rem;border-radius:4px;color:'+tg.tier.color+';border:1px solid currentColor;opacity:.8">Verl&auml;sslichkeit '+tg.tier.conf+'</span>';
+      html += '<span style="font-size:.7rem;color:var(--text-muted)">'+tg.groups.length+' Gruppe(n)</span>';
+      html += '</div>';
+      html += '<div style="font-size:.72rem;color:var(--text-muted);margin-bottom:.4rem">'+tg.tier.hint+'</div>';
+      tg.groups.slice(0, 25).forEach(function(g) {
+        var items = g.map(function(d) {
+          // Erst je Teil escapen, dann mit der Entity verbinden – sonst escaped escH() das & von &middot; mit
+          var meta = [];
+          if(d.created) meta.push(escH(d.created));
+          if(d.page_count) meta.push(escH(d.page_count+' S.'));
+          return {label: escH(d.title||'(kein Titel)')+' <span style="color:var(--text-muted);font-size:.7rem">#'+d.id+(meta.length?' &middot; '+meta.join(' &middot; '):'')+'</span>',
+                  link: url+'/documents/'+d.id};
+        });
+        html += '<div style="margin-bottom:.4rem">'+_resultCard(items,'')+'</div>';
+      });
+      if(tg.groups.length > 25) html += '<div style="font-size:.7rem;color:var(--text-muted)">&hellip; und '+(tg.groups.length-25)+' weitere Gruppe(n) &ndash; nicht angezeigt.</div>';
+      html += '</div>';
+    });
+    _toolResult(out, html);
+  } catch(e) { _toolError(out, 'Fehler: ' + escH(e.message)); }
+}
+function _dqPush(bucket, key, doc) { (bucket[key] = bucket[key] || []).push(doc); }
+
+// ── OCR-Qualitäts-Report ──
+// Bewertet je Dokument Zeichen pro Seite, Anteil unlesbarer Zeichen und
+// den Anteil zerrissener Ein-Zeichen-Wörter – typische OCR-Fehlerbilder.
+function _ocrScore(doc) {
+  var txt = (doc.content||'');
+  var pages = doc.page_count || 1;
+  var chars = txt.replace(/\s+/g,' ').trim().length;
+  var cpp = Math.round(chars / pages);
+  if(chars === 0) return {cpp:0, chars:0, pages:pages, garbage:0, shortRatio:0, verdict:'leer', label:'Kein Text', color:'var(--danger)'};
+
+  var letters = (txt.match(/[a-zA-ZäöüÄÖÜß0-9]/g)||[]).length;
+  var meaningful = (txt.match(/[a-zA-ZäöüÄÖÜß0-9\s.,;:!?()\-\/€%&"'+#@*_[\]{}<>=„“”‚‘’–—§°²³]/g)||[]).length;
+  var garbage = txt.length ? (txt.length - meaningful) / txt.length : 0;
+
+  var tokens = txt.split(/\s+/).filter(function(t){ return t.length > 0; });
+  var singles = tokens.filter(function(t){ return t.length === 1; }).length;
+  var shortRatio = tokens.length ? singles / tokens.length : 0;
+
+  // Exklusiv und nach Aussagekraft geordnet. Die Ein-Zeichen-Quote ist bei sehr
+  // wenigen Wörtern reines Rauschen ("Anlage 3" = 50%), daher erst ab 20 Wörtern.
+  var verdict = 'ok', label = 'Gut', color = 'var(--accent2)';
+  if(letters === 0)                                { verdict='leer';     label='Kein lesbarer Text'; color='var(--danger)'; }
+  else if(garbage > 0.12)                          { verdict='salat';    label='Zeichensalat';       color='var(--danger)'; }
+  else if(cpp < 120)                               { verdict='duenn';    label='Sehr wenig Text';    color='var(--warn)'; }
+  else if(tokens.length >= 20 && shortRatio > .35) { verdict='zerissen'; label='Zerrissene W&ouml;rter'; color='var(--warn)'; }
+  return {cpp:cpp, chars:chars, pages:pages, garbage:garbage, shortRatio:shortRatio, verdict:verdict, label:label, color:color};
+}
+
+async function runOcrReport() {
+  var out = 'ocr-quality-results';
+  var {url, token, headers} = _getApiConn();
+  if(!url || !token) { _toolError(out, 'URL + Token in Sektion 01 eintragen.'); return; }
+  var limit = parseInt((document.getElementById('ocr-limit')||{value:'500'}).value, 10);
+  if(isNaN(limit) || limit < 0) limit = 500;
+
+  _toolResult(out, '<div style="color:var(--text-muted);font-size:.78rem">&#8987; Lade Dokumente...</div>');
+  try {
+    var docs = await _dqFetchDocs(url, headers, 'id,title,content,page_count,created', limit,
+      function(n, total){ _toolResult(out, '<div style="color:var(--text-muted);font-size:.78rem">&#8987; '+n+(total?' / '+(limit?Math.min(limit,total):total):'')+' Dokumente geladen...</div>'); });
+
+    if(!docs.length) { _toolResult(out, '<div class="callout info">&#8505;&#65039; Keine Dokumente in der Instanz.</div>'); return; }
+
+    var scored = docs.map(function(d){ var s = _ocrScore(d); s.doc = d; return s; });
+    var bad = scored.filter(function(s){ return s.verdict !== 'ok'; });
+    var okCnt = scored.length - bad.length;
+    var avgCpp = Math.round(scored.reduce(function(a,s){ return a + s.cpp; }, 0) / scored.length);
+    var health = Math.round(okCnt / scored.length * 100);
+
+    var html = '<div class="stats-bar" style="margin-bottom:.7rem">';
+    html += '<div class="stat"><div class="stat-v" style="color:'+(health>90?'var(--accent2)':health>70?'var(--warn)':'var(--danger)')+'">'+health+'%</div><div class="stat-l">OCR-Qualit&auml;t</div></div>';
+    html += '<div class="stat"><div class="stat-v" style="color:var(--text)">'+scored.length+'</div><div class="stat-l">Gepr&uuml;ft</div></div>';
+    html += '<div class="stat"><div class="stat-v" style="color:'+(bad.length?'var(--warn)':'var(--accent2)')+'">'+bad.length+'</div><div class="stat-l">Auff&auml;llig</div></div>';
+    html += '<div class="stat"><div class="stat-v" style="color:var(--text-muted)">'+avgCpp+'</div><div class="stat-l">&#8709; Zeichen/Seite</div></div>';
+    html += '</div>';
+
+    // Verteilung Zeichen pro Seite
+    var BUCKETS = [{max:0,l:'0 (kein Text)'},{max:120,l:'1&ndash;119'},{max:500,l:'120&ndash;499'},{max:1500,l:'500&ndash;1.499'},{max:Infinity,l:'1.500+'}];
+    var counts = BUCKETS.map(function(){ return 0; });
+    scored.forEach(function(s){ for(var i=0;i<BUCKETS.length;i++){ if(s.cpp<=BUCKETS[i].max || BUCKETS[i].max===Infinity){ counts[i]++; break; } } });
+    var maxC = Math.max.apply(null, counts) || 1;
+    html += '<div style="font-size:.72rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.08em;margin:.6rem 0 .35rem">Verteilung &ndash; Zeichen pro Seite</div>';
+    html += '<div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:.6rem .9rem;margin-bottom:.7rem">';
+    BUCKETS.forEach(function(b, i) {
+      var col = i===0 ? 'var(--danger)' : i===1 ? 'var(--warn)' : 'var(--accent)';
+      html += '<div style="display:flex;align-items:center;gap:.6rem;margin:.25rem 0">';
+      html += '<span style="font-size:.72rem;color:var(--text-muted);min-width:6.5rem">'+b.l+'</span>';
+      html += '<div style="flex:1;background:var(--bg);border-radius:3px;height:7px"><div style="width:'+Math.round(counts[i]/maxC*100)+'%;height:100%;background:'+col+';border-radius:3px"></div></div>';
+      html += '<span style="font-size:.72rem;color:var(--text);min-width:2.5rem;text-align:right">'+counts[i]+'</span>';
+      html += '</div>';
+    });
+    html += '</div>';
+
+    if(!bad.length) {
+      html += '<div class="callout tip">&#10003; Alle '+scored.length+' Dokumente haben brauchbaren OCR-Text.</div>';
+      _toolResult(out, html);
+      return;
+    }
+
+    // Schlechteste zuerst: kein Text vor Zeichensalat vor dünn
+    var RANK = {leer:0, salat:1, zerissen:2, duenn:3, ok:4};
+    bad.sort(function(a,b){ return (RANK[a.verdict]-RANK[b.verdict]) || (a.cpp-b.cpp); });
+    html += '<div style="font-size:.72rem;font-weight:700;color:var(--warn);text-transform:uppercase;letter-spacing:.08em;margin:.6rem 0 .35rem">Auff&auml;llige Dokumente'+(bad.length>50?' &ndash; erste 50':'')+'</div>';
+    html += '<div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;overflow:hidden">';
+    bad.slice(0,50).forEach(function(s, i) {
+      html += '<div style="padding:.45rem .9rem;font-size:.78rem;border-top:'+(i?'1px solid var(--border)':'none')+';display:flex;align-items:center;gap:.6rem">';
+      html += '<span style="font-size:.66rem;font-weight:700;padding:.05rem .35rem;border-radius:4px;color:'+s.color+';border:1px solid currentColor;white-space:nowrap">'+s.label+'</span>';
+      html += '<span style="color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escH(s.doc.title||'(kein Titel)')+'</span>';
+      html += '<span style="margin-left:auto;display:flex;align-items:center;gap:.6rem;flex-shrink:0">';
+      html += '<span style="font-size:.68rem;color:var(--text-muted)">'+s.cpp+' Z./S. &middot; '+s.pages+' S.</span>';
+      html += '<a href="'+escH(url+'/documents/'+s.doc.id)+'" target="_blank" style="font-size:.68rem;color:var(--accent);text-decoration:underline">&#8599; &ouml;ffnen</a>';
+      html += '</span></div>';
+    });
+    html += '</div>';
+    html += '<div class="callout info" style="margin-top:.6rem;font-size:.75rem">&#128161; <strong>Was tun?</strong> Dokumente ohne Text sind meist reine Bild-PDFs &ndash; in Paperless per <em>Dokument &rarr; Erneut verarbeiten</em> mit aktivem OCR neu einlesen. Zeichensalat deutet auf eine falsche OCR-Sprache hin (<code>PAPERLESS_OCR_LANGUAGE</code>).</div>';
+    _toolResult(out, html);
+  } catch(e) { _toolError(out, 'Fehler: ' + escH(e.message)); }
+}
+
+// ── Massen-Tag-Zuweisung ──
+// Schreibend! Dry-Run ist Pflicht-Vorstufe, der echte Lauf verlangt zusätzlich confirm().
+function _btBuildQuery() {
+  var parts = [];
+  var dt = (document.getElementById('bt-doctype')||{value:''}).value;
+  var co = (document.getElementById('bt-corr')||{value:''}).value;
+  var q  = (document.getElementById('bt-query')||{value:''}).value.trim();
+  var inbox = (document.getElementById('bt-inbox')||{checked:false}).checked;
+  var untagged = (document.getElementById('bt-untagged')||{checked:false}).checked;
+  if(dt) parts.push('document_type__id=' + encodeURIComponent(dt));
+  if(co) parts.push('correspondent__id=' + encodeURIComponent(co));
+  if(q)  parts.push('query=' + encodeURIComponent(q));
+  if(inbox) parts.push('is_in_inbox=true');
+  if(untagged) parts.push('is_tagged=false');
+  return parts;
+}
+
+async function loadBulkTagFilters() {
+  var {url, token, headers} = _getApiConn();
+  if(!url || !token) { _toolError('bulktag-results', 'URL + Token in Sektion 01 eintragen.'); return; }
+  var status = document.getElementById('bt-filter-status');
+  if(status) status.textContent = 'Lade…';
+  try {
+    var [types, corrs, tags] = await Promise.all([
+      fetch(url+'/api/document_types/?page_size=200', {headers, signal:AbortSignal.timeout(8000)}).then(function(r){return r.json();}),
+      fetch(url+'/api/correspondents/?page_size=500', {headers, signal:AbortSignal.timeout(8000)}).then(function(r){return r.json();}),
+      fetch(url+'/api/tags/?page_size=500', {headers, signal:AbortSignal.timeout(8000)}).then(function(r){return r.json();})
+    ]);
+    function fill(id, list, placeholder) {
+      var sel = document.getElementById(id);
+      if(!sel) return;
+      var cur = sel.value;
+      sel.innerHTML = '<option value="">'+placeholder+'</option>';
+      (list.results||[]).sort(function(a,b){ return a.name.localeCompare(b.name); }).forEach(function(o) {
+        var op = document.createElement('option');
+        op.value = o.id; op.textContent = o.name + ' (' + (o.document_count||0) + ')';
+        sel.appendChild(op);
+      });
+      if(cur) sel.value = cur;
+    }
+    fill('bt-doctype', types, '— alle Dokumenttypen —');
+    fill('bt-corr',    corrs, '— alle Korrespondenten —');
+    var tagList = (tags.results||[]).sort(function(a,b){ return a.name.localeCompare(b.name); });
+    window._btTags = tagList;
+    ['bt-add-list','bt-remove-list'].forEach(function(id) {
+      var dl = document.getElementById(id);
+      if(dl) dl.innerHTML = tagList.map(function(t){ return '<option value="'+escH(t.name)+'">'; }).join('');
+    });
+    if(status) status.textContent = (types.results||[]).length+' Typen · '+(corrs.results||[]).length+' Korrespondenten · '+tagList.length+' Tags geladen';
+  } catch(e) { if(status) status.textContent = 'Fehler: ' + e.message; }
+}
+
+function _btResolveTags(inputId) {
+  var raw = (document.getElementById(inputId)||{value:''}).value.trim();
+  if(!raw) return {ids:[], names:[], unknown:[]};
+  var wanted = raw.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+  var known = window._btTags || [];
+  var ids = [], names = [], unknown = [];
+  wanted.forEach(function(w) {
+    var hit = known.filter(function(t){ return t.name.toLowerCase() === w.toLowerCase(); })[0];
+    if(hit) { ids.push(hit.id); names.push(hit.name); } else unknown.push(w);
+  });
+  return {ids:ids, names:names, unknown:unknown};
+}
+
+async function runBulkTag(dryRun) {
+  var out = 'bulktag-results';
+  var {url, token, headers} = _getApiConn();
+  if(!url || !token) { _toolError(out, 'URL + Token in Sektion 01 eintragen.'); return; }
+  if(!window._btTags) { _toolError(out, 'Bitte zuerst <strong>Filter aus Instanz laden</strong> &ndash; sonst k&ouml;nnen Tag-Namen nicht aufgel&ouml;st werden.'); return; }
+
+  var add = _btResolveTags('bt-add');
+  var rem = _btResolveTags('bt-remove');
+  if(add.unknown.length || rem.unknown.length) {
+    _toolError(out, 'Unbekannte Tags: <strong>'+escH(add.unknown.concat(rem.unknown).join(', '))+'</strong>. Dieses Werkzeug legt bewusst keine Tags an &ndash; bitte in Paperless anlegen oder Schreibweise pr&uuml;fen.');
+    return;
+  }
+  if(!add.ids.length && !rem.ids.length) { _toolError(out, 'Mindestens ein Tag zum Hinzuf&uuml;gen oder Entfernen angeben.'); return; }
+
+  var parts = _btBuildQuery();
+  if(!parts.length && !dryRun) { _toolError(out, 'Ohne Filter w&uuml;rden <strong>alle</strong> Dokumente ge&auml;ndert. Bitte mindestens einen Filter setzen.'); return; }
+  var qs = parts.join('&');
+  // Bindet den Echt-Lauf an exakt den Stand, der im Dry-Run gezeigt wurde
+  var sig = qs + '||+' + add.ids.slice().sort().join(',') + '||-' + rem.ids.slice().sort().join(',');
+
+  _toolResult(out, '<div style="color:var(--text-muted);font-size:.78rem">&#8987; Ermittle betroffene Dokumente...</div>');
+  try {
+    var docs = [], next = url + '/api/documents/?page_size=250&ordering=id&fields=id,title,tags' + (qs ? '&' + qs : '');
+    while(next) {
+      var d = await fetch(next, {headers, signal:AbortSignal.timeout(15000)}).then(function(r){
+        if(!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      });
+      docs = docs.concat(d.results || []);
+      next = d.next;
+      if(docs.length >= 10000) break;
+    }
+
+    if(!docs.length) { _toolResult(out, '<div class="callout info">&#8505;&#65039; Kein Dokument passt auf diesen Filter &ndash; nichts zu tun.</div>'); return; }
+
+    // Nur Dokumente, bei denen sich wirklich etwas ändert
+    var affected = docs.filter(function(doc) {
+      var cur = doc.tags || [];
+      var addsNew = add.ids.some(function(id){ return cur.indexOf(id) === -1; });
+      var remsOld = rem.ids.some(function(id){ return cur.indexOf(id) !== -1; });
+      return addsNew || remsOld;
+    });
+
+    var summary = '<div class="stats-bar" style="margin-bottom:.7rem">';
+    summary += '<div class="stat"><div class="stat-v" style="color:var(--text)">'+docs.length+'</div><div class="stat-l">Filter-Treffer</div></div>';
+    summary += '<div class="stat"><div class="stat-v" style="color:'+(affected.length?'var(--warn)':'var(--accent2)')+'">'+affected.length+'</div><div class="stat-l">Zu &auml;ndern</div></div>';
+    summary += '<div class="stat"><div class="stat-v" style="color:var(--text-muted)">'+(docs.length-affected.length)+'</div><div class="stat-l">Schon korrekt</div></div>';
+    summary += '</div>';
+
+    var what = '';
+    if(add.names.length) what += '<div style="font-size:.78rem;color:var(--accent2);margin-bottom:.2rem">&#10133; hinzuf&uuml;gen: <strong>'+escH(add.names.join(', '))+'</strong></div>';
+    if(rem.names.length) what += '<div style="font-size:.78rem;color:var(--danger);margin-bottom:.2rem">&#10134; entfernen: <strong>'+escH(rem.names.join(', '))+'</strong></div>';
+
+    if(!affected.length) {
+      _toolResult(out, summary + what + '<div class="callout tip">&#10003; Alle '+docs.length+' Treffer sind bereits korrekt getaggt &ndash; nichts zu tun.</div>');
+      return;
+    }
+
+    if(dryRun) {
+      var items = affected.slice(0,25).map(function(doc) {
+        return {label: escH(doc.title||'(kein Titel)')+' <span style="color:var(--text-muted);font-size:.7rem">#'+doc.id+'</span>', link: url+'/documents/'+doc.id};
+      });
+      _toolResult(out, summary + what +
+        '<div class="callout warn" style="margin:.5rem 0">&#128064; <strong>Dry-Run &ndash; es wurde nichts geschrieben.</strong> '+affected.length+' Dokument(e) w&uuml;rden ge&auml;ndert'+(affected.length>25?' (erste 25 gezeigt)':'')+'.</div>' +
+        _resultCard(items,'') +
+        '<div style="font-size:.72rem;color:var(--text-muted);margin-top:.5rem">Sieht das richtig aus? Dann auf <strong>Echter Lauf</strong> klicken.</div>');
+      window._btPending = {sig: sig, ids: affected.map(function(d){ return d.id; })};
+      return;
+    }
+
+    if(!window._btPending || window._btPending.sig !== sig) {
+      _toolError(out, 'Die Einstellungen haben sich seit dem letzten Dry-Run ge&auml;ndert. Bitte den <strong>Dry-Run</strong> erneut ausf&uuml;hren und das Ergebnis pr&uuml;fen.');
+      return;
+    }
+    var msg = affected.length+' Dokument(e) &auml;ndern?\n\n';
+    if(add.names.length) msg += '+ hinzufügen: '+add.names.join(', ')+'\n';
+    if(rem.names.length) msg += '- entfernen: '+rem.names.join(', ')+'\n';
+    if(!confirm(msg.replace(/&auml;/g,'ä'))) { _toolResult(out, '<div class="callout info">Abgebrochen &ndash; nichts ge&auml;ndert.</div>'); return; }
+
+    _toolResult(out, '<div style="color:var(--text-muted);font-size:.78rem">&#8987; Schreibe &Auml;nderungen...</div>');
+    var wHeaders = {Authorization:'Token '+token, Accept:'application/json', 'Content-Type':'application/json'};
+    var ids = affected.map(function(d){ return d.id; }), done = 0;
+    // In Blöcken – bulk_edit mit sehr vielen IDs läuft sonst in Timeouts
+    for(var i=0; i<ids.length; i+=100) {
+      var chunk = ids.slice(i, i+100);
+      var r = await fetch(url+'/api/documents/bulk_edit/', {
+        method:'POST', headers:wHeaders,
+        body: JSON.stringify({documents:chunk, method:'modify_tags', parameters:{add_tags:add.ids, remove_tags:rem.ids}}),
+        signal: AbortSignal.timeout(30000)
+      });
+      if(!r.ok) throw new Error('HTTP '+r.status+' bei Block ab Position '+i+' ('+done+' bereits ge&auml;ndert)');
+      done += chunk.length;
+      _toolResult(out, '<div style="color:var(--text-muted);font-size:.78rem">&#8987; '+done+' / '+ids.length+' geschrieben...</div>');
+    }
+    window._btPending = null;
+    _toolResult(out, '<div class="callout tip">&#10003; <strong>'+done+' Dokument(e) aktualisiert.</strong></div>' + what +
+      '<div style="font-size:.72rem;color:var(--text-muted);margin-top:.4rem">Die Tag-Z&auml;hler oben aktualisieren sich erst nach erneutem <em>Filter aus Instanz laden</em>.</div>');
+    if(typeof loadQuickStats === 'function') loadQuickStats();
+  } catch(e) { _toolError(out, 'Fehler: ' + escH(e.message)); }
+}
 async function runAsnGapFinder() {
   const out = document.getElementById('asn-gap-results');
   if(!out) return;
