@@ -16,6 +16,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import secrets
 import threading
 import time
@@ -250,9 +251,31 @@ def init_config():
 # anderen Instanz (anderer secret) einspielbar.
 _ENC_PREFIX = "enc:"
 
+# Der Schluessel haengt am 'secret' aus config.json — und die Datei wird zur LAUFZEIT
+# ersetzt (Voll-Restore). Ein Boot-Snapshot (_cfg0) waere danach der falsche Schluessel:
+# die restaurierten Tokens liessen sich nicht entschluesseln, und zwar STILL (_dec faengt
+# InvalidToken und antwortet ""). Darum immer von Platte lesen, per stat-Cache, damit das
+# nicht je _dec()-Aufruf eine Datei oeffnet. Wirkt in jedem Worker ohne Neustart.
+_secret_cache = {"key": None, "secret": None}
+
+
+def _current_secret():
+    try:
+        st = os.stat(CONFIG_PATH)
+        key = (st.st_mtime_ns, st.st_size)
+    except OSError:
+        return _cfg0["secret"]
+    if _secret_cache["key"] != key:
+        try:
+            _secret_cache["secret"] = load_config()["secret"]
+            _secret_cache["key"] = key
+        except (OSError, ValueError, KeyError):
+            return _cfg0["secret"]
+    return _secret_cache["secret"]
+
 
 def _fernet():
-    key = base64.urlsafe_b64encode(hashlib.sha256(_cfg0["secret"].encode()).digest())
+    key = base64.urlsafe_b64encode(hashlib.sha256(_current_secret().encode()).digest())
     return Fernet(key)
 
 
@@ -297,15 +320,29 @@ def _enc_profile_secrets(p):
 # config.json haelt zusaetzlich das zuletzt genutzte als persistenten Default.
 # ─────────────────────────────────────────────────────────────────────────────
 def load_profiles():
+    """Profile von Platte. IDs, die als Dateipfad taugen wuerden, werden hier verworfen —
+    das ist der Engpass, durch den JEDER Weg laeuft (auch ein Voll-Restore, der
+    profiles.json am Import vorbei direkt ins Volume schreibt)."""
     try:
         with open(PROFILES_PATH, encoding="utf-8") as fh:
-            return json.load(fh)
+            profs = json.load(fh)
     except (FileNotFoundError, ValueError):
         return {}
+    if not isinstance(profs, dict):
+        return {}
+    clean = {k: v for k, v in profs.items() if _valid_pid(k)}
+    if len(clean) != len(profs):
+        _log_activity("profil", "%d Profil-ID(en) mit unzulässigen Zeichen ignoriert"
+                      % (len(profs) - len(clean)), level="warn",
+                      detail="Betroffen: " + ", ".join(repr(k) for k in profs if not _valid_pid(k)))
+    return clean
 
 
 def save_profiles(profs):
     os.makedirs(CONFIG_DIR, exist_ok=True)
+    bad = [k for k in profs if not _valid_pid(k)]
+    if bad:
+        raise ValueError("unzulässige Profil-ID(en): %s" % ", ".join(repr(b) for b in bad))
     # Secrets verschluesselt ablegen (idempotent: bereits verschluesselte bleiben).
     for p in profs.values():
         _enc_profile_secrets(p)
@@ -329,6 +366,17 @@ def save_profiles(profs):
 
 def _new_profile_id():
     return secrets.token_hex(8)
+
+
+# Profil-IDs landen ungefiltert in Dateipfaden (_watch_path/_metrics_path/_history_dir/
+# _save_undo/_save_instance_snapshot). Selbst erzeugte IDs sind hex — aber beim Import
+# werden die JSON-Schluessel zu IDs, und eine untergeschobene Datei koennte damit aus
+# CONFIG_DIR herauszeigen ('../../x' oder 'C:/x'). Kein Punkt, kein Slash -> kein Traversal.
+_PID_RE = re.compile(r"\A[A-Za-z0-9_-]{1,64}\Z")
+
+
+def _valid_pid(pid):
+    return isinstance(pid, str) and bool(_PID_RE.match(pid))
 
 
 def _strip_conn(gen_cfg):
@@ -610,12 +658,21 @@ def _setup_complete():
         return False
 
 
+# Datenrettung: diese vier duerfen NICHT hinter dem Setup-Gate liegen. Sonst sind sie genau
+# im Ernstfall zu — frischer Container ohne Profil, oder ein Profil ohne Token — und der
+# Wizard bietet keinen Import an: das Backup waere nicht einspielbar und ein bestehender
+# Stand nicht mal mehr sicherbar. Login bleibt Pflicht (require_login laeuft davor).
+_RECOVERY_ENDPOINTS = ("config_backup", "config_restore", "profiles_export", "profiles_import")
+
+
 @app.before_request
 def require_setup():
     """Solange das Onboarding nicht abgeschlossen ist, jeden Seiten-GET auf /wizard leiten.
-    Ausgenommen: Wizard selbst, Login/Logout, static, healthz sowie /api + /portal (eigene
-    401-Behandlung / vom injizierten JS genutzt)."""
+    Ausgenommen: Wizard selbst, Login/Logout, static, healthz, die Datenrettungs-Endpunkte
+    sowie /api + /portal (eigene 401-Behandlung / vom injizierten JS genutzt)."""
     if request.endpoint in ("wizard", "login", "logout", "healthz", "static", "metrics_endpoint"):
+        return None
+    if request.endpoint in _RECOVERY_ENDPOINTS:
         return None
     if request.path.startswith("/api") or request.path.startswith("/portal"):
         return None
@@ -805,13 +862,18 @@ def wizard():
     profs = load_profiles()
     aid = _active_id()
     prof = profs.get(aid, {})
+    # Kommt die Verbindung schon aus einem eingespielten Backup, darf der Wizard sie nicht
+    # noch einmal abfragen — der Token ist ja da. Dann fehlt nur noch das Passwort.
+    have_conn = bool(prof.get("paperless_url") and _dec(prof.get("paperless_token") or ""))
     err = None
     if request.method == "POST":
         new = request.form.get("new", "")
         rep = request.form.get("repeat", "")
         name = request.form.get("name", "").strip() or (prof.get("name") or "Standard")
-        url = request.form.get("paperless_url", "").strip().rstrip("/")
-        tok = request.form.get("paperless_token", "").strip()
+        url = (request.form.get("paperless_url", "").strip().rstrip("/")
+               or (prof.get("paperless_url") or "").rstrip("/"))
+        tok = (request.form.get("paperless_token", "").strip()
+               or _dec(prof.get("paperless_token") or ""))
         lxc = request.form.get("lxc_id", "").strip()
         notify_email = request.form.get("notify_email", "").strip()
         if len(new) < 4:
@@ -848,7 +910,9 @@ def wizard():
             else:
                 err = "Unerwartete Antwort von Paperless: HTTP %d." % code
     return render_template("wizard.html", name=(prof.get("name") or "Standard"),
-                           url=prof.get("paperless_url", ""), err=err,
+                           url=prof.get("paperless_url", ""), err=err or request.args.get("err"),
+                           msg=request.args.get("msg"), have_conn=have_conn,
+                           prof_count=len(profs),
                            lxc_id=str(cfg.get("lxc_id") or ""),
                            notify_email=(prof.get("generator_config") or {}).get("notifyEmail", ""))
 
@@ -1052,6 +1116,16 @@ def update_trigger():
 _BACKUP_SKIP = {"watcher.lock"}  # transiente Dateien nicht mitsichern
 
 
+def _recovery_redirect(tab, msg=None, err=None):
+    """Nach Restore/Import zurueckmelden — aber an die Stelle, die der Nutzer auch SIEHT.
+    Ist die Einrichtung (noch) nicht fertig, faengt require_setup /verwaltung ab und die
+    Meldung ginge auf dem Weg zum Wizard verloren."""
+    args = {k: v for k, v in (("msg", msg), ("err", err)) if v}
+    if not _setup_complete():
+        return redirect(url_for("wizard", **args))
+    return redirect(url_for("verwaltung", tab=tab, **args))
+
+
 @app.route("/verwaltung/config-backup")
 def config_backup():
     """Komplettes /config als ZIP herunterladen (Profile, Einstellungen, Historie, Metriken,
@@ -1084,12 +1158,12 @@ def config_restore():
     Sessions ungueltig -> Neu-Login)."""
     file = request.files.get("file")
     if not file or not file.filename:
-        return redirect(url_for("verwaltung", tab="version", err="Keine Datei ausgewählt."))
+        return _recovery_redirect("version", err="Keine Datei ausgewählt.")
     try:
         data = file.read()
         zf = zipfile.ZipFile(io.BytesIO(data))
     except (zipfile.BadZipFile, OSError):
-        return redirect(url_for("verwaltung", tab="version", err="Keine gültige ZIP-Datei."))
+        return _recovery_redirect("version", err="Keine gültige ZIP-Datei.")
     base = os.path.abspath(CONFIG_DIR)
     restored = 0
     for name in zf.namelist():
@@ -1107,8 +1181,9 @@ def config_restore():
         except OSError:
             pass
     _log_activity("restore", "Voll-Backup eingespielt (%d Dateien)" % restored)
-    return redirect(url_for("verwaltung", tab="version",
-                            msg="Backup eingespielt (%d Dateien). Bitte neu anmelden, falls die Sitzung endet." % restored))
+    return _recovery_redirect("version",
+                              msg="Backup eingespielt (%d Dateien). Bitte neu anmelden, falls die Sitzung endet."
+                                  % restored)
 
 
 def _dir_size(path):
@@ -3514,17 +3589,36 @@ def profiles_export():
     Tokens werden entschluesselt exportiert, damit das Backup auf einer anderen
     Instanz (mit anderem 'secret') einspielbar ist."""
     out = {}
+    lost = []   # Secrets, die sich NICHT entschluesseln liessen (falscher/verlorener secret)
     for pid, p in load_profiles().items():
         q = json.loads(json.dumps(p))  # tiefe Kopie, damit die Entschluesselung nicht durchschlaegt
-        if q.get("paperless_token"):
-            q["paperless_token"] = _dec(q["paperless_token"])
+
+        def _take(container, field, label, _pid=pid, _p=p):
+            """Entschluesseln und dabei merken, wenn dabei ein Wert verloren geht."""
+            enc = container.get(field)
+            if not enc:
+                return
+            plain = _dec(enc)
+            if not plain and enc.startswith(_ENC_PREFIX):
+                lost.append("%s: %s" % (_p.get("name") or _pid, label))
+            container[field] = plain
+
+        _take(q, "paperless_token", "Paperless-Token")
         n = q.get("notifications")
         if isinstance(n, dict):
             for ch, field in _NOTIFY_SECRETS:
                 c = n.get(ch)
-                if isinstance(c, dict) and c.get(field):
-                    c[field] = _dec(c[field])
+                if isinstance(c, dict):
+                    _take(c, field, "%s/%s" % (ch, field))
         out[pid] = q
+    # Ein Export mit leeren Tokens sieht aus wie ein gueltiges Backup, ist aber keins.
+    # Nicht stillschweigend ausliefern — das faellt sonst erst beim Wiederherstellen auf.
+    if lost:
+        _log_activity("export", "Profil-Export: %d Zugangsdaten nicht entschlüsselbar" % len(lost),
+                      level="warn", detail="Betroffen: " + "; ".join(lost) +
+                      "\nUrsache: 'secret' in config.json passt nicht zu den gespeicherten Werten "
+                      "(z. B. config.json ersetzt, Profile aber alt). Das Backup enthält diese "
+                      "Zugangsdaten NICHT — sie müssen nach dem Einspielen neu gesetzt werden.")
     data = json.dumps(out, indent=2, ensure_ascii=False)
     return Response(data, mimetype="application/json", headers={
         "Content-Disposition": "attachment; filename=paperless-portal-profiles.json"})
@@ -3535,18 +3629,24 @@ def profiles_import():
     """Profile aus hochgeladener JSON wiederherstellen (ersetzt alle; vorige werden gesichert)."""
     f = request.files.get("file")
     if not f:
-        return redirect(url_for("verwaltung", tab="profiles", err="Keine Datei ausgewählt."))
+        return _recovery_redirect("profiles", err="Keine Datei ausgewählt.")
     try:
         data = json.load(f.stream)
     except ValueError:
-        return redirect(url_for("verwaltung", tab="profiles", err="Ungültige JSON-Datei."))
+        return _recovery_redirect("profiles", err="Ungültige JSON-Datei.")
     if not isinstance(data, dict) or not data or \
             any(not isinstance(v, dict) or "name" not in v for v in data.values()):
-        return redirect(url_for("verwaltung", tab="profiles", err="Datei enthält keine gültigen Profile."))
+        return _recovery_redirect("profiles", err="Datei enthält keine gültigen Profile.")
+    # Die Schluessel werden zu Profil-IDs und landen in Dateipfaden -> laut ablehnen statt
+    # still umzubenennen: eine Datei mit solchen IDs stammt nicht aus einem echten Export.
+    if any(not _valid_pid(k) for k in data):
+        return _recovery_redirect("profiles",
+                                  err="Datei enthält unzulässige Profil-Kennungen und wurde abgelehnt.")
     save_profiles(data)  # sichert die vorige Version automatisch (rotierendes Backup)
     if _active_id() not in data:
         set_active_profile(next(iter(data)))
-    return redirect(url_for("verwaltung", tab="profiles", msg="Profile importiert (vorheriger Stand gesichert)."))
+    _log_activity("profil", "%d Profil(e) importiert" % len(data))
+    return _recovery_redirect("profiles", msg="Profile importiert (vorheriger Stand gesichert).")
 
 
 # Kategorien der generator_config fuer Historie-Diff/selektiven Restore (Schluessel wie im

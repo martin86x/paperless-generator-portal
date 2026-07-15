@@ -5,6 +5,7 @@
 <form class="card" method="post" autocomplete="off">
   <h1>Willkommen 👋</h1>
   <p class="sub">Ersteinrichtung: Passwort setzen und die erste Paperless-Instanz als Profil anlegen. Der Token wird beim Speichern direkt geprüft. Ohne abgeschlossene Einrichtung geht es nicht in den Generator.</p>
+  {% if msg %}<div class="msg ok">✓ {{ msg }}</div>{% endif %}
   {% if err %}<div class="msg err">✗ {{ err }}</div>{% endif %}
 
   <h2>1 · Neues Passwort</h2>
@@ -16,12 +17,15 @@
 
   <hr class="divider">
   <h2>2 · Erste Paperless-Instanz</h2>
+  {% if have_conn %}
+    <div class="msg ok">✓ Verbindung übernommen: <strong>{{ name }}</strong> ({{ url }}){% if prof_count > 1 %} und {{ prof_count - 1 }} weitere{% endif %}. Felder leer lassen, um sie zu behalten.</div>
+  {% endif %}
   <label for="name">Name des Profils</label>
   <input type="text" id="name" name="name" value="{{ name }}" placeholder="z. B. Haushalt">
   <label for="paperless_url">Paperless-URL</label>
-  <input type="url" id="paperless_url" name="paperless_url" value="{{ url }}" placeholder="http://192.168.1.100:8000" required>
+  <input type="url" id="paperless_url" name="paperless_url" value="{{ url }}" placeholder="http://192.168.1.100:8000" {% if not have_conn %}required{% endif %}>
   <label for="paperless_token">API-Token</label>
-  <input type="password" id="paperless_token" name="paperless_token" required>
+  <input type="password" id="paperless_token" name="paperless_token" {% if not have_conn %}required{% else %}placeholder="unverändert lassen"{% endif %}>
   <p class="hint">In Paperless unter <em>Einstellungen → Mein Profil → API-Token</em>. Wird server­seitig verschlüsselt gespeichert.</p>
 
   <hr class="divider">
@@ -35,4 +39,26 @@
 
   <button type="submit">Einrichten &amp; loslegen →</button>
 </form>
+
+{# Datenrettung: getrennte Formulare (dürfen die Einrichtung oben nicht mit absenden).
+   Ohne diesen Weg wäre ein Backup hier nicht einspielbar — der Wizard sperrt alles andere. #}
+<div class="card" style="margin-top:18px">
+  <h2>Schon ein Backup? 💾</h2>
+  <p class="sub">Umzug oder neuer Container: bestehenden Stand einspielen, statt alles neu einzurichten.</p>
+
+  <h3 style="margin-bottom:4px">Voll-Backup (ZIP)</h3>
+  <p class="hint">Enthält Profile, Einstellungen, Historie <em>und den Zugang</em>: danach gilt wieder das Passwort von damals — bitte damit neu anmelden.</p>
+  <form method="post" action="{{ url_for('config_restore') }}" enctype="multipart/form-data">
+    <input type="file" name="file" accept=".zip,application/zip" required>
+    <button type="submit" style="margin-top:8px">Voll-Backup einspielen</button>
+  </form>
+
+  <hr class="divider">
+  <h3 style="margin-bottom:4px">Nur Profile (JSON)</h3>
+  <p class="hint">Spielt allein die Instanzen samt Token ein. Das Passwort setzt du danach oben — die Verbindung wird dann übernommen.</p>
+  <form method="post" action="{{ url_for('profiles_import') }}" enctype="multipart/form-data">
+    <input type="file" name="file" accept=".json,application/json" required>
+    <button type="submit" style="margin-top:8px">Profile importieren</button>
+  </form>
+</div>
 {% endblock %}
