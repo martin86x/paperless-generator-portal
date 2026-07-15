@@ -152,6 +152,39 @@
       </div>
       {% endif %}
     </div>
+
+    <!-- Prometheus -->
+    <div class="card" style="margin-top:14px">
+      <h2 style="margin-top:0">Prometheus <code>/metrics</code></h2>
+      <label style="display:flex;align-items:center;gap:8px;margin:0;font-size:14px;color:var(--text)">
+        <input type="checkbox" name="metrics_enabled" value="1" style="width:auto"{% if mc.enabled %} checked{% endif %}> Metrik-Endpunkt aktiv
+      </label>
+      <div style="font-size:12px;color:var(--text-dim);margin:4px 0 0 26px">Gibt den Wächter-Stand als Prometheus-Exposition aus — für Grafana, Alertmanager &amp; Co. <strong>Rein lesend</strong> und <strong>ohne eigene Abfrage an deine Instanzen</strong>: der Endpunkt gibt nur wieder, was der letzte Prüflauf ohnehin erhoben hat. Ohne Haken antwortet <code>/metrics</code> mit <code>404</code>.</div>
+
+      {% if mc.enabled and mc.token %}
+      <label style="margin-top:16px">Token</label>
+      <input type="text" name="metrics_token" value="{{ mc.token }}" readonly style="font-family:monospace;font-size:12px">
+      <p class="hint"><code>/metrics</code> hängt <strong>nicht</strong> am Portal-Login — Prometheus hat keine Sitzung und würde auf <code>/login</code> umgeleitet. Stattdessen schützt dieses Token den Endpunkt: ohne passenden <code>Authorization: Bearer</code>-Header gibt es <code>401</code>. Eingeloggt im Browser kommst du auch ohne Token dran. Das Token steht im Klartext in <code>config.json</code> und geht bei <code>http://</code> unverschlüsselt über dein Netz — im LAN vertretbar, über das Internet nur hinter einem TLS-Reverse-Proxy.</p>
+
+      <p class="hint" style="margin-bottom:4px">Scrape-Konfiguration (<code>prometheus.yml</code>):</p>
+      <pre style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:10px;font-size:11.5px;overflow-x:auto;margin:0 0 10px"><code>scrape_configs:
+  - job_name: paperless-portal
+    scrape_interval: 60s
+    metrics_path: /metrics
+    authorization:
+      credentials: {{ mc.token }}
+    static_configs:
+      - targets: ['{{ request.host }}']</code></pre>
+      <p class="hint"><strong>60 s reichen.</strong> Häufiger bringt nichts: die Werte ändern sich nur im Wächter-Takt ({{ w.interval_min }} min), die Dokument-Zähler sogar nur ~1×/Stunde. Jedes Sample trägt seinen Erhebungs-Zeitstempel mit (<code>…_timestamp_seconds</code>).</p>
+
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">
+        <a class="btn" href="{{ url_for('metrics_endpoint') }}" target="_blank" rel="noopener" style="width:auto;padding:8px 14px;font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;text-decoration:none;color:var(--text);display:inline-block">Exposition ansehen</a>
+        <button type="submit" name="action" value="metrics_token_new" style="width:auto;padding:8px 14px;font-size:13px;background:var(--bg3);border:1px solid var(--border)">Token neu erzeugen</button>
+      </div>
+      {% else %}
+      <p class="hint" style="margin-top:12px">Beim Aktivieren wird automatisch ein Token erzeugt; die fertige Scrape-Konfiguration steht danach hier.</p>
+      {% endif %}
+    </div>
   </form>
 
   <!-- Ergebnisse -->

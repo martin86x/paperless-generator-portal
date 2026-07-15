@@ -461,7 +461,9 @@ app.config.update(
     SESSION_REFRESH_EACH_REQUEST=True,       # gleitend: aktive Nutzung haelt die Session am Leben
 )
 
-PUBLIC_ENDPOINTS = {"login", "login_recovery", "healthz", "static"}
+# metrics_endpoint gehoert hierher, weil Prometheus keine Session hat: require_login wuerde
+# den Scrape auf /login umleiten. Der Endpunkt schuetzt sich selbst per Bearer-Token.
+PUBLIC_ENDPOINTS = {"login", "login_recovery", "healthz", "static", "metrics_endpoint"}
 
 # ── Login-Rate-Limit (in-memory, pro IP) ──────────────────────────────────────
 _login_fails = {}
@@ -601,7 +603,7 @@ def require_setup():
     """Solange das Onboarding nicht abgeschlossen ist, jeden Seiten-GET auf /wizard leiten.
     Ausgenommen: Wizard selbst, Login/Logout, static, healthz sowie /api + /portal (eigene
     401-Behandlung / vom injizierten JS genutzt)."""
-    if request.endpoint in ("wizard", "login", "logout", "healthz", "static"):
+    if request.endpoint in ("wizard", "login", "logout", "healthz", "static", "metrics_endpoint"):
         return None
     if request.path.startswith("/api") or request.path.startswith("/portal"):
         return None
@@ -2283,6 +2285,279 @@ def _alert_board(st, wc):
     return {"open": open_, "watching": watching}
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# PROMETHEUS /metrics (Z3) — Exposition im Text-Format 0.0.4.
+# STRIKT read-only und OHNE Netz-Call je Scrape: gespeist wird ausschliesslich aus dem
+# Waechter-Spiegel (watcher-state.json) und den JSONL-Historien. Prometheus scrapt im
+# Sekundentakt — ein Scrape darf weder eine Paperless-Instanz noch GitHub anfassen,
+# sonst prellt die Ueberwachung genau das System, das sie beobachten soll.
+# ─────────────────────────────────────────────────────────────────────────────
+_PROM_STATUS_VAL = {"ok": 1, "bad": 0}   # 'unknown' -> gar kein Sample: eine Luecke ist
+# ehrlicher als eine 0, sonst zaehlt Grafana Aussetzer als Ausfall.
+
+
+def _metrics_cfg():
+    """Globale /metrics-Konfiguration aus config.json['metrics']."""
+    try:
+        m = load_config().get("metrics") or {}
+    except (OSError, ValueError):
+        m = {}
+    return {"enabled": bool(m.get("enabled", False)), "token": (m.get("token") or "").strip()}
+
+
+def _metrics_token(val):
+    """Token auf harmlose Zeichen eindampfen. compare_digest wirft bei nicht-ASCII, und ein
+    Umbruch im Header-Vergleich waere ohnehin kaputt. isalnum() allein reicht NICHT — das ist
+    fuer 'ü' True; ein Token mit Umlaut haette den Endpunkt dauerhaft auf 401 gelegt."""
+    return "".join(c for c in (val or "")
+                   if c.isascii() and (c.isalnum() or c in "-_"))[:80]
+
+
+def _metrics_auth_ok(tok):
+    """Zugriff, wenn ein gueltiges Bearer-Token kommt (Prometheus) ODER die Sitzung
+    eingeloggt ist (Mensch schaut im Browser nach). Vergleich zeitkonstant."""
+    if session.get("logged_in"):
+        return True
+    hdr = request.headers.get("Authorization") or ""
+    if hdr[:7].lower() != "bearer ":
+        return False
+    try:
+        return secrets.compare_digest(hdr[7:].strip(), tok)
+    except TypeError:      # nicht-ASCII im Header
+        return False
+
+
+def _prom_lbl(val):
+    """Label-Wert escapen. Profilnamen sind frei waehlbar — ein \" oder \\ darin wuerde
+    die Exposition sonst zerlegen."""
+    return str(val).replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+
+
+def _prom_num(val):
+    if isinstance(val, bool):
+        return "1" if val else "0"
+    if isinstance(val, int):
+        return str(val)
+    return repr(round(float(val), 4))
+
+
+def _prom_block(out, name, mtype, help_, samples):
+    """Eine Metrik anhaengen: HELP/TYPE + Samples [(labels, wert)]. Ohne Samples faellt der
+    Block ganz weg, statt ein leeres TYPE zu hinterlassen."""
+    if not samples:
+        return
+    out.append("# HELP %s %s" % (name, help_))
+    out.append("# TYPE %s %s" % (name, mtype))
+    for labels, val in samples:
+        lbl = ("{%s}" % ",".join('%s="%s"' % (k, _prom_lbl(v)) for k, v in labels)) if labels else ""
+        out.append("%s%s %s" % (name, lbl, _prom_num(val)))
+
+
+def _prom_update_cache():
+    """Update-Stand NUR aus dem Cache lesen — check_for_update() wuerde bei abgelaufener
+    TTL GitHub fragen, und das darf ein Scrape nicht ausloesen."""
+    try:
+        with open(UPDATE_CHECK_CACHE, encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return None
+
+
+_watch_stats_cache = {}   # pid -> ((mtime, size), stats) — siehe _watch_stats
+
+
+def _watch_stats(pid):
+    """Uptime-Anteil + letzter Schlecht-Lauf je Event aus der JSONL-Historie.
+    Mit mtime/size-Cache: Prometheus scrapt alle paar Sekunden, die Datei aendert sich aber
+    nur pro Prueflauf (Minuten bis Stunden) — ohne Cache wuerden je Scrape bis zu WATCH_MAX
+    Zeilen pro Profil neu geparst."""
+    path = _watch_path(pid)
+    try:
+        stt = os.stat(path)
+        key = (stt.st_mtime, stt.st_size)
+    except OSError:
+        return {"ratio": {}, "last_bad": {}, "runs": 0}
+    hit = _watch_stats_cache.get(pid)
+    if hit and hit[0] == key:
+        return hit[1]
+    rows = _read_watch(pid)
+    stats = {"ratio": {}, "last_bad": {}, "runs": len(rows)}
+    for ev in {e for r in rows for e in (r.get("c") or {})}:
+        pct = _uptime_pct(rows, ev)
+        if pct is not None:
+            stats["ratio"][ev] = pct / 100.0
+        bad = _last_bad_ts(rows, ev)
+        if bad:
+            stats["last_bad"][ev] = int(bad)
+    _watch_stats_cache[pid] = (key, stats)
+    return stats
+
+
+def _build_metrics():
+    """Exposition zusammenbauen. Quellen ausschliesslich lokal: watcher-state.json (Spiegel),
+    history-watch/*.jsonl, history-metrics/*.jsonl, profiles.json, config.json."""
+    t0 = time.time()
+    st = _load_watch_state()
+    wc = _watcher_cfg()
+    try:
+        profs = load_profiles()
+    except (OSError, ValueError):
+        profs = {}
+    results = st.get("results") or {}
+    meta = st.get("alert_meta") or {}
+    active = set(st.get("alerts_active") or ())
+    out = []
+
+    bs = _build_stamp() or {}
+    _prom_block(out, "paperless_portal_info", "gauge",
+                "Portal-Version und laufender Commit (Wert immer 1).",
+                [([("version", PORTAL_VERSION), ("build", bs.get("sha") or ""),
+                   ("build_date", bs.get("date") or "")], 1)])
+
+    upd = _prom_update_cache()
+    if upd and upd.get("latest"):
+        _prom_block(out, "paperless_portal_update_available", "gauge",
+                    "1 = auf GitHub liegt eine neuere Portal-Version (aus dem Cache).",
+                    [([("latest", upd["latest"])],
+                      1 if _ver_tuple(upd["latest"]) > _ver_tuple(PORTAL_VERSION) else 0)])
+
+    _prom_block(out, "paperless_portal_watcher_enabled", "gauge",
+                "1 = Waechter ist eingeschaltet.", [(None, wc["enabled"])])
+    _prom_block(out, "paperless_portal_watcher_interval_seconds", "gauge",
+                "Eingestellter Abstand zwischen zwei Prueflaeufen.",
+                [(None, wc["interval_min"] * 60)])
+    for key, name, help_ in (
+        ("last_run", "paperless_portal_watcher_last_run_timestamp_seconds",
+         "Zeitpunkt des letzten Prueflaufs."),
+        ("next_run", "paperless_portal_watcher_next_run_timestamp_seconds",
+         "Zeitpunkt des naechsten faelligen Prueflaufs."),
+        ("last_heartbeat", "paperless_portal_watcher_last_heartbeat_timestamp_seconds",
+         "Zeitpunkt des letzten Heartbeat-Pings."),
+    ):
+        if st.get(key):
+            _prom_block(out, name, "gauge", help_, [(None, int(st[key]))])
+    _prom_block(out, "paperless_portal_watcher_error", "gauge",
+                "1 = der letzte Waechter-Zyklus endete mit einem Fehler.",
+                [(None, bool(st.get("last_error")))])
+    _prom_block(out, "paperless_portal_alerts_active", "gauge",
+                "Anzahl aktuell gemeldeter Auffaelligkeiten ueber alle Profile.",
+                [(None, len(active))])
+    _prom_block(out, "paperless_portal_profiles_total", "gauge",
+                "Angelegte Profile.", [(None, len(profs))])
+    _prom_block(out, "paperless_portal_profiles_watched", "gauge",
+                "Profile, die der Waechter tatsaechlich prueft (Instanz hinterlegt + aktiv).",
+                [(None, sum(1 for p in profs.values()
+                            if p.get("paperless_url") and _profile_watch(p, wc)["enabled"]))])
+
+    up, chk_ok, ratio, last_bad, runs, check_ts = [], [], [], [], [], []
+    streak, al_act, al_since, al_reps = [], [], [], []
+    docs, inbox, untyped, uncorr, lat, sample_ts = [], [], [], [], [], []
+    for pid in sorted(set(results) | set(profs)):
+        name = ((results.get(pid) or {}).get("name")
+                or (profs.get(pid) or {}).get("name") or pid)
+        base = [("profile", name), ("id", pid)]
+
+        r = results.get(pid) or {}
+        if r.get("ts"):
+            check_ts.append((base, int(r["ts"])))
+        for c in r.get("checks") or []:
+            v = _PROM_STATUS_VAL.get(c.get("status"))
+            if v is None:
+                continue
+            chk_ok.append((base + [("check", c.get("event") or "?")], v))
+            if c.get("event") == "downtime":
+                up.append((base, v))
+
+        ws = _watch_stats(pid)
+        if ws["runs"]:
+            runs.append((base, ws["runs"]))
+        for ev, val in sorted(ws["ratio"].items()):
+            ratio.append((base + [("check", ev)], val))
+        for ev, ts in sorted(ws["last_bad"].items()):
+            last_bad.append((base + [("check", ev)], ts))
+
+        for ev in sorted({k.partition("|")[2] for k in meta if k.partition("|")[0] == pid}):
+            m = meta.get("%s|%s" % (pid, ev)) or {}
+            lb = base + [("check", ev)]
+            streak.append((lb, int(m.get("fail") or 0)))
+            on = (pid, ev) in active
+            al_act.append((lb, on))
+            if on and m.get("since"):
+                al_since.append((lb, int(m["since"])))
+            if on:
+                al_reps.append((lb, int(m.get("reps") or 0)))
+
+        mrows = _read_metrics(pid, limit=1)
+        if mrows:
+            mr = mrows[-1]
+            if mr.get("ts"):
+                sample_ts.append((base, int(mr["ts"])))
+            for val, bucket in ((mr.get("total"), docs), (mr.get("inbox"), inbox),
+                                (mr.get("no_type"), untyped), (mr.get("no_corr"), uncorr)):
+                if val is not None:
+                    bucket.append((base, int(val)))
+            if mr.get("lat") is not None:
+                lat.append((base, int(mr["lat"]) / 1000.0))
+
+    _prom_block(out, "paperless_portal_instance_up", "gauge",
+                "1 = Instanz war beim letzten Prueflauf erreichbar und das Token gueltig.", up)
+    _prom_block(out, "paperless_portal_check_ok", "gauge",
+                "Ergebnis des letzten Prueflaufs je Check: 1 = ok, 0 = auffaellig. "
+                "Ein unentschiedener Check ('unknown') liefert bewusst kein Sample.", chk_ok)
+    _prom_block(out, "paperless_portal_check_last_run_timestamp_seconds", "gauge",
+                "Zeitpunkt des letzten Prueflaufs fuer dieses Profil.", check_ts)
+    _prom_block(out, "paperless_portal_check_uptime_ratio", "gauge",
+                "Anteil guter Laeufe an allen entschiedenen Laeufen der Portal-Historie "
+                "(0..1). Nicht aus Prometheus-Daten gerechnet, sondern aus der laengeren "
+                "Historie des Portals.", ratio)
+    _prom_block(out, "paperless_portal_check_last_bad_timestamp_seconds", "gauge",
+                "Zeitpunkt des juengsten Laufs, in dem der Check auffaellig war.", last_bad)
+    _prom_block(out, "paperless_portal_check_runs", "gauge",
+                "Aufgezeichnete Prueflaeufe in der Historie dieses Profils.", runs)
+    _prom_block(out, "paperless_portal_fail_streak", "gauge",
+                "Schlechte Laeufe in Folge. Ab paperless_portal_alert_threshold wird "
+                "gemeldet — darunter ist der Check nur in Beobachtung.", streak)
+    _prom_block(out, "paperless_portal_alert_threshold", "gauge",
+                "Schwelle, ab der ein Fehl-Streak zum Alarm wird.",
+                [(None, wc["fail_threshold"])])
+    _prom_block(out, "paperless_portal_alert_active", "gauge",
+                "1 = fuer dieses Profil/Check ist gerade ein Alarm offen.", al_act)
+    _prom_block(out, "paperless_portal_alert_since_timestamp_seconds", "gauge",
+                "Beginn des offenen Alarms (erster schlechter Lauf des Streaks).", al_since)
+    _prom_block(out, "paperless_portal_alert_repeats", "gauge",
+                "Bereits verschickte Erinnerungen zum offenen Alarm.", al_reps)
+    _prom_block(out, "paperless_portal_documents", "gauge",
+                "Dokumente in der Instanz (aus der Kennzahl-Historie, ~1x/Stunde erhoben).", docs)
+    _prom_block(out, "paperless_portal_documents_inbox", "gauge",
+                "Dokumente im Posteingang.", inbox)
+    _prom_block(out, "paperless_portal_documents_without_type", "gauge",
+                "Dokumente ohne Dokumenttyp.", untyped)
+    _prom_block(out, "paperless_portal_documents_without_correspondent", "gauge",
+                "Dokumente ohne Korrespondent.", uncorr)
+    _prom_block(out, "paperless_portal_api_latency_seconds", "gauge",
+                "Antwortzeit der Instanz bei der letzten Kennzahl-Erfassung.", lat)
+    _prom_block(out, "paperless_portal_documents_timestamp_seconds", "gauge",
+                "Zeitpunkt der Kennzahl-Erfassung. Die Dokument-Zaehler sind so alt wie "
+                "dieser Wert — sie werden gedrosselt erhoben, nicht je Scrape.", sample_ts)
+    _prom_block(out, "paperless_portal_scrape_duration_seconds", "gauge",
+                "Dauer des Zusammenbauens dieser Exposition.", [(None, time.time() - t0)])
+    return "\n".join(out) + "\n"
+
+
+@app.route("/metrics")
+def metrics_endpoint():
+    """Prometheus-Endpunkt. Bewusst OHNE Login-Gate (require_login wuerde Prometheus mit 302
+    auf /login schicken) — stattdessen Bearer-Token. Abgeschaltet -> 404 statt 401, damit der
+    Endpunkt seine Existenz nicht verraet."""
+    mc = _metrics_cfg()
+    if not (mc["enabled"] and mc["token"]):
+        return Response("Not Found\n", status=404, mimetype="text/plain; charset=utf-8")
+    if not _metrics_auth_ok(mc["token"]):
+        return Response("Unauthorized\n", status=401, mimetype="text/plain; charset=utf-8",
+                        headers={"WWW-Authenticate": 'Bearer realm="metrics"'})
+    return Response(_build_metrics(), mimetype="text/plain; version=0.0.4; charset=utf-8")
+
+
 @app.route("/verwaltung/waechter", methods=["GET", "POST"])
 def waechter():
     if request.method == "POST":
@@ -2307,8 +2582,19 @@ def waechter():
         cfg["watcher"] = w
         cfg["webhook"] = {"enabled": bool(f.get("webhook_enabled")),
                           "url": (f.get("webhook_url", "") or "").strip()}
+        # /metrics: Token wird erzeugt, nicht getippt — beim Einschalten ohne Token gibt es
+        # sonst einen aktiven Endpunkt ohne Schutz (der Route-Guard faengt das zwar mit 404
+        # ab, aber der Nutzer stuende ratlos da).
+        m_enabled = bool(f.get("metrics_enabled"))
+        mtok = _metrics_token(f.get("metrics_token", ""))
+        if action == "metrics_token_new" or (m_enabled and not mtok):
+            mtok = secrets.token_urlsafe(32)
+        cfg["metrics"] = {"enabled": m_enabled, "token": mtok}
         save_config(cfg)
         _watcher_state["next_run"] = None  # Aenderung sofort wirksam
+        if action == "metrics_token_new":
+            return redirect(url_for("verwaltung", tab="waechter",
+                                    msg="Neues /metrics-Token erzeugt — Prometheus-Konfiguration anpassen."))
         if action == "webhook_now":
             ok, detail = _fire_webhook("test", "Portal", "test",
                                        "Test-Webhook vom Paperless-Portal.")
@@ -2351,7 +2637,7 @@ def waechter():
         webhook_last = {"ok": lw.get("ok"), "detail": lw.get("detail"),
                         "event": lw.get("event"), "ts": _fmt_rel_ts(lw.get("ts"))}
     return render_template(
-        "waechter.html", w=wc, wh=_webhook_cfg(), events=_NOTIFY_EVENTS,
+        "waechter.html", w=wc, wh=_webhook_cfg(), mc=_metrics_cfg(), events=_NOTIFY_EVENTS,
         results=results, status=status, webhook_last=webhook_last,
         board=_alert_board(st, wc),
         hist=_watch_history_cards(request.args.get("range", "30d")),
