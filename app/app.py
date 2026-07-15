@@ -1305,11 +1305,12 @@ _NOTIFY_EVENTS = [
     ("asn_gap", "ASN-Lücken"),
     ("duplicate", "Duplikate gefunden"),
     ("digest", "Täglicher Status-Digest"),
+    ("report", "Wochen-/Monatsreport"),
     ("update", "Portal-Update verfügbar"),
     ("error", "Fehler im Portal / Wächter"),
 ]
 _NOTIFY_DEFAULT_PRIO = {"downtime": 1, "drift": 0, "task_fail": 1, "asn_gap": -1,
-                        "duplicate": -1, "digest": -1, "update": 0, "error": 1}
+                        "duplicate": -1, "digest": -1, "report": -1, "update": 0, "error": 1}
 _PRIO_LABELS = {-2: "−2 Stumm", -1: "−1 Leise", 0: "0 Normal", 1: "1 Hoch", 2: "2 Notfall"}
 # Pushover-Prioritaet −2…2  ->  ntfy-Prioritaet 1…5.
 _NTFY_PRIO = {-2: "1", -1: "2", 0: "3", 1: "4", 2: "5"}
@@ -1540,7 +1541,17 @@ _WATCHER_DEFAULTS = {
     "repeat_backoff": True,    # Abstand je Erinnerung verdoppeln (gedeckelt auf 24 h)
     "escalate_after": 3,       # ab der N-ten Erinnerung Prioritaet +1 (0 = nie)
     "recovery_notify": True,   # Entwarnung auch ueber die Kanaele melden
+    # Wochen-/Monatsreport (Z4)
+    "report_enabled": False,
+    "report_period": "week",   # 'week' = letzte 7 Tage, 'month' = letzte 30 Tage
+    "report_weekday": 0,       # bei 'week': 0 = Montag … 6 = Sonntag
+    "report_day": 1,           # bei 'month': Kalendertag
+    "report_hour": 8,          # Ortszeit-Stunde
 }
+# Report-Tag nie ueber 28: der 29./30./31. faellt in kurzen Monaten aus, im Februar
+# jedes Jahr — der Report bliebe dann still aus, und still ausbleiben ist das Schlimmste,
+# was eine Ueberwachung tun kann.
+_REPORT_MAX_DAY = 28
 _ESC_MAX_GAP_MIN = 1440   # Erinnerungsabstand nie groesser als 24 h
 _ESC_MAX_DOUBLE = 12      # Backoff-Verdopplungen deckeln (2**12 * base reicht immer)
 # Laufzeit-Zustand des Waechters (nur im Prozess, der die Sperre haelt). Fuer die UI +
@@ -1558,6 +1569,7 @@ _watcher_state = {
     "last_error": None,
     "last_metrics": None,  # Unix-ts der letzten Kennzahl-Erfassung (Trends, gedrosselt)
     "last_digest": None,   # 'YYYY-MM-DD' des zuletzt gesendeten Tages-Digests
+    "last_report": None,   # 'YYYY-MM-DD' des zuletzt gesendeten Wochen-/Monatsreports
     "last_heartbeat": None,  # Unix-ts des letzten Heartbeat-Pings
     "last_webhook": None,  # {ts, ok, detail, event} — letzte Webhook-Zustellung (Diagnose)
 }
@@ -1595,6 +1607,12 @@ def _watcher_cfg():
         "repeat_backoff": bool(w.get("repeat_backoff", True)),
         "escalate_after": max(0, min(20, _watch_int(w.get("escalate_after"), 3))),
         "recovery_notify": bool(w.get("recovery_notify", True)),
+        "report_enabled": bool(w.get("report_enabled", False)),
+        "report_period": (w.get("report_period") if w.get("report_period") in _REPORT_PERIODS
+                          else "week"),
+        "report_weekday": max(0, min(6, _watch_int(w.get("report_weekday"), 0))),
+        "report_day": max(1, min(_REPORT_MAX_DAY, _watch_int(w.get("report_day"), 1))),
+        "report_hour": max(0, min(23, _watch_int(w.get("report_hour"), 8))),
     }
 
 
@@ -1984,7 +2002,7 @@ def _save_watch_state():
         try:
             with open(WATCH_STATE_PATH, encoding="utf-8") as fh:
                 old = json.load(fh)
-            for k in ("next_run", "last_heartbeat", "last_digest", "last_error"):
+            for k in ("next_run", "last_heartbeat", "last_digest", "last_report", "last_error"):
                 if st.get(k) is None:
                     st[k] = old.get(k)
         except (OSError, ValueError):
@@ -2105,6 +2123,199 @@ def _send_digest():
         _log_activity("watcher", "Täglicher Digest gesendet (%d Profil(e))" % sent)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# WOCHEN-/MONATSREPORT (Z4) — Rueckblick statt Momentaufnahme.
+# Unterschied zum Tages-Digest: der fragt die Instanz live "wie steht es jetzt". Der Report
+# beantwortet "was war in den letzten N Tagen" — und das kann NUR die aufgezeichnete
+# Historie. Deshalb hier kein einziger Netz-Aufruf ausser dem Versand selbst.
+# ─────────────────────────────────────────────────────────────────────────────
+_REPORT_PERIODS = {"week": ("Woche", 7), "month": ("Monat", 30)}
+_WEEKDAYS = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
+
+
+def _report_days(period):
+    return _REPORT_PERIODS.get(period, _REPORT_PERIODS["week"])[1]
+
+
+def _rows_since(rows, since):
+    return [r for r in rows if (r.get("ts") or 0) >= since]
+
+
+def _fmt_int(n):
+    """1284 -> '1.284' (deutsche Tausendertrennung)."""
+    return "{:,}".format(int(n)).replace(",", ".")
+
+
+def _median(vals):
+    if not vals:
+        return None
+    s = sorted(vals)
+    n = len(s)
+    return s[n // 2] if n % 2 else (s[n // 2 - 1] + s[n // 2]) / 2
+
+
+def _outages(rows, event="downtime"):
+    """Zusammenhaengende Schlecht-Strecken -> [(start_ts, end_ts|None)]. Ende ist der Lauf,
+    in dem der Check wieder ok war; None = beim letzten Lauf noch offen.
+    'unknown' beendet eine Strecke NICHT — wir wissen dann schlicht nichts, und ein
+    Aussetzer der Messung darf einen Ausfall nicht kuenstlich zerteilen."""
+    out, start = [], None
+    for r in rows:
+        s = (r.get("c") or {}).get(event)
+        if s == "bad" and start is None:
+            start = r.get("ts")
+        elif s == "ok" and start is not None:
+            out.append((start, r.get("ts")))
+            start = None
+    if start is not None:
+        out.append((start, None))
+    return out
+
+
+def _longest_outage(rows, event="downtime", now=None):
+    """Laengste Schlecht-Strecke als {start, end, sec} (oder None). Eine noch offene
+    Strecke zaehlt bis jetzt."""
+    now = now or time.time()
+    best = None
+    for start, end in _outages(rows, event):
+        sec = int((end or now) - start)
+        if best is None or sec > best["sec"]:
+            best = {"start": start, "end": end, "sec": sec}
+    return best
+
+
+def _report_stats(pid, since, now=None):
+    """Rueckblick eines Profils, ausschliesslich aus der Historie. Read-only, kein Netz."""
+    now = now or time.time()
+    w = _rows_since(_read_watch(pid), since)
+    m = _rows_since(_read_metrics(pid, limit=METRICS_MAX), since)
+    checks = {}
+    for ev in sorted({e for r in w for e in (r.get("c") or {})}):
+        vals = [(r.get("c") or {}).get(ev) for r in w]
+        checks[ev] = {"ok": sum(1 for v in vals if v == "ok"),
+                      "bad": sum(1 for v in vals if v == "bad"),
+                      "pct": _uptime_pct(w, ev)}
+    st = {"runs": len(w), "checks": checks,
+          "outage": _longest_outage(w, "downtime", now),
+          "docs": None, "inbox": None, "lat": None}
+    if m:
+        first, last = m[0], m[-1]
+        if first.get("total") is not None and last.get("total") is not None:
+            st["docs"] = {"first": first["total"], "last": last["total"],
+                          "delta": last["total"] - first["total"]}
+        if first.get("inbox") is not None and last.get("inbox") is not None:
+            st["inbox"] = {"first": first["inbox"], "last": last["inbox"]}
+        lats = [r["lat"] for r in m if r.get("lat") is not None]
+        if lats:
+            st["lat"] = {"med": int(_median(lats)), "max": max(lats)}
+    return st
+
+
+def _report_text(days, st, now=None):
+    """Report als Klartext — geht so an Pushover/ntfy/E-Mail und in die UI-Vorschau."""
+    now = now or time.time()
+    L = ["Rückblick über %d Tage · %d Prüfläufe" % (days, st["runs"]), ""]
+    d = st["checks"].get("downtime")
+    if d:
+        if d["pct"] is None:
+            L.append("Erreichbarkeit: keine verwertbaren Läufe")
+        else:
+            L.append("Erreichbarkeit: %s %% (%d ok, %d auffällig)"
+                     % (("%g" % d["pct"]), d["ok"], d["bad"]))
+    o = st["outage"]
+    if o:
+        when = datetime.fromtimestamp(o["start"]).strftime("%d.%m. %H:%M")
+        L.append("Längster Ausfall: %s (ab %s%s)"
+                 % (_fmt_dur(o["sec"]), when, "" if o["end"] else ", noch offen"))
+    elif d and d["ok"]:
+        L.append("Kein Ausfall im Zeitraum.")
+    for ev, c in st["checks"].items():
+        if ev == "downtime":
+            continue
+        label = _WATCH_LABELS.get(ev, ev)
+        L.append("%s: %s" % (label, "durchgehend ok" if not c["bad"]
+                             else "%d auffällige Läufe" % c["bad"]))
+    if st["docs"]:
+        dd = st["docs"]
+        pro = dd["delta"] / days
+        L += ["", "Dokumente: %s (%+d im Zeitraum, Ø %.1f/Tag)"
+              % (_fmt_int(dd["last"]), dd["delta"], pro)]
+    if st["inbox"]:
+        i = st["inbox"]
+        trend = ("unverändert" if i["last"] == i["first"]
+                 else ("abgebaut, vorher %s" % _fmt_int(i["first"]) if i["last"] < i["first"]
+                       else "gewachsen, vorher %s" % _fmt_int(i["first"])))
+        L.append("Posteingang: %s (%s)" % (_fmt_int(i["last"]), trend))
+    if st["lat"]:
+        L.append("Antwortzeit: Ø %d ms, max %d ms" % (st["lat"]["med"], st["lat"]["max"]))
+    return "\n".join(L)
+
+
+def _report_profiles(period, now=None):
+    """[(pid, profil, stats)] fuer alle Profile mit Instanz und aufgezeichneter Historie.
+    Profile ohne einen einzigen Lauf im Zeitraum fallen raus — ein Report voller Striche
+    ist keine Information, sondern Rauschen."""
+    now = now or time.time()
+    days = _report_days(period)
+    since = now - days * 86400
+    try:
+        profs = load_profiles()
+    except (OSError, ValueError):
+        return []
+    out = []
+    for pid, p in sorted(profs.items(), key=lambda kv: (kv[1].get("name") or kv[0]).lower()):
+        if not p.get("paperless_url"):
+            continue
+        st = _report_stats(pid, since, now)
+        if not st["runs"]:
+            continue
+        out.append((pid, p, st))
+    return out
+
+
+def _report_preview(period, now=None):
+    """Vorschau fuer die UI: exakt der Text, der auch versendet wuerde."""
+    days = _report_days(period)
+    return [{"name": p.get("name") or pid, "body": _report_text(days, st, now),
+             "channels": _has_channel(p)}
+            for pid, p, st in _report_profiles(period, now)]
+
+
+def _has_channel(p):
+    n = _notif_of(p)
+    return bool(n["pushover"]["enabled"] or n["ntfy"]["enabled"] or n["email"]["enabled"])
+
+
+def _send_report(period=None):
+    """Report je Profil mit aktivem Kanal senden (Ereignis 'report'). Rueckgabe: Anzahl."""
+    wc = _watcher_cfg()
+    period = period or wc["report_period"]
+    days = _report_days(period)
+    sent = 0
+    for pid, p, st in _report_profiles(period):
+        if not _has_channel(p):
+            continue
+        _dispatch_notification(p, "report", "Paperless-Report (%d Tage): %s"
+                               % (days, p.get("name") or pid), _report_text(days, st))
+        sent += 1
+    if sent:
+        _log_activity("watcher", "%s-Report gesendet (%d Profil(e))"
+                      % (_REPORT_PERIODS[period][0], sent))
+    return sent
+
+
+def _report_due(lt, wc, last):
+    """Ist zur lokalen Zeit lt ein Report faellig? last = 'YYYY-MM-DD' des letzten.
+    Reine Funktion — so ist die Taktung ohne Warten pruefbar."""
+    if not wc["report_enabled"] or lt.hour != wc["report_hour"]:
+        return False
+    if lt.strftime("%Y-%m-%d") == last:
+        return False
+    if wc["report_period"] == "week":
+        return lt.weekday() == wc["report_weekday"]
+    return lt.day == wc["report_day"]
+
+
 def _ping_heartbeat(url):
     """Dead-Man's-Switch: externen Ping-Dienst (z. B. healthchecks.io) anstossen.
     Bleibt der Ping aus (Portal tot), alarmiert der Dienst — deckt genau den Fall ab,
@@ -2170,13 +2381,19 @@ def _watcher_loop():
                     if wc["heartbeat_url"]:
                         _ping_heartbeat(wc["heartbeat_url"])
                     dirty = True
+                lt = datetime.now()
+                today = lt.strftime("%Y-%m-%d")
                 if wc["digest_enabled"]:
-                    lt = datetime.now()
-                    today = lt.strftime("%Y-%m-%d")
                     if lt.hour == wc["digest_hour"] and _watcher_state.get("last_digest") != today:
                         _watcher_state["last_digest"] = today
                         _send_digest()
                         dirty = True
+                if _report_due(lt, wc, _watcher_state.get("last_report")):
+                    # Datum ZUERST setzen: scheitert der Versand, wird nicht in derselben
+                    # Stunde bei jedem Poll (20 s) erneut gefeuert.
+                    _watcher_state["last_report"] = today
+                    _send_report(wc["report_period"])
+                    dirty = True
             elif _watcher_state.get("next_run") is not None:
                 _watcher_state["next_run"] = None
                 dirty = True
@@ -2577,6 +2794,12 @@ def waechter():
             "repeat_backoff": bool(f.get("repeat_backoff")),
             "escalate_after": max(0, min(20, _watch_int(f.get("escalate_after"), 3))),
             "recovery_notify": bool(f.get("recovery_notify")),
+            "report_enabled": bool(f.get("report_enabled")),
+            "report_period": (f.get("report_period") if f.get("report_period") in _REPORT_PERIODS
+                              else "week"),
+            "report_weekday": max(0, min(6, _watch_int(f.get("report_weekday"), 0))),
+            "report_day": max(1, min(_REPORT_MAX_DAY, _watch_int(f.get("report_day"), 1))),
+            "report_hour": max(0, min(23, _watch_int(f.get("report_hour"), 8))),
         }
         cfg = load_config()
         cfg["watcher"] = w
@@ -2608,6 +2831,15 @@ def waechter():
         if action == "digest_now":
             _send_digest()
             return redirect(url_for("verwaltung", tab="waechter", msg="Digest an alle Profile mit aktivem Kanal gesendet."))
+        if action == "report_now":
+            n = _send_report(w["report_period"])
+            if n:
+                return redirect(url_for("verwaltung", tab="waechter",
+                                        msg="Report an %d Profil(e) gesendet." % n))
+            return redirect(url_for("verwaltung", tab="waechter",
+                                    err="Kein Report gesendet — kein Profil hat sowohl "
+                                        "aufgezeichnete Prüfläufe im Zeitraum als auch einen "
+                                        "aktiven Benachrichtigungs-Kanal."))
         if action == "heartbeat_now":
             if w["heartbeat_url"]:
                 _ping_heartbeat(w["heartbeat_url"])
@@ -2630,6 +2862,7 @@ def waechter():
         "error": st.get("last_error"),
         "last_heartbeat": _fmt_rel_ts(st.get("last_heartbeat")),
         "last_digest": st.get("last_digest") or "—",
+        "last_report": st.get("last_report") or "—",
     }
     lw = st.get("last_webhook")
     webhook_last = None
@@ -2639,7 +2872,9 @@ def waechter():
     return render_template(
         "waechter.html", w=wc, wh=_webhook_cfg(), mc=_metrics_cfg(), events=_NOTIFY_EVENTS,
         results=results, status=status, webhook_last=webhook_last,
-        board=_alert_board(st, wc),
+        board=_alert_board(st, wc), weekdays=_WEEKDAYS,
+        report_preview=_report_preview(wc["report_period"]),
+        report_days=_report_days(wc["report_period"]),
         hist=_watch_history_cards(request.args.get("range", "30d")),
         hrng=_watch_range(request.args.get("range", "30d")),
         msg=request.args.get("msg"), err=request.args.get("err"))

@@ -133,6 +133,48 @@
       </div>
     </div>
 
+    <!-- Wochen-/Monatsreport -->
+    <div class="card" style="margin-top:14px">
+      <h2 style="margin-top:0">Wochen-/Monatsreport</h2>
+      <label style="display:flex;align-items:center;gap:8px;margin:0;font-size:14px;color:var(--text)">
+        <input type="checkbox" name="report_enabled" value="1" style="width:auto"{% if w.report_enabled %} checked{% endif %}> Report senden
+      </label>
+      <div style="font-size:12px;color:var(--text-dim);margin:4px 0 0 26px">Ein <strong>Rückblick</strong>, kein Statusbericht: Uptime, längster Ausfall, auffällige Läufe, Dokument-Wachstum und Antwortzeiten über den Zeitraum. Kommt komplett aus der aufgezeichneten Historie — deine Instanz wird dafür <strong>nicht</strong> angefasst. Der Tages-Digest oben beantwortet „wie steht es <em>jetzt</em>", der Report „was war". Zuletzt gesendet: {{ status.last_report }}.</div>
+
+      <label style="margin-top:16px">Zeitraum</label>
+      <select name="report_period" style="width:100%;padding:8px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:14px">
+        <option value="week"{% if w.report_period == 'week' %} selected{% endif %}>Wöchentlich — Rückblick über 7 Tage</option>
+        <option value="month"{% if w.report_period == 'month' %} selected{% endif %}>Monatlich — Rückblick über 30 Tage</option>
+      </select>
+
+      <label style="margin-top:12px">Wochentag <span style="font-weight:400;font-size:11px;color:var(--text-dim)">· nur bei „Wöchentlich"</span></label>
+      <select name="report_weekday" style="width:100%;padding:8px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:14px">
+        {% for d in weekdays %}<option value="{{ loop.index0 }}"{% if w.report_weekday == loop.index0 %} selected{% endif %}>{{ d }}</option>{% endfor %}
+      </select>
+
+      <label style="margin-top:12px">Kalendertag <span style="font-weight:400;font-size:11px;color:var(--text-dim)">· nur bei „Monatlich"</span></label>
+      <input type="text" name="report_day" value="{{ w.report_day }}" inputmode="numeric" placeholder="1">
+      <p class="hint">1–28. Höher geht bewusst nicht: den 29.–31. gibt es nicht in jedem Monat, im Februar nie — der Report bliebe dann still aus.</p>
+
+      <label>Uhrzeit (Stunde, 0–23, Ortszeit)</label>
+      <input type="text" name="report_hour" value="{{ w.report_hour }}" inputmode="numeric" placeholder="8">
+      <p class="hint">Fällig ist der Report {% if w.report_period == 'week' %}jeden <strong>{{ weekdays[w.report_weekday] }}</strong>{% else %}am <strong>{{ w.report_day }}.</strong> jedes Monats{% endif %} gegen <strong>{{ w.report_hour }}:00</strong> — er geht nur an Profile mit aktivem Kanal <em>und</em> aufgezeichneten Prüfläufen im Zeitraum.</p>
+
+      <button type="submit" name="action" value="report_now" style="width:auto;padding:8px 14px;font-size:13px;background:var(--bg3);border:1px solid var(--border)">Report jetzt senden</button>
+
+      {% if report_preview %}
+      <p class="hint" style="margin:14px 0 4px">Vorschau — <strong>exakt dieser Text</strong> würde jetzt rausgehen ({{ report_days }} Tage):</p>
+      {% for r in report_preview %}
+      <div style="margin-bottom:10px">
+        <div style="font-size:12px;color:var(--text-dim);margin-bottom:3px">{{ r.name }}{% if not r.channels %} · <span style="color:var(--warn,#f59e0b)">kein Kanal aktiv — bekommt nichts</span>{% endif %}</div>
+        <pre style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:10px;font-size:11.5px;overflow-x:auto;margin:0;white-space:pre-wrap">{{ r.body }}</pre>
+      </div>
+      {% endfor %}
+      {% else %}
+      <p class="hint" style="margin-top:14px">Noch keine Vorschau: kein Profil hat aufgezeichnete Prüfläufe in den letzten {{ report_days }} Tagen. Die Historie füllt sich mit jedem Prüflauf.</p>
+      {% endif %}
+    </div>
+
     <!-- Webhook / n8n -->
     <div class="card" style="margin-top:14px">
       <h2 style="margin-top:0">Webhook / n8n</h2>
