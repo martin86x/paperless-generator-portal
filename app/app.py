@@ -2481,6 +2481,32 @@ def _acquire_watcher_lock():
         return False
 
 
+def _restore_watch_state():
+    """Gespiegelten Zustand nach einem Neustart zurueck in den Speicher holen.
+
+    Ohne das startet JEDER Neustart (also jeder Deploy) bei null, und zwar mit Folgen:
+      * last_digest/last_report sind None -> faellt der Neustart in die eingestellte
+        Stunde, gehen Digest und Report ein ZWEITES Mal raus.
+      * alerts_active/alert_meta sind leer -> ein laengst gemeldeter Alarm gilt wieder als
+        neu und wird erneut gemeldet, Streaks und Erinnerungstakt fangen von vorn an.
+        Genau das soll die Eskalation aus Z2 ja verhindern.
+    Bewusst NICHT uebernommen: 'next_run' (nach einem Neustart soll sofort geprueft werden,
+    nicht bis zum alten Termin gewartet) und 'last_error' (ein alter Fehler darf nicht
+    wieder aufleben; die Schleife setzt ihn ohnehin je Runde neu)."""
+    try:
+        with open(WATCH_STATE_PATH, encoding="utf-8") as fh:
+            old = json.load(fh)
+    except (OSError, ValueError):
+        return
+    for k in ("last_run", "last_digest", "last_report", "last_heartbeat",
+              "last_metrics", "last_webhook", "results"):
+        if old.get(k) is not None:
+            _watcher_state[k] = old[k]
+    _watcher_state["alerts_active"] = {tuple(k.split("|", 1))
+                                       for k in (old.get("alerts_active") or [])}
+    _watcher_state["alert_meta"] = old.get("alert_meta") or {}
+
+
 def _ensure_watcher():
     """Startet den Waechter-Thread einmal pro Prozess — aber nur, wenn dieser Prozess die
     Sperre gewinnt. Traege ueber before_request angestossen (nach dem Fork der Worker)."""
@@ -2490,6 +2516,10 @@ def _ensure_watcher():
     _watcher_started = True  # egal wie es ausgeht: nicht erneut versuchen
     if os.environ.get("PORTAL_WATCHER", "1") != "1":
         return  # in Tests deaktivierbar
+    # VOR der Sperre und fuer BEIDE Worker: ein manuelles "Jetzt pruefen" kann im
+    # Nicht-Owner landen, und der wuerde sonst mit leeren Streaks rechnen und den Spiegel
+    # anschliessend mit ebendieser Leere ueberschreiben.
+    _restore_watch_state()
     if not _acquire_watcher_lock():
         return  # anderer Worker fuehrt die Schleife
     _watcher_state["owner"] = True

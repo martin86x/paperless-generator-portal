@@ -122,6 +122,9 @@
       <div style="font-size:12px;color:var(--text-dim);margin:4px 0 0 26px">Einmal am Tag eine Kurzmeldung je Profil (erreichbar? wie viele Dokumente? Drift?) über die aktivierten Kanäle — so weißt du, dass die Überwachung <em>läuft</em> und nicht nur schweigt. Zuletzt gesendet: {{ status.last_digest }}.</div>
       <label style="margin-left:26px">Uhrzeit (Stunde, 0–23, Ortszeit)</label>
       <input type="text" name="digest_hour" value="{{ w.digest_hour }}" inputmode="numeric" placeholder="8" style="margin-left:26px;width:calc(100% - 26px)">
+      {% if w.digest_enabled and not w.enabled %}
+      <div class="callout warn" style="font-size:12px;margin-left:26px">⚠️ <strong>Der Wächter ist aus</strong> — damit kommt auch kein Digest. Der Zeitplan hängt an der Wächter-Schleife; ohne sie passiert hier stillschweigend nichts. Oben „Wächter aktiv" anhaken. Der Knopf unten sendet trotzdem sofort.</div>
+      {% endif %}
 
       <label style="margin-top:16px">Heartbeat-URL (Dead-Man's-Switch)</label>
       <input type="url" name="heartbeat_url" value="{{ w.heartbeat_url }}" placeholder="https://hc-ping.com/dein-uuid">
@@ -158,7 +161,10 @@
 
       <label>Uhrzeit (Stunde, 0–23, Ortszeit)</label>
       <input type="text" name="report_hour" value="{{ w.report_hour }}" inputmode="numeric" placeholder="8">
-      <p class="hint">Fällig ist der Report {% if w.report_period == 'week' %}jeden <strong>{{ weekdays[w.report_weekday] }}</strong>{% else %}am <strong>{{ w.report_day }}.</strong> jedes Monats{% endif %} gegen <strong>{{ w.report_hour }}:00</strong> — er geht nur an Profile mit aktivem Kanal <em>und</em> aufgezeichneten Prüfläufen im Zeitraum.</p>
+      <p class="hint">Fällig ist der Report {% if w.report_period == 'week' %}jeden <strong>{{ weekdays[w.report_weekday] }}</strong>{% else %}am <strong>{{ w.report_day }}.</strong> jedes Monats{% endif %} gegen <strong>{{ w.report_hour }}:00</strong> — er geht an Profile mit aktivem Kanal oder Webhook <em>und</em> aufgezeichneten Prüfläufen im Zeitraum.</p>
+      {% if w.report_enabled and not w.enabled %}
+      <div class="callout warn" style="font-size:12px">⚠️ <strong>Der Wächter ist aus</strong> — damit kommt auch kein Report. Der Zeitplan hängt an der Wächter-Schleife; ohne sie passiert hier stillschweigend nichts. Oben „Wächter aktiv" anhaken. Der Knopf unten sendet trotzdem sofort.</div>
+      {% endif %}
 
       <button type="submit" name="action" value="report_now" style="width:auto;padding:8px 14px;font-size:13px;background:var(--bg3);border:1px solid var(--border)">Report jetzt senden</button>
 
