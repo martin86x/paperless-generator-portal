@@ -45,6 +45,7 @@ SNAP_DIR = os.path.join(CONFIG_DIR, "instance-snapshots")
 WATCHER_LOCK_PATH = os.path.join(CONFIG_DIR, "watcher.lock")
 METRICS_DIR = os.path.join(CONFIG_DIR, "history-metrics")
 METRICS_MAX = 2000  # gekappte Historie je Profil (JSONL-Zeilen)
+LAST_BACKUP_PATH = os.path.join(CONFIG_DIR, "last-backup.json")  # Zeitstempel des letzten Voll-Backups
 # 1-Klick-Update (P7) — SICHER ohne Docker-Socket: das Portal legt nur eine Anforderung
 # im /config-Volume ab; ein Host-Helper (Cron auf dem LXC) fuehrt den Rebuild aus.
 UPDATE_REQUEST = os.path.join(CONFIG_DIR, "update-request.json")
@@ -1050,6 +1051,7 @@ def config_backup():
                     pass
     buf.seek(0)
     ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+    _mark_backup()
     _log_activity("backup", "Voll-Backup heruntergeladen")
     return Response(buf.read(), mimetype="application/zip",
                     headers={"Content-Disposition": "attachment; filename=portal-config-%s.zip" % ts})
@@ -1166,16 +1168,20 @@ def verwaltung_overview():
         plist.append({"id": pid, "name": p.get("name") or "(ohne Name)",
                       "active": pid == aid, "kind": pk})
     plist.sort(key=lambda x: x["name"].lower())
-    ref = PROFILES_PATH + ".bak.1"
-    if not os.path.exists(ref):
-        ref = PROFILES_PATH if os.path.exists(PROFILES_PATH) else None
-    last_backup = datetime.fromtimestamp(os.path.getmtime(ref)).strftime("%d.%m.%Y %H:%M") if ref else "—"
+    bts = _last_backup_ts()
+    if bts:
+        last_backup = _fmt_rel_ts(bts)
+        _age_d = (int(time.time()) - bts) / 86400.0
+        backup_level = "ok" if _age_d < 7 else ("warn" if _age_d < 30 else "err")
+    else:
+        last_backup = "noch nie"
+        backup_level = "warn"
     _wc = _watcher_cfg()
     _stamp = _build_stamp()
     portal = {"version": PORTAL_VERSION,
               "build": ("%s%s" % (_stamp["sha"], " · " + _stamp["date"] if _stamp["date"] else "")) if _stamp else "",
               "config_size": _fmt_size(_dir_size(CONFIG_DIR)),
-              "last_backup": last_backup,
+              "last_backup": last_backup, "backup_level": backup_level,
               "watcher_on": _wc["enabled"], "watcher_last": _fmt_rel_ts(_watcher_state.get("last_run")),
               "watcher_alerts": len(_watcher_state.get("alerts_active") or ())}
     return render_template(
@@ -1666,7 +1672,9 @@ def _record_metrics(force=False):
         if not url:
             continue
         token = _dec(p.get("paperless_token"))
+        _t0 = time.time()
         total = _api_count(url, token, "documents/?page_size=1")
+        lat = int((time.time() - _t0) * 1000)  # Antwortzeit der Instanz in ms
         if total is None:
             continue  # nicht erreichbar -> keine Luecke mit Nullwerten erzeugen
         row = {
@@ -1675,6 +1683,7 @@ def _record_metrics(force=False):
             "inbox": _api_count(url, token, "documents/?is_in_inbox=true&page_size=1"),
             "no_type": _api_count(url, token, "documents/?document_type__isnull=true&page_size=1"),
             "no_corr": _api_count(url, token, "documents/?correspondent__isnull=true&page_size=1"),
+            "lat": lat,
         }
         path = _metrics_path(pid)
         try:
@@ -2009,6 +2018,56 @@ def _line_svg(values, color="#3b82f6", w=440, h=110, pad=16):
     )
 
 
+def _multi_line_svg(series, w=440, h=110, pad=16):
+    """Mehrere Zahlenreihen in EIN Inline-SVG mit gemeinsamer Y-Skala (kein externes JS/CDN).
+    series = [{"label","color","values"}]. None-Werte werden uebersprungen. Gibt None zurueck,
+    wenn keine Serie mindestens 2 Messpunkte hat."""
+    drawn = [s for s in series if len([v for v in s["values"] if v is not None]) >= 2]
+    if not drawn:
+        return None
+    allv = [v for s in drawn for v in s["values"] if v is not None]
+    lo, hi = min(allv), max(allv)
+    rng = (hi - lo) or 1
+    n = max(len(s["values"]) for s in drawn)
+    step = (w - 2 * pad) / (n - 1) if n > 1 else 0
+    parts = ['<svg viewBox="0 0 %d %d" style="width:100%%;height:auto;display:block" '
+             'xmlns="http://www.w3.org/2000/svg">' % (w, h)]
+    for s in drawn:
+        pts = []
+        for i, v in enumerate(s["values"]):
+            if v is None:
+                continue
+            x = pad + i * step
+            y = h - pad - (v - lo) / rng * (h - 2 * pad)
+            pts.append("%.1f,%.1f" % (x, y))
+        if len(pts) < 2:
+            continue
+        last = pts[-1].split(",")
+        parts.append('<polyline fill="none" stroke="%s" stroke-width="2" stroke-linejoin="round" '
+                     'stroke-linecap="round" points="%s"/>' % (s["color"], " ".join(pts)))
+        parts.append('<circle cx="%s" cy="%s" r="3" fill="%s"/>' % (last[0], last[1], s["color"]))
+    parts.append("</svg>")
+    return "".join(parts)
+
+
+def _mark_backup():
+    """Zeitstempel des letzten Voll-Backups persistieren (fuer die Backup-Alter-Ampel)."""
+    try:
+        with open(LAST_BACKUP_PATH, "w", encoding="utf-8") as fh:
+            json.dump({"ts": int(time.time())}, fh)
+    except OSError:
+        pass
+
+
+def _last_backup_ts():
+    """Epoch des letzten Voll-Backups oder None."""
+    try:
+        with open(LAST_BACKUP_PATH, encoding="utf-8") as fh:
+            return int(json.load(fh).get("ts"))
+    except (OSError, ValueError, TypeError):
+        return None
+
+
 @app.route("/verwaltung/werkzeuge")
 def werkzeuge():
     """Read-only Instanz-Werkzeuge fuer das AKTIVE Profil: Dokumente ohne Typ/Korrespondent/
@@ -2063,22 +2122,42 @@ def trends():
         return redirect(url_for("verwaltung", tab="trends", msg="Kennzahlen erfasst."))
     profs = load_profiles()
     aid = _active_id()
+    rng = request.args.get("range", "30d")
+    if rng not in ("7d", "30d", "all"):
+        rng = "30d"
+    now = int(time.time())
+    cutoff = {"7d": now - 7 * 86400, "30d": now - 30 * 86400}.get(rng)  # None = alles
     cards = []
     for pid, p in profs.items():
-        rows = _read_metrics(pid, limit=500)
+        allrows = _read_metrics(pid, limit=METRICS_MAX)
+        rows = [r for r in allrows if cutoff is None or r.get("ts", 0) >= cutoff]
         if not rows and not p.get("paperless_url"):
             continue
         totals = [r.get("total") for r in rows]
-        delta = None
+        cleanup = [
+            {"label": "Posteingang",   "color": "#f59e0b", "values": [r.get("inbox") for r in rows]},
+            {"label": "ohne Typ",      "color": "#ef4444", "values": [r.get("no_type") for r in rows]},
+            {"label": "ohne Korresp.", "color": "#a855f7", "values": [r.get("no_corr") for r in rows]},
+        ]
+        lats = [r.get("lat") for r in rows]
+        delta = growth = None
         if len(rows) >= 2 and rows[0].get("total") is not None and rows[-1].get("total") is not None:
             delta = rows[-1]["total"] - rows[0]["total"]
+            span = rows[-1].get("ts", 0) - rows[0].get("ts", 0)
+            if span > 0:
+                growth = round(delta / span * 7 * 86400, 1)  # hochgerechnet auf Dok./Woche
         cards.append({
             "name": p.get("name") or pid, "active": pid == aid, "count": len(rows),
-            "svg": _line_svg(totals), "cur": rows[-1] if rows else None,
-            "since": _fmt_rel_ts(rows[0]["ts"]) if rows else None, "delta": delta,
+            "svg": _line_svg(totals),
+            "cleanup_svg": _multi_line_svg(cleanup),
+            "cleanup_legend": [{"label": s["label"], "color": s["color"]} for s in cleanup],
+            "lat_svg": _line_svg(lats, color="#22c55e"),
+            "cur": rows[-1] if rows else None,
+            "since": _fmt_rel_ts(rows[0]["ts"]) if rows else None,
+            "delta": delta, "growth": growth,
         })
     cards.sort(key=lambda c: c["name"].lower())
-    return render_template("trends.html", cards=cards,
+    return render_template("trends.html", cards=cards, rng=rng,
                            msg=request.args.get("msg"), err=request.args.get("err"))
 
 

@@ -50,7 +50,7 @@
   <div class="card" style="margin-top:14px">
     <div style="display:flex;align-items:center;justify-content:space-between;font-size:12.5px;color:var(--text-dim);flex-wrap:wrap;gap:6px">
       <span>Portal v{{ portal.version }}{% if portal.build %} <span style="opacity:.75">({{ portal.build }})</span>{% endif %} · Container läuft</span>
-      <span>/config {{ portal.config_size }} · letzte Sicherung {{ portal.last_backup }}</span>
+      <span>/config {{ portal.config_size }} · letzte Sicherung <span title="grün <7 Tage · gelb <30 · rot älter/nie" style="color:{{ 'var(--ok)' if portal.backup_level == 'ok' else ('#f59e0b' if portal.backup_level == 'warn' else 'var(--err)') }}">●</span> {{ portal.last_backup }}</span>
     </div>
     <div style="display:flex;align-items:center;justify-content:space-between;font-size:12.5px;color:var(--text-dim);flex-wrap:wrap;gap:6px;margin-top:6px">
       <span>Wächter: {% if portal.watcher_on %}<span style="color:var(--ok)">aktiv</span>, letzter Lauf {{ portal.watcher_last }}{% if portal.watcher_alerts %} · <span style="color:var(--err)">{{ portal.watcher_alerts }} Alarm(e)</span>{% endif %}{% else %}aus{% endif %}</span>
