@@ -39,6 +39,7 @@
       {% set checkinfo = [
         ('downtime','Erreichbarkeit / Token','Instanz nicht erreichbar oder Token ungültig (abgelaufen/widerrufen).'),
         ('drift','Konfig-Drift','Gespeicherte Profil-Config enthält mehr Einträge als die Instanz (fehlende Tags/Typen/Felder/Korrespondenten/Pfade).'),
+        ('task_fail','Fehlgeschlagener Einzug','Dokumente, die Paperless nicht einlesen konnte (Task „consume_file" mit Status FAILURE) — z. B. kaputte PDFs, OCR-Abbrüche oder erkannte Duplikate. Abgehakte Fehler zählen nicht mehr mit: sobald du sie in Paperless unter Verwaltung → Aufgaben bestätigst, gibt es Entwarnung. Interne Wartungs-Tasks (Klassifikator-Training u. ä.) werden bewusst ignoriert — die scheitern im Normalbetrieb ständig.'),
         ('asn_gap','ASN-Lücken','Lücken im vergebenen ASN-Bereich (min…max).'),
         ('duplicate','Duplikate (Heuristik)','Best-effort: identische Dokumenttitel. Kann bei vielen Dokumenten kosten — daher standardmäßig aus.')
       ] %}
@@ -124,5 +125,73 @@
   <div class="card" style="margin-top:14px"><p class="hint" style="margin:0">Noch kein Prüflauf. „Jetzt prüfen" anklicken oder auf den nächsten Zyklus warten.</p></div>
   {% endif %}
 
+  <!-- Historie: Uptime + Statusband je Check -->
+  <div class="card" style="margin-top:14px">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+      <h2 style="margin:0">Verlauf</h2>
+      <div style="display:flex;gap:4px">
+        {% for r, lbl in [('7d','7 Tage'), ('30d','30 Tage'), ('all','Alles')] %}
+        <button type="button" data-watch-range="{{ r }}" class="wrng"
+          style="width:auto;margin:0;padding:5px 11px;font-size:12px;border-radius:7px;cursor:pointer;background:{{ 'var(--bg3)' if hrng == r else 'transparent' }};color:{{ 'var(--text)' if hrng == r else 'var(--text-dim)' }};border:1px solid {{ 'var(--border)' if hrng == r else 'transparent' }}">{{ lbl }}</button>
+        {% endfor %}
+      </div>
+    </div>
+    <p class="hint" style="margin:8px 0 0">Jeder Streifen ist ein Prüflauf — <span style="color:var(--ok)">grün</span> in Ordnung, <span style="color:var(--err)">rot</span> auffällig, grau nicht prüfbar. Ältester links, neuester rechts. Die Quote zählt nur prüfbare Läufe.</p>
+  </div>
+
+  <div id="watch-history">
+  {% for c in hist %}
+  <div class="card" style="margin-top:14px">
+    <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px">
+      <h3 style="margin:0;font-size:14.5px;color:var(--text)">{{ c.name }}</h3>
+      <span style="font-size:11.5px;color:var(--text-dim)">{{ c.runs }} Lauf/Läufe · seit {{ c.since }}</span>
+    </div>
+    {% if c.uptime is not none %}
+    <div style="margin-top:8px;font-size:13px">
+      Erreichbarkeit:
+      <strong style="color:{{ 'var(--ok)' if c.uptime >= 99 else ('#f59e0b' if c.uptime >= 95 else 'var(--err)') }}">{{ c.uptime }} %</strong>
+    </div>
+    {% endif %}
+    {% for b in c.bands %}
+    <div style="margin-top:12px">
+      <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--text-dim);margin-bottom:3px">
+        <span>{{ b.label }}{% if b.pct is not none %} · {{ b.pct }} % ok{% endif %}</span>
+        {% if b.last_bad %}<span style="color:var(--err)">zuletzt auffällig {{ b.last_bad }}</span>{% endif %}
+      </div>
+      {{ b.svg|safe }}
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="card" style="margin-top:14px"><p class="hint" style="margin:0">Noch keine Historie im gewählten Zeitraum. Sie füllt sich mit jedem Prüflauf — ein Lauf ergibt schon einen Streifen.</p></div>
+  {% endfor %}
+  </div>
+
 </div>
+<script>
+(function(){
+  var wrap = document.getElementById('watch-history');
+  if(!wrap) return;
+  document.querySelectorAll('.wrng').forEach(function(b){
+    b.addEventListener('click', function(){
+      var r = b.getAttribute('data-watch-range');
+      document.querySelectorAll('.wrng').forEach(function(x){
+        var on = x.getAttribute('data-watch-range') === r;
+        x.style.background = on ? 'var(--bg3)' : 'transparent';
+        x.style.color = on ? 'var(--text)' : 'var(--text-dim)';
+        x.style.borderColor = on ? 'var(--border)' : 'transparent';
+      });
+      wrap.style.opacity = '.5';
+      fetch('/verwaltung/waechter?embed=1&range=' + encodeURIComponent(r), {credentials:'same-origin'})
+        .then(function(res){ return res.text(); })
+        .then(function(html){
+          var nc = new DOMParser().parseFromString(html, 'text/html').getElementById('watch-history');
+          if(nc) wrap.innerHTML = nc.innerHTML;
+          wrap.style.opacity = '';
+        })
+        .catch(function(){ wrap.style.opacity = ''; });
+    });
+  });
+})();
+</script>
 {% endblock %}

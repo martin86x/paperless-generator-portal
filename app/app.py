@@ -45,6 +45,12 @@ SNAP_DIR = os.path.join(CONFIG_DIR, "instance-snapshots")
 WATCHER_LOCK_PATH = os.path.join(CONFIG_DIR, "watcher.lock")
 METRICS_DIR = os.path.join(CONFIG_DIR, "history-metrics")
 METRICS_MAX = 2000  # gekappte Historie je Profil (JSONL-Zeilen)
+WATCH_DIR = os.path.join(CONFIG_DIR, "history-watch")   # Waechter-Historie je Profil (JSONL)
+WATCH_MAX = 2000
+# Waechter-Laufzeitzustand auf Platte: die Schleife laeuft nur im Worker mit der Sperre,
+# die UI-Anfrage landet aber irgendwo (gunicorn -w 2). Ohne diese Datei zeigt der
+# Nicht-Owner-Worker gar keinen Status. Owner schreibt, alle lesen.
+WATCH_STATE_PATH = os.path.join(CONFIG_DIR, "watcher-state.json")
 LAST_BACKUP_PATH = os.path.join(CONFIG_DIR, "last-backup.json")  # Zeitstempel des letzten Voll-Backups
 # 1-Klick-Update (P7) — SICHER ohne Docker-Socket: das Portal legt nur eine Anforderung
 # im /config-Volume ab; ein Host-Helper (Cron auf dem LXC) fuehrt den Rebuild aus.
@@ -1254,13 +1260,14 @@ def dashboard():
 _NOTIFY_EVENTS = [
     ("downtime", "Instanz nicht erreichbar / Token ungültig"),
     ("drift", "Konfigurations-Drift (fehlende Einträge)"),
+    ("task_fail", "Fehlgeschlagene Verarbeitung (Consumer)"),
     ("asn_gap", "ASN-Lücken"),
     ("duplicate", "Duplikate gefunden"),
     ("digest", "Täglicher Status-Digest"),
     ("update", "Portal-Update verfügbar"),
     ("error", "Fehler im Portal / Wächter"),
 ]
-_NOTIFY_DEFAULT_PRIO = {"downtime": 1, "drift": 0, "asn_gap": -1,
+_NOTIFY_DEFAULT_PRIO = {"downtime": 1, "drift": 0, "task_fail": 1, "asn_gap": -1,
                         "duplicate": -1, "digest": -1, "update": 0, "error": 1}
 _PRIO_LABELS = {-2: "−2 Stumm", -1: "−1 Leise", 0: "0 Normal", 1: "1 Hoch", 2: "2 Notfall"}
 # Pushover-Prioritaet −2…2  ->  ntfy-Prioritaet 1…5.
@@ -1476,7 +1483,8 @@ def _clamp_port(val):
 _WATCHER_DEFAULTS = {
     "enabled": False,
     "interval_min": 60,
-    "checks": {"downtime": True, "drift": True, "asn_gap": False, "duplicate": False},
+    "checks": {"downtime": True, "drift": True, "task_fail": True,
+               "asn_gap": False, "duplicate": False},
     "asn_gap_threshold": 1,
     "digest_enabled": False,
     "digest_hour": 8,          # Ortszeit-Stunde fuer den taeglichen Status-Digest
@@ -1631,6 +1639,52 @@ def _chk_duplicate(url, token):
             "detail": "Keine gleichlautenden Titel."}
 
 
+def _is_consume_task(t):
+    """Nur der Dokumenteneinzug zaehlt (task_name 'consume_file', je nach Version mit
+    Modulpfad davor). Wartungs-Tasks wie train_classifier/check_sanity bleiben aussen vor:
+    train_classifier scheitert auf jeder frischen Instanz reihenweise mit 'No training data
+    available' — an der Test-Instanz waren 413 von 414 Fehlern genau das. Die als Alarm zu
+    melden waere reines Rauschen. Ohne task_name (aeltere Versionen) dient der Dateiname als
+    Indiz: den haben nur Einzug-Tasks."""
+    name = t.get("task_name")
+    if name:
+        return str(name).endswith("consume_file")
+    return bool(t.get("task_file_name"))
+
+
+def _chk_task_fail(url, token):
+    """Fehlgeschlagener Dokumenteneinzug: /api/tasks/ auf FAILURE. Read-only.
+    Paperless behaelt FAILURE-Tasks dauerhaft; abgehakte ('acknowledged') zaehlen nicht mehr
+    mit — sonst haengt der Alarm fuer immer an einem laengst erledigten Fehler."""
+    hdr = {"Authorization": "Token " + token} if token else {}
+    try:
+        r = requests.get(url.rstrip("/") + "/api/tasks/", headers=hdr, timeout=8,
+                         allow_redirects=False)
+        if r.status_code != 200:
+            return {"event": "task_fail", "label": "Verarbeitung", "status": "unknown",
+                    "detail": "Task-Liste nicht abrufbar (HTTP %d)." % r.status_code}
+        data = r.json()
+        rows = data.get("results", data) if isinstance(data, dict) else data
+        if not isinstance(rows, list):
+            return {"event": "task_fail", "label": "Verarbeitung", "status": "unknown",
+                    "detail": "Unerwartetes Format der Task-Liste."}
+    except (requests.RequestException, ValueError):
+        return {"event": "task_fail", "label": "Verarbeitung", "status": "unknown",
+                "detail": "Task-Liste nicht abrufbar."}
+    fails = [t for t in rows
+             if isinstance(t, dict) and str(t.get("status", "")).upper() == "FAILURE"
+             and not t.get("acknowledged") and _is_consume_task(t)]
+    if not fails:
+        return {"event": "task_fail", "label": "Verarbeitung", "status": "ok",
+                "detail": "Kein offener Einzug-Fehler."}
+    names = [str(t.get("task_file_name") or "?") for t in fails[:3]]
+    more = "" if len(fails) <= 3 else " u. a."
+    return {"event": "task_fail", "label": "Verarbeitung", "status": "bad",
+            "detail": "%d Dokument(e) nicht eingelesen: %s%s — in Paperless unter "
+                      "Verwaltung → Aufgaben prüfen und abhaken." % (
+                          len(fails), ", ".join(names), more)}
+
+
 def _maybe_alert(prof, pid, c):
     """Nur bei Zustandswechsel melden: ok->bad sendet, bad->ok entwarnt (kein Spam)."""
     key = (pid, c["event"])
@@ -1713,6 +1767,104 @@ def _read_metrics(pid, limit=500):
     return rows
 
 
+def _watch_path(pid):
+    return os.path.join(WATCH_DIR, pid + ".jsonl")
+
+
+def _append_watch(pid, checks, ts):
+    """Ergebnis eines Prueflaufs als JSONL-Zeile mitschreiben — kompakt: nur Event->Status.
+    Die Details wandern nicht mit (Protokoll deckt sie ab), die Historie soll klein bleiben."""
+    row = {"ts": int(ts), "c": {c["event"]: c["status"] for c in checks}}
+    try:
+        os.makedirs(WATCH_DIR, exist_ok=True)
+        path = _watch_path(pid)
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(row) + "\n")
+        with open(path, encoding="utf-8") as fh:
+            lines = fh.readlines()
+        if len(lines) > WATCH_MAX:
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.writelines(lines[-WATCH_MAX:])
+    except OSError:
+        pass
+
+
+def _read_watch(pid, limit=WATCH_MAX):
+    rows = []
+    try:
+        with open(_watch_path(pid), encoding="utf-8") as fh:
+            for ln in fh.readlines()[-limit:]:
+                try:
+                    rows.append(json.loads(ln))
+                except ValueError:
+                    pass
+    except FileNotFoundError:
+        pass
+    return rows
+
+
+def _uptime_pct(rows, event="downtime"):
+    """Anteil der Prueflaeufe mit Status ok. 'unknown' zaehlt nicht mit (weder gut noch
+    schlecht). None, wenn es zu dem Event keine verwertbaren Laeufe gibt."""
+    vals = [r.get("c", {}).get(event) for r in rows]
+    good = sum(1 for v in vals if v == "ok")
+    bad = sum(1 for v in vals if v == "bad")
+    if good + bad == 0:
+        return None
+    return round(good / (good + bad) * 100, 1)
+
+
+def _last_bad_ts(rows, event="downtime"):
+    """Unix-ts des juengsten Laufs, in dem das Event 'bad' war (oder None)."""
+    for r in reversed(rows):
+        if r.get("c", {}).get(event) == "bad":
+            return r.get("ts")
+    return None
+
+
+def _save_watch_state():
+    """Laufzeitzustand des Waechters auf Platte spiegeln, damit ihn auch Worker sehen,
+    die die Schleife NICHT ausfuehren (sonst zeigt die UI je nach Worker Leere)."""
+    st = dict(_watcher_state)
+    st["alerts_active"] = ["%s|%s" % (p, e) for p, e in _watcher_state["alerts_active"]]
+    st.pop("owner", None)  # prozesslokal — sagt nichts ueber den fremden Worker aus
+    if not _watcher_state.get("owner"):
+        # Ein manueller "Jetzt pruefen"-Lauf kann in einem Worker OHNE Schleife landen.
+        # Taktung/Heartbeat/Digest gehoeren dem Owner — dessen Werte hier nicht mit den
+        # leeren Lokalwerten ueberschreiben, sonst zeigt die UI "naechster Lauf —".
+        try:
+            with open(WATCH_STATE_PATH, encoding="utf-8") as fh:
+                old = json.load(fh)
+            for k in ("next_run", "last_heartbeat", "last_digest", "last_error"):
+                if st.get(k) is None:
+                    st[k] = old.get(k)
+        except (OSError, ValueError):
+            pass
+    try:
+        tmp = WATCH_STATE_PATH + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(st, fh)
+        os.replace(tmp, WATCH_STATE_PATH)  # atomar: nie ein halb geschriebener Stand
+    except (OSError, TypeError):
+        pass
+
+
+def _load_watch_state():
+    """Gespiegelten Zustand lesen. Im Owner-Prozess ist der eigene Speicher aktueller."""
+    if _watcher_state.get("owner"):
+        return _watcher_state
+    try:
+        with open(WATCH_STATE_PATH, encoding="utf-8") as fh:
+            st = json.load(fh)
+    except (OSError, ValueError):
+        return _watcher_state
+    if (_watcher_state.get("last_run") or 0) > (st.get("last_run") or 0):
+        return _watcher_state  # eigener manueller Lauf ist juenger als der Spiegel
+    st["alerts_active"] = {tuple(k.split("|", 1)) for k in (st.get("alerts_active") or [])}
+    st["owner"] = False
+    return st
+
+
 def _profile_watch(p, gwc):
     """Effektive Ueberwachung eines Profils: eigene 'watch'-Einstellung ODER globale Vorgabe.
     Rueckgabe: {enabled, checks:{…}, custom}. Fehlt 'watch' -> ueberwacht mit globalen Checks."""
@@ -1743,17 +1895,23 @@ def _run_watch_cycle(wc, dispatch=True):
             checks.append(_chk_downtime(url, token))
         if pw["checks"]["drift"]:
             checks.append(_chk_drift(url, token, p.get("generator_config") or {}))
+        if pw["checks"]["task_fail"]:
+            checks.append(_chk_task_fail(url, token))
         if pw["checks"]["asn_gap"]:
             checks.append(_chk_asn_gap(url, token, wc["asn_gap_threshold"]))
         if pw["checks"]["duplicate"]:
             checks.append(_chk_duplicate(url, token))
-        results[pid] = {"name": p.get("name") or pid, "ts": time.time(), "checks": checks}
+        now = time.time()
+        results[pid] = {"name": p.get("name") or pid, "ts": now, "checks": checks}
+        if checks:
+            _append_watch(pid, checks, now)  # Historie: Uptime/Timeline im Waechter-Reiter
         if dispatch:
             for c in checks:
                 _maybe_alert(p, pid, c)
     _watcher_state["results"] = results
     _watcher_state["last_run"] = time.time()
     _record_metrics()  # Trends miterfassen (gedrosselt)
+    _save_watch_state()
     return results
 
 
@@ -1850,26 +2008,37 @@ def _watcher_loop():
     Laeuft nur im Prozess mit der Dateisperre; faengt alle Fehler ab (Thread stirbt nie)."""
     poll = 20  # Sekunden — feiner Takt, damit Enable/Intervall-Aenderungen zeitnah greifen
     while True:
+        dirty = False
         try:
             wc = _watcher_cfg()
             if wc["enabled"]:
                 now = time.time()
                 if not _watcher_state.get("next_run") or now >= _watcher_state["next_run"]:
-                    _run_watch_cycle(wc, dispatch=True)
+                    _run_watch_cycle(wc, dispatch=True)  # spiegelt selbst
                     _watcher_state["next_run"] = time.time() + wc["interval_min"] * 60
                     if wc["heartbeat_url"]:
                         _ping_heartbeat(wc["heartbeat_url"])
+                    dirty = True
                 if wc["digest_enabled"]:
                     lt = datetime.now()
                     today = lt.strftime("%Y-%m-%d")
                     if lt.hour == wc["digest_hour"] and _watcher_state.get("last_digest") != today:
                         _watcher_state["last_digest"] = today
                         _send_digest()
-            else:
+                        dirty = True
+            elif _watcher_state.get("next_run") is not None:
                 _watcher_state["next_run"] = None
-            _watcher_state["last_error"] = None
+                dirty = True
+            if _watcher_state.get("last_error") is not None:
+                _watcher_state["last_error"] = None
+                dirty = True
         except Exception as exc:  # Schleife muss alles ueberleben
             _watcher_state["last_error"] = str(exc)
+            dirty = True
+        if dirty:
+            # next_run/Heartbeat/Digest/Fehler aendern sich auch ausserhalb des Zyklus —
+            # ohne Spiegeln zeigt der Nicht-Owner-Worker einen veralteten Stand.
+            _save_watch_state()
         time.sleep(poll)
 
 
@@ -1969,22 +2138,22 @@ def waechter():
         return redirect(url_for("verwaltung", tab="waechter", msg="Wächter-Einstellungen gespeichert."))
 
     wc = _watcher_cfg()
+    st = _load_watch_state()  # Owner: eigener Speicher; sonst der gespiegelte Stand
     results = []
-    for pid, r in _watcher_state.get("results", {}).items():
+    for pid, r in (st.get("results") or {}).items():
         results.append({"name": r.get("name") or pid, "ts": _fmt_rel_ts(r.get("ts")),
                         "checks": r.get("checks", [])})
     results.sort(key=lambda x: x["name"].lower())
     status = {
-        "owner": bool(_watcher_state.get("owner")),
-        "last_run": _fmt_rel_ts(_watcher_state.get("last_run")),
-        "next_run": (_fmt_rel_ts(_watcher_state["next_run"])
-                     if _watcher_state.get("next_run") else "—"),
-        "active_alerts": len(_watcher_state.get("alerts_active") or ()),
-        "error": _watcher_state.get("last_error"),
-        "last_heartbeat": _fmt_rel_ts(_watcher_state.get("last_heartbeat")),
-        "last_digest": _watcher_state.get("last_digest") or "—",
+        "owner": bool(st.get("owner")),
+        "last_run": _fmt_rel_ts(st.get("last_run")),
+        "next_run": (_fmt_rel_ts(st["next_run"]) if st.get("next_run") else "—"),
+        "active_alerts": len(st.get("alerts_active") or ()),
+        "error": st.get("last_error"),
+        "last_heartbeat": _fmt_rel_ts(st.get("last_heartbeat")),
+        "last_digest": st.get("last_digest") or "—",
     }
-    lw = _watcher_state.get("last_webhook")
+    lw = st.get("last_webhook")
     webhook_last = None
     if lw:
         webhook_last = {"ok": lw.get("ok"), "detail": lw.get("detail"),
@@ -1992,7 +2161,48 @@ def waechter():
     return render_template(
         "waechter.html", w=wc, wh=_webhook_cfg(), events=_NOTIFY_EVENTS,
         results=results, status=status, webhook_last=webhook_last,
+        hist=_watch_history_cards(request.args.get("range", "30d")),
+        hrng=_watch_range(request.args.get("range", "30d")),
         msg=request.args.get("msg"), err=request.args.get("err"))
+
+
+_WATCH_LABELS = {"downtime": "Erreichbarkeit", "drift": "Konfig-Drift",
+                 "task_fail": "Verarbeitung", "asn_gap": "ASN-Lücken",
+                 "duplicate": "Duplikate"}
+
+
+def _watch_range(rng):
+    return rng if rng in ("7d", "30d", "all") else "30d"
+
+
+def _watch_history_cards(rng):
+    """Je Profil: Uptime + Statusband pro Event aus der persistierten Waechter-Historie."""
+    rng = _watch_range(rng)
+    cutoff = {"7d": time.time() - 7 * 86400, "30d": time.time() - 30 * 86400}.get(rng)
+    try:
+        profs = load_profiles()
+    except (OSError, ValueError):
+        return []
+    cards = []
+    for pid, p in profs.items():
+        rows = [r for r in _read_watch(pid) if cutoff is None or r.get("ts", 0) >= cutoff]
+        if not rows:
+            continue
+        bands = []
+        for ev, label in _WATCH_LABELS.items():
+            svg = _timeline_svg(rows, ev)
+            if not svg:
+                continue  # dieser Check lief im Zeitraum nie
+            bad_ts = _last_bad_ts(rows, ev)
+            bands.append({"label": label, "svg": svg, "pct": _uptime_pct(rows, ev),
+                          "last_bad": _fmt_rel_ts(bad_ts) if bad_ts else None})
+        if not bands:
+            continue
+        cards.append({"name": p.get("name") or pid, "runs": len(rows),
+                      "since": _fmt_rel_ts(rows[0].get("ts")),
+                      "uptime": _uptime_pct(rows, "downtime"), "bands": bands})
+    cards.sort(key=lambda c: c["name"].lower())
+    return cards
 
 
 def _line_svg(values, color="#3b82f6", w=440, h=110, pad=16):
@@ -2046,6 +2256,29 @@ def _multi_line_svg(series, w=440, h=110, pad=16):
         parts.append('<polyline fill="none" stroke="%s" stroke-width="2" stroke-linejoin="round" '
                      'stroke-linecap="round" points="%s"/>' % (s["color"], " ".join(pts)))
         parts.append('<circle cx="%s" cy="%s" r="3" fill="%s"/>' % (last[0], last[1], s["color"]))
+    parts.append("</svg>")
+    return "".join(parts)
+
+
+_TL_COLORS = {"ok": "#22c55e", "bad": "#ef4444", "unknown": "#6b7280"}
+
+
+def _timeline_svg(rows, event, w=440, h=22):
+    """Statusband der letzten Prueflaeufe als Inline-SVG: ein Streifen je Lauf,
+    gruen=ok / rot=bad / grau=unbekannt. Aeltester links, neuester rechts."""
+    vals = [r.get("c", {}).get(event) for r in rows]
+    vals = [v for v in vals if v]
+    if not vals:
+        return None
+    n = len(vals)
+    bw = w / n
+    gap = 0.5 if bw > 2 else 0  # bei sehr vielen Laeufen luecklos zeichnen
+    parts = ['<svg viewBox="0 0 %d %d" preserveAspectRatio="none" '
+             'style="width:100%%;height:%dpx;display:block;border-radius:4px" '
+             'xmlns="http://www.w3.org/2000/svg">' % (w, h, h)]
+    for i, v in enumerate(vals):
+        parts.append('<rect x="%.2f" y="0" width="%.2f" height="%d" fill="%s"/>'
+                     % (i * bw, max(bw - gap, 0.4), h, _TL_COLORS.get(v, _TL_COLORS["unknown"])))
     parts.append("</svg>")
     return "".join(parts)
 
