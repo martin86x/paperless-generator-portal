@@ -461,6 +461,18 @@ app.config.update(
     SESSION_REFRESH_EACH_REQUEST=True,       # gleitend: aktive Nutzung haelt die Session am Leben
 )
 
+# ── Betrieb hinter einem Reverse-Proxy (opt-in) ──────────────────────────────
+# Ohne das ist request.remote_addr hinter einem Proxy dessen IP — ALLE Clients landen im
+# selben Rate-Limit-Topf, und fuenf Fehlversuche eines Fremden sperren den rechtmaessigen
+# Nutzer mit aus. Mit TRUST_PROXY=1 zaehlt stattdessen X-Forwarded-For.
+# BEWUSST opt-in und standardmaessig AUS: steht kein Proxy davor, darf X-Forwarded-For
+# NICHT geglaubt werden — ein Angreifer erfindet sonst je Versuch eine neue IP und das
+# Rate-Limit ist wirkungslos. Nur einschalten, wenn wirklich ein Proxy davorsteht, der
+# den Header selbst setzt (und einen mitgeschickten ueberschreibt).
+if os.environ.get("TRUST_PROXY") == "1":
+    from werkzeug.middleware.proxy_fix import ProxyFix
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
 # metrics_endpoint gehoert hierher, weil Prometheus keine Session hat: require_login wuerde
 # den Scrape auf /login umleiten. Der Endpunkt schuetzt sich selbst per Bearer-Token.
 PUBLIC_ENDPOINTS = {"login", "login_recovery", "healthz", "static", "metrics_endpoint"}
