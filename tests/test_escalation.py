@@ -73,8 +73,8 @@ def _stub_dispatch(prof, event, title, message, only=None, bump=0):
     return 0, []
 
 
-def _stub_hook(event, profile, status, detail, wc=None):
-    HOOKS.append({"event": event, "status": status})
+def _stub_hook(kind, event, profile, status, detail, wc=None):
+    HOOKS.append({"kind": kind, "event": event, "status": status})
     return True, "ok"
 
 
@@ -180,7 +180,14 @@ eq("nach 60 min kommt die Erinnerung", len(SENT), 2)
 check("Erinnerung ist als solche betitelt", "weiterhin offen" in SENT[-1]["title"])
 check("Erinnerung nennt die Dauer", "Seit 1 h offen" in SENT[-1]["msg"])
 eq("ohne Backoff kein lauter werden", SENT[-1]["bump"], 0)
-eq("Erinnerung geht NICHT an den Webhook", len(HOOKS), 1)
+# Seit v1.9.0 geht die Erinnerung auch an den Webhook — als eigene Art, damit die
+# Gegenstelle sie vom Erst-Alarm unterscheiden kann (beide haben status 'bad'). OB sie
+# rausgeht, entscheidet _fire_webhook selbst (Auswahl in der Konfig, hier gestubbt).
+eq("Erinnerung geht an den Webhook", len(HOOKS), 2)
+eq("und zwar als Art 'reminder'", HOOKS[-1]["kind"], "reminder")
+eq("der Erst-Alarm war Art 'alarm'", HOOKS[0]["kind"], "alarm")
+eq("beide tragen denselben status — nur kind trennt sie",
+   [h["status"] for h in HOOKS], ["bad", "bad"])
 CLOCK.tick(60)
 feed(BAD, c)
 eq("konstanter Abstand: nächste nach weiteren 60 min", len(SENT), 3)
@@ -255,6 +262,7 @@ check("Entwarnung nennt die Ausfalldauer", "nach 1 h" in SENT[-1]["msg"])
 eq("Entwarnung geht leiser raus", SENT[-1]["bump"], -1)
 check("nicht mehr offen", not active())
 eq("Webhook entwarnt ebenfalls", HOOKS[-1]["status"], "ok")
+eq("als Art 'recovery'", HOOKS[-1]["kind"], "recovery")
 eq("Protokoll auf ok-Stufe", LOGS[-1]["level"], "ok")
 
 reset()

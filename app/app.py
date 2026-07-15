@@ -1818,7 +1818,7 @@ def _maybe_alert(prof, pid, c, wc=None):
             _dispatch_notification(prof, c["event"],
                                    "Paperless-Wächter: %s (%s)" % (c["label"], name),
                                    c["detail"])
-            _fire_webhook(c["event"], name, "bad", c["detail"])
+            _fire_webhook("alarm", c["event"], name, "bad", c["detail"])
             _log_activity("watcher", "Alarm: %s (%s)" % (c["label"], name),
                           level="err", detail=c["detail"])
             return
@@ -1838,6 +1838,7 @@ def _maybe_alert(prof, pid, c, wc=None):
         _dispatch_notification(prof, c["event"],
                                "Paperless-Wächter: %s (%s) — weiterhin offen" % (c["label"], name),
                                msg, bump=bump)
+        _fire_webhook("reminder", c["event"], name, "bad", msg)
         _log_activity("watcher", "Erinnerung %d: %s (%s)" % (meta["reps"], c["label"], name),
                       level="err", detail=msg)
         return
@@ -1858,7 +1859,7 @@ def _maybe_alert(prof, pid, c, wc=None):
                                "Paperless-Wächter: %s (%s) — behoben" % (c["label"], name),
                                "Wieder in Ordnung nach %s.\n%s" % (dur, c["detail"]),
                                bump=-1)
-    _fire_webhook(c["event"], name, "ok", "Entwarnung: " + c["detail"])
+    _fire_webhook("recovery", c["event"], name, "ok", "Entwarnung: " + c["detail"])
     _log_activity("watcher", "Entwarnung: %s (%s)" % (c["label"], name),
                   level="ok", detail="Offen gewesen: %s\n%s" % (dur, c["detail"]))
 
@@ -2102,25 +2103,33 @@ def _profile_digest_line(url, token, gc):
 
 
 def _send_digest():
-    """Pro Profil mit aktivem Kanal eine Kurz-Statusmeldung senden (Ereignis 'digest')."""
+    """Pro Profil eine Kurz-Statusmeldung (Ereignis 'digest') an die aktiven Kanaele und/oder
+    den Webhook. Profile, die niemand hoert (kein Kanal UND kein Webhook), werden gar nicht
+    erst abgefragt — der Digest kostet Live-Abfragen."""
+    hook = _webhook_wants("digest")
     try:
         profs = load_profiles()
     except (OSError, ValueError):
-        return
+        return 0
     sent = 0
     for pid, p in profs.items():
         url = p.get("paperless_url")
         if not url:
             continue
-        n = _notif_of(p)
-        if not (n["pushover"]["enabled"] or n["ntfy"]["enabled"] or n["email"]["enabled"]):
+        chan = _has_channel(p)
+        if not (chan or hook):
             continue
+        name = p.get("name") or pid
         token = _dec(p.get("paperless_token"))
         line = _profile_digest_line(url, token, p.get("generator_config") or {})
-        _dispatch_notification(p, "digest", "Paperless-Digest: %s" % (p.get("name") or pid), line)
+        if chan:
+            _dispatch_notification(p, "digest", "Paperless-Digest: %s" % name, line)
+        if hook:
+            _fire_webhook("digest", "digest", name, "info", line)
         sent += 1
     if sent:
         _log_activity("watcher", "Täglicher Digest gesendet (%d Profil(e))" % sent)
+    return sent
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -2287,16 +2296,24 @@ def _has_channel(p):
 
 
 def _send_report(period=None):
-    """Report je Profil mit aktivem Kanal senden (Ereignis 'report'). Rueckgabe: Anzahl."""
+    """Report je Profil an die aktiven Kanaele und/oder den Webhook (Ereignis 'report').
+    Rueckgabe: Anzahl der bedienten Profile."""
     wc = _watcher_cfg()
     period = period or wc["report_period"]
     days = _report_days(period)
+    hook = _webhook_wants("report")
     sent = 0
     for pid, p, st in _report_profiles(period):
-        if not _has_channel(p):
+        chan = _has_channel(p)
+        if not (chan or hook):
             continue
-        _dispatch_notification(p, "report", "Paperless-Report (%d Tage): %s"
-                               % (days, p.get("name") or pid), _report_text(days, st))
+        name = p.get("name") or pid
+        body = _report_text(days, st)
+        if chan:
+            _dispatch_notification(p, "report", "Paperless-Report (%d Tage): %s"
+                                   % (days, name), body)
+        if hook:
+            _fire_webhook("report", "report", name, "info", body)
         sent += 1
     if sent:
         _log_activity("watcher", "%s-Report gesendet (%d Profil(e))"
@@ -2327,24 +2344,58 @@ def _ping_heartbeat(url):
         pass
 
 
+# Was den Webhook ausloesen kann. Bewusst NICHT dabei: 'update' und 'error' — die stehen
+# zwar in _NOTIFY_EVENTS, werden aber nirgends gefeuert ('update' nutzt nur der Kanal-
+# Testknopf als Traeger). Sie hier anzubieten hiesse, Ereignisse zu versprechen, die nie
+# kommen.
+_WEBHOOK_KINDS = [
+    ("alarm", "Alarm — ein Check wird auffällig"),
+    ("reminder", "Erinnerung — der Alarm bleibt offen"),
+    ("recovery", "Entwarnung — der Check ist wieder in Ordnung"),
+    ("digest", "Täglicher Digest"),
+    ("report", "Wochen-/Monatsreport"),
+]
+# Standard = das Verhalten bis v1.8.0 (nur Alarm + Entwarnung). Bestehende config.json
+# ohne 'kinds' verhaelt sich damit unveraendert.
+_WEBHOOK_KIND_DEFAULTS = {"alarm": True, "reminder": False, "recovery": True,
+                          "digest": False, "report": False}
+
+
 def _webhook_cfg():
     """Globale Webhook-/n8n-Konfiguration aus config.json['webhook']."""
     try:
         w = load_config().get("webhook") or {}
     except (OSError, ValueError):
         w = {}
-    return {"enabled": bool(w.get("enabled", False)), "url": (w.get("url") or "").strip()}
+    k = w.get("kinds") if isinstance(w.get("kinds"), dict) else {}
+    return {"enabled": bool(w.get("enabled", False)),
+            "url": (w.get("url") or "").strip(),
+            "kinds": {n: bool(k.get(n, d)) for n, d in _WEBHOOK_KIND_DEFAULTS.items()}}
 
 
-def _fire_webhook(event, profile, status, detail, wc=None):
+def _webhook_wants(kind, wc=None):
+    """Soll dieses Ereignis ueber den Webhook? 'test' immer (der Knopf soll immer feuern)."""
+    wc = wc or _webhook_cfg()
+    if not (wc["enabled"] and wc["url"]):
+        return False
+    return wc["kinds"].get(kind, True)
+
+
+def _fire_webhook(kind, event, profile, status, detail, wc=None):
     """Bei Ereignissen ein JSON an die konfigurierte Webhook-/n8n-URL POSTen.
-    Fire-and-forget, read-only gegenueber der Instanz."""
+    Fire-and-forget, read-only gegenueber der Instanz.
+    ``kind`` sagt, WAS passiert ist (alarm/reminder/recovery/digest/report/test), ``event``
+    WELCHER Check es betrifft. Beides ist noetig: Alarm und Erinnerung haben denselben
+    status 'bad' — ohne kind koennte die Gegenstelle sie nicht auseinanderhalten."""
     wc = wc or _webhook_cfg()
     if not (wc["enabled"] and wc["url"]):
         return False, "Webhook nicht konfiguriert"
+    if not wc["kinds"].get(kind, True):
+        return False, "Ereignisart '%s' ist für den Webhook abgewählt" % kind
     payload = {
         "source": "paperless-generator-portal",
         "portal_version": PORTAL_VERSION,
+        "kind": kind,
         "event": event, "profile": profile, "status": status, "detail": detail,
         "ts": datetime.now().isoformat(timespec="seconds"),
     }
@@ -2353,12 +2404,14 @@ def _fire_webhook(event, profile, status, detail, wc=None):
         body = " ".join((r.text or "").split())[:200]   # Antwort-Body (gekuerzt) fuer Diagnose
         ok = r.status_code < 400
         out = "HTTP %d%s" % (r.status_code, (" · " + body) if body else "")
-        _watcher_state["last_webhook"] = {"ts": time.time(), "ok": ok, "detail": out, "event": event}
+        _watcher_state["last_webhook"] = {"ts": time.time(), "ok": ok, "detail": out,
+                                          "event": event, "kind": kind}
         _log_activity("webhook", "Webhook %s (Ereignis: %s)" % ("gesendet" if ok else "abgelehnt", event),
                       level=("ok" if ok else "err"), detail="%s\n%s" % (wc["url"], out))
         return ok, out
     except requests.RequestException as exc:
-        _watcher_state["last_webhook"] = {"ts": time.time(), "ok": False, "detail": str(exc), "event": event}
+        _watcher_state["last_webhook"] = {"ts": time.time(), "ok": False, "detail": str(exc),
+                                          "event": event, "kind": kind}
         _log_activity("webhook", "Webhook nicht erreichbar (Ereignis: %s)" % event,
                       level="err", detail="%s\n%s" % (wc["url"], exc))
         return False, str(exc)
@@ -2804,7 +2857,8 @@ def waechter():
         cfg = load_config()
         cfg["watcher"] = w
         cfg["webhook"] = {"enabled": bool(f.get("webhook_enabled")),
-                          "url": (f.get("webhook_url", "") or "").strip()}
+                          "url": (f.get("webhook_url", "") or "").strip(),
+                          "kinds": {k: bool(f.get("wh_" + k)) for k in _WEBHOOK_KIND_DEFAULTS}}
         # /metrics: Token wird erzeugt, nicht getippt — beim Einschalten ohne Token gibt es
         # sonst einen aktiven Endpunkt ohne Schutz (der Route-Guard faengt das zwar mit 404
         # ab, aber der Nutzer stuende ratlos da).
@@ -2819,7 +2873,7 @@ def waechter():
             return redirect(url_for("verwaltung", tab="waechter",
                                     msg="Neues /metrics-Token erzeugt — Prometheus-Konfiguration anpassen."))
         if action == "webhook_now":
-            ok, detail = _fire_webhook("test", "Portal", "test",
+            ok, detail = _fire_webhook("test", "test", "Portal", "test",
                                        "Test-Webhook vom Paperless-Portal.")
             if ok:
                 return redirect(url_for("verwaltung", tab="waechter", msg="Webhook gesendet (%s)." % detail))
@@ -2868,11 +2922,13 @@ def waechter():
     webhook_last = None
     if lw:
         webhook_last = {"ok": lw.get("ok"), "detail": lw.get("detail"),
-                        "event": lw.get("event"), "ts": _fmt_rel_ts(lw.get("ts"))}
+                        "event": lw.get("event"), "kind": lw.get("kind"),
+                        "ts": _fmt_rel_ts(lw.get("ts"))}
     return render_template(
         "waechter.html", w=wc, wh=_webhook_cfg(), mc=_metrics_cfg(), events=_NOTIFY_EVENTS,
         results=results, status=status, webhook_last=webhook_last,
-        board=_alert_board(st, wc), weekdays=_WEEKDAYS,
+        board=_alert_board(st, wc), weekdays=_WEEKDAYS, wh_kinds=_WEBHOOK_KINDS,
+        portal_version=PORTAL_VERSION,
         report_preview=_report_preview(wc["report_period"]),
         report_days=_report_days(wc["report_period"]),
         hist=_watch_history_cards(request.args.get("range", "30d")),

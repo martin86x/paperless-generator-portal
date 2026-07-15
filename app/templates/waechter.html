@@ -181,15 +181,36 @@
       <label style="display:flex;align-items:center;gap:8px;margin:0;font-size:14px;color:var(--text)">
         <input type="checkbox" name="webhook_enabled" value="1" style="width:auto"{% if wh.enabled %} checked{% endif %}> Webhook aktiv
       </label>
-      <div style="font-size:12px;color:var(--text-dim);margin:4px 0 0 26px">Bei Alarm <em>und</em> Entwarnung wird ein JSON an die URL geschickt (z. B. an einen n8n-Webhook-Node) — für eigene Automationen.</div>
+      <div style="font-size:12px;color:var(--text-dim);margin:4px 0 0 26px">Schickt ein JSON per <strong>POST</strong> an die URL (z. B. an einen n8n-Webhook-Node) — für eigene Automationen. Was rausgeht, wählst du unten aus.</div>
       <label>Webhook-URL</label>
       <input type="url" name="webhook_url" value="{{ wh.url }}" placeholder="https://n8n.example.com/webhook/paperless">
-      <p class="hint">Payload: <code>{source, event, profile, status, detail, ts, portal_version}</code>.</p>
-      <div class="callout warn" style="font-size:12px">⚠️ <strong>n8n-Stolperfalle:</strong> Der <em>Test</em>-Webhook-URL von n8n lauscht nur, solange der Workflow im Editor geöffnet ist und du „Listen for Test Event" geklickt hast. Für Dauerbetrieb den Workflow <strong>aktivieren</strong> und die <strong>Production-URL</strong> (<code>/webhook/…</code> statt <code>/webhook-test/…</code>) eintragen.</div>
+
+      <label style="margin-top:16px">Was soll rausgehen?</label>
+      {% for k, label in wh_kinds %}
+      <label style="display:flex;align-items:center;gap:8px;margin:6px 0 0;font-size:13.5px;color:var(--text)">
+        <input type="checkbox" name="wh_{{ k }}" value="1" style="width:auto"{% if wh.kinds[k] %} checked{% endif %}> {{ label }}
+      </label>
+      {% endfor %}
+      <p class="hint" style="margin-top:8px"><strong>Alarm</strong> und <strong>Entwarnung</strong> kommen einmal je Vorfall — der Flapping-Schutz aus der Eskalation gilt auch hier, der Alarm kommt also erst nach {{ w.fail_threshold }} schlechten Läufen. <strong>Erinnerungen</strong> feuern nur, wenn oben ein Erinnerungsabstand gesetzt ist{% if not w.repeat_min %} — steht gerade auf 0, es käme also keine{% endif %}. <strong>Digest</strong> und <strong>Report</strong> gehen auch dann über den Webhook, wenn ein Profil <em>gar keinen</em> Benachrichtigungs-Kanal hat — n8n allein genügt. Der Testknopf feuert immer, unabhängig von dieser Auswahl.</p>
+
+      <p class="hint" style="margin-bottom:4px">Payload — bei jeder Art identisch aufgebaut:</p>
+      <pre style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:10px;font-size:11.5px;overflow-x:auto;margin:0 0 10px"><code>{
+  "source":         "paperless-generator-portal",
+  "portal_version": "{{ portal_version }}",
+  "kind":           "alarm",       // alarm | reminder | recovery | digest | report | test
+  "event":          "downtime",    // downtime | drift | task_fail | asn_gap | duplicate
+                                   //   bzw. digest | report | test
+  "profile":        "Meine Instanz",
+  "status":         "bad",         // bad | ok | info | test
+  "detail":         "Paperless nicht erreichbar unter http://…",
+  "ts":             "2026-07-15T14:03:11"
+}</code></pre>
+      <p class="hint"><code>kind</code> sagt <em>was</em> passiert ist, <code>event</code> <em>welcher Check</em> es betrifft. Beides ist nötig: Alarm und Erinnerung haben denselben <code>status: "bad"</code> — ohne <code>kind</code> könntest du sie in n8n nicht auseinanderhalten. Verzweige also auf <code>{{ '{{' }} $json.kind {{ '}}' }}</code>.</p>
+      <div class="callout warn" style="font-size:12px">⚠️ <strong>n8n-Stolperfallen:</strong> Der Webhook-Node muss auf <strong>HTTP Method = POST</strong> stehen — bei <code>GET</code> antwortet n8n mit <code>404 „This webhook is not registered for POST requests"</code>. Und die <em>Test</em>-URL lauscht nur, solange der Workflow im Editor offen ist und du „Listen for Test Event" geklickt hast: für den Dauerbetrieb den Workflow <strong>aktivieren</strong> und die <strong>Production-URL</strong> (<code>/webhook/…</code> statt <code>/webhook-test/…</code>) eintragen.</div>
       <button type="submit" name="action" value="webhook_now" style="width:auto;padding:8px 14px;font-size:13px;background:var(--bg3);border:1px solid var(--border)">Webhook testen</button>
       {% if webhook_last %}
       <div class="msg {{ 'ok' if webhook_last.ok else 'err' }}" style="margin-top:10px;color:var(--text)">
-        Letzte Zustellung ({{ webhook_last.ts }}, Ereignis „{{ webhook_last.event }}"): {{ '✓' if webhook_last.ok else '✗' }}
+        Letzte Zustellung ({{ webhook_last.ts }}{% if webhook_last.kind %}, Art „{{ webhook_last.kind }}"{% endif %}, Ereignis „{{ webhook_last.event }}"): {{ '✓' if webhook_last.ok else '✗' }}
         <div style="font-family:monospace;font-size:11.5px;color:var(--text-dim);margin-top:3px;word-break:break-word">{{ webhook_last.detail }}</div>
       </div>
       {% endif %}
