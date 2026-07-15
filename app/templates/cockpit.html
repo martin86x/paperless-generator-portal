@@ -35,16 +35,51 @@
   {% endif %}
 
   <div class="card" style="margin-top:14px">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-      <span style="font-size:12px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px">Profile</span>
-      <a class="link" href="{{ url_for('verwaltung', tab='profiles') }}">verwalten →</a>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <span style="font-size:12px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px">Statuswand</span>
+      <a class="link" href="{{ url_for('verwaltung', tab='profiles') }}">Profile verwalten →</a>
     </div>
-    {% for p in profiles %}
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-top:1px solid var(--border)">
-      <span style="font-size:14px"><span style="color:{{ 'var(--ok)' if p.kind == 'ok' else 'var(--err)' }}">●</span> {{ p.name }}{% if p.active %} <span style="font-size:11px;color:var(--ok)">aktiv</span>{% endif %}</span>
-      {% if not p.active %}<form method="post" action="{{ url_for('profiles_activate', pid=p.id) }}" style="margin:0"><button type="submit" style="width:auto;margin:0;padding:4px 10px;font-size:12px;background:var(--bg3)">aktivieren</button></form>{% endif %}
+
+    {% set colors = {'ok': 'var(--ok)', 'bad': 'var(--err)', 'unknown': 'var(--text-dim)'} %}
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px">
+      {% for t in wall %}
+      <div style="background:var(--bg3);border:1px solid {{ colors[t.level] if t.level != 'unknown' else 'var(--border)' }};border-radius:9px;padding:9px 10px">
+        <div style="display:flex;align-items:center;gap:6px">
+          <span style="color:{{ colors[t.level] }};font-size:15px;line-height:1">●</span>
+          <span style="font-size:13.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ t.name }}</span>
+          {% if t.productive %}<span style="font-size:9.5px;background:#b91c1c;color:#fff;border-radius:4px;padding:0 4px">PROD</span>{% endif %}
+          {% if t.active %}<span style="font-size:10px;color:var(--ok);margin-left:auto">aktiv</span>{% endif %}
+        </div>
+
+        <div style="font-size:11.5px;color:var(--text-dim);margin-top:5px">
+          {% if not t.has_url %}
+            keine Instanz hinterlegt
+          {% elif t.checked %}
+            {% if t.total is not none %}{{ t.total }} Dok.{% endif %}
+            {%- if t.uptime is not none %}{% if t.total is not none %} · {% endif %}{{ t.uptime }} % erreichbar{% endif %}
+            {%- if t.total is none and t.uptime is none %}geprüft{% endif %}
+          {% else %}
+            noch nicht geprüft
+          {% endif %}
+        </div>
+
+        {% for p in t.problems %}
+        <div style="font-size:11.5px;color:var(--err);margin-top:4px" title="{{ p.detail }}">✗ {{ p.label }}</div>
+        {% endfor %}
+
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:6px">
+          <span style="font-size:10.5px;color:var(--text-dim)">{% if t.checked %}geprüft {{ t.checked }}{% endif %}</span>
+          {% if not t.active %}<form method="post" action="{{ url_for('profiles_activate', pid=t.id) }}" style="margin:0"><button type="submit" style="width:auto;margin:0;padding:3px 9px;font-size:11px;background:var(--bg2);border:1px solid var(--border)">aktivieren</button></form>{% endif %}
+        </div>
+      </div>
+      {% endfor %}
     </div>
-    {% endfor %}
+
+    <p class="hint" style="margin:10px 0 0">
+      Zeigt den <strong>zuletzt erfassten</strong> Stand des <a class="link" href="{{ url_for('verwaltung', tab='waechter') }}">Wächters</a> — ohne die Instanzen erneut abzufragen, damit die Seite auch mit vielen (oder toten) Instanzen sofort steht.
+      {% if not watcher_on %}<br><strong style="color:#f59e0b">Der Wächter ist aus</strong> — deshalb bleiben die Ampeln grau. <a class="link" href="{{ url_for('verwaltung', tab='waechter') }}">Einschalten →</a>{% endif %}
+      Live-Zahlen im Moment des Aufrufs gibt es im <a class="link" href="{{ url_for('dashboard') }}">Dashboard</a>.
+    </p>
   </div>
 
   <div class="card" style="margin-top:14px">

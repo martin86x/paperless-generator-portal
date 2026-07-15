@@ -1150,6 +1150,51 @@ def verwaltung():
     return render_template("verwaltung_shell.html", tabs=tabs, active=active)
 
 
+_WALL_ORDER = {"bad": 0, "unknown": 1, "ok": 2}
+
+
+def _status_wall():
+    """Ampel-Grid aller Instanzen — ausschliesslich aus bereits erfassten Daten
+    (Waechter-Spiegel + Historie + Kennzahlen), BEWUSST ohne Live-Abfragen: sonst kostet
+    jede tote Instanz 5 s Timeout und das Cockpit steht bei fuenf Profilen eine halbe
+    Minute. Der Live-Blick auf die AKTIVE Instanz steht ohnehin oben auf der Seite,
+    der volle Live-Vergleich im Dashboard."""
+    st = _load_watch_state()
+    res = st.get("results") or {}
+    cutoff = time.time() - 30 * 86400
+    try:
+        profs = load_profiles()
+    except (OSError, ValueError):
+        return []
+    aid = _active_id()
+    tiles = []
+    for pid, p in profs.items():
+        checks = (res.get(pid) or {}).get("checks") or []
+        problems = [c for c in checks if c.get("status") == "bad"]
+        if not checks:
+            level = "unknown"
+        elif problems:
+            level = "bad"
+        elif any(c.get("status") == "ok" for c in checks):
+            level = "ok"
+        else:
+            level = "unknown"  # ausschliesslich 'unknown' -> keine Aussage moeglich
+        hist = [r for r in _read_watch(pid) if r.get("ts", 0) >= cutoff]
+        last = (_read_metrics(pid, limit=1) or [None])[-1]
+        tiles.append({
+            "id": pid, "name": p.get("name") or "(ohne Name)", "active": pid == aid,
+            "productive": bool(p.get("productive")), "level": level,
+            "has_url": bool(p.get("paperless_url")),
+            "problems": [{"label": c.get("label"), "detail": c.get("detail")} for c in problems],
+            "checked": _fmt_rel_ts((res.get(pid) or {}).get("ts")) if checks else None,
+            "uptime": _uptime_pct(hist, "downtime"),
+            "total": (last or {}).get("total"),
+        })
+    # Auffaelliges zuerst — die Wand soll Probleme zeigen, nicht Alphabet.
+    tiles.sort(key=lambda t: (_WALL_ORDER.get(t["level"], 1), t["name"].lower()))
+    return tiles
+
+
 @app.route("/verwaltung/overview")
 def verwaltung_overview():
     """Cockpit-Inhalt (Fragment): Status des aktiven Profils, Kennzahlen, Profilliste, Selbststatus."""
@@ -1167,13 +1212,6 @@ def verwaltung_overview():
             "no_type": _api_count(url, token, "documents/?document_type__isnull=true&page_size=1"),
             "no_corr": _api_count(url, token, "documents/?correspondent__isnull=true&page_size=1"),
         }
-    plist = []
-    for pid, p in profs.items():
-        pk, _t = _connection_status({"paperless_url": p.get("paperless_url"),
-                                     "paperless_token": _dec(p.get("paperless_token"))})
-        plist.append({"id": pid, "name": p.get("name") or "(ohne Name)",
-                      "active": pid == aid, "kind": pk})
-    plist.sort(key=lambda x: x["name"].lower())
     bts = _last_backup_ts()
     if bts:
         last_backup = _fmt_rel_ts(bts)
@@ -1183,20 +1221,21 @@ def verwaltung_overview():
         last_backup = "noch nie"
         backup_level = "warn"
     _wc = _watcher_cfg()
+    _st = _load_watch_state()  # nicht _watcher_state: der ist im fremden Worker leer
     _stamp = _build_stamp()
     portal = {"version": PORTAL_VERSION,
               "build": ("%s%s" % (_stamp["sha"], " · " + _stamp["date"] if _stamp["date"] else "")) if _stamp else "",
               "config_size": _fmt_size(_dir_size(CONFIG_DIR)),
               "last_backup": last_backup, "backup_level": backup_level,
-              "watcher_on": _wc["enabled"], "watcher_last": _fmt_rel_ts(_watcher_state.get("last_run")),
-              "watcher_alerts": len(_watcher_state.get("alerts_active") or ())}
+              "watcher_on": _wc["enabled"], "watcher_last": _fmt_rel_ts(_st.get("last_run")),
+              "watcher_alerts": len(_st.get("alerts_active") or ())}
     return render_template(
         "cockpit.html",
         active={"id": aid, "name": act.get("name") or "", "url": url or "",
                 "productive": bool(act.get("productive")), "readonly": bool(act.get("readonly")),
                 "conn_kind": kind, "conn_text": text,
                 "has_config": act.get("generator_config") is not None},
-        stats=stats, profiles=plist, portal=portal)
+        stats=stats, wall=_status_wall(), watcher_on=_wc["enabled"], portal=portal)
 
 
 @app.route("/protokoll")
