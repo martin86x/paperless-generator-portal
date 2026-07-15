@@ -43,6 +43,7 @@ HISTORY_MAX = 20
 ACTIVITY_PATH = os.path.join(CONFIG_DIR, "activity.log")
 UNDO_DIR = os.path.join(CONFIG_DIR, "undo")
 SNAP_DIR = os.path.join(CONFIG_DIR, "instance-snapshots")
+SNAP_MAX = 20  # je Profil; jede Datei haelt den kompletten Objekt-Bestand der Instanz
 WATCHER_LOCK_PATH = os.path.join(CONFIG_DIR, "watcher.lock")
 METRICS_DIR = os.path.join(CONFIG_DIR, "history-metrics")
 METRICS_MAX = 2000  # gekappte Historie je Profil (JSONL-Zeilen)
@@ -444,21 +445,45 @@ def _history_dir(pid):
     return os.path.join(HISTORY_DIR, pid)
 
 
+def _ts_key(fname):
+    """Chronologischer Sortierschluessel fuer '<ts>.json' und '<ts>-<n>.json'.
+
+    Nicht lexikografisch sortieren: das Kollisions-Suffix bricht die Ordnung. '-10'
+    steht vor '-2', und die Datei OHNE Suffix (die aelteste der Sekunde) sortiert wegen
+    '.' > '-' ans Ende. Die Kappung warf dadurch den falschen Stand weg — belegt: von
+    21 Staenden in derselben Sekunde flog Stand 1 statt Stand 0. Rueckwaertskompatibel,
+    das Dateiformat bleibt wie es ist (die <ts>-Keys stehen in URLs)."""
+    base = fname[:-5] if fname.endswith(".json") else fname
+    stamp, _sep, suf = base.partition("-")
+    try:
+        return (stamp, int(suf) if suf else 0)
+    except ValueError:
+        return (stamp, 0)
+
+
+def _next_ts_path(d):
+    """Freien '<ts>.json'-Pfad in d vergeben — Suffix MONOTON, nicht 'erster freier Name'.
+
+    Den ersten freien Namen zu nehmen ist falsch, sobald gekappt wird: die Kappung gibt
+    den Namen des aeltesten Standes wieder frei, der naechste Snapshot erbt ihn und gilt
+    damit als der aelteste — er kappt sich in derselben Sekunde selbst wieder weg."""
+    ts = datetime.now().strftime("%Y%m%dT%H%M%S")
+    used = [_ts_key(f)[1] for f in os.listdir(d)
+            if f.endswith(".json") and _ts_key(f)[0] == ts]
+    n = max(used) + 1 if used else 0
+    return os.path.join(d, ts + (".json" if n == 0 else "-%d.json" % n))
+
+
 def _snapshot_history(pid, gen_cfg):
     """Vorige generator_config als Zeitstempel-Snapshot ablegen (gekappt auf HISTORY_MAX)."""
     if not gen_cfg:
         return
     d = _history_dir(pid)
     os.makedirs(d, exist_ok=True)
-    ts = datetime.now().strftime("%Y%m%dT%H%M%S")
-    path = os.path.join(d, ts + ".json")
-    i = 1
-    while os.path.exists(path):
-        path = os.path.join(d, "%s-%d.json" % (ts, i))
-        i += 1
+    path = _next_ts_path(d)
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(gen_cfg, fh, ensure_ascii=False)
-    files = sorted(f for f in os.listdir(d) if f.endswith(".json"))
+    files = sorted((f for f in os.listdir(d) if f.endswith(".json")), key=_ts_key)
     while len(files) > HISTORY_MAX:
         try:
             os.remove(os.path.join(d, files.pop(0)))
@@ -469,7 +494,7 @@ def _snapshot_history(pid, gen_cfg):
 def _list_history(pid):
     try:
         return sorted((f[:-5] for f in os.listdir(_history_dir(pid)) if f.endswith(".json")),
-                      reverse=True)
+                      key=_ts_key, reverse=True)
     except FileNotFoundError:
         return []
 
@@ -3336,11 +3361,23 @@ def _instance_snapshot(url, token):
 
 
 def _save_instance_snapshot(pid, snap):
+    """Ist-Stand vor dem Schreiben sichern (gekappt auf SNAP_MAX).
+
+    ACHTUNG — was das ist und was nicht: eine Sicherung zum Nachschlagen. Es gibt
+    bewusst KEINEN Ein-Klick-Restore daraus; der muesste in Paperless loeschen, und
+    diese Entscheidung gehoert nicht in einen stillen Automatismus. Rueckgaengig
+    gemacht wird ueber die Undo-Liste (nur was das Portal selbst angelegt hat)."""
     d = os.path.join(SNAP_DIR, pid)
     os.makedirs(d, exist_ok=True)
-    ts = datetime.now().strftime("%Y%m%dT%H%M%S")
-    with open(os.path.join(d, ts + ".json"), "w", encoding="utf-8") as fh:
+    path = _next_ts_path(d)
+    with open(path, "w", encoding="utf-8") as fh:
         json.dump(snap, fh, ensure_ascii=False)
+    files = sorted((f for f in os.listdir(d) if f.endswith(".json")), key=_ts_key)
+    while len(files) > SNAP_MAX:
+        try:
+            os.remove(os.path.join(d, files.pop(0)))
+        except OSError:
+            break
 
 
 def _api_create(url, token, endpoint, payload):
@@ -3365,6 +3402,21 @@ def _api_delete(url, token, endpoint, oid):
         return r.status_code in (200, 204)
     except requests.RequestException:
         return False
+
+
+def _api_name_of(url, token, endpoint, oid):
+    """Namen eines Objekts holen. ('ok', name) | ('weg', None) | ('fehler', None)."""
+    hdr = {"Authorization": "Token " + token} if token else {}
+    try:
+        r = requests.get(url.rstrip("/") + "/api/" + endpoint + str(oid) + "/",
+                         headers=hdr, timeout=10, allow_redirects=False)
+        if r.status_code == 404:
+            return "weg", None
+        if r.status_code != 200:
+            return "fehler", None
+        return "ok", (r.json() or {}).get("name")
+    except (requests.RequestException, ValueError):
+        return "fehler", None
 
 
 def _gc_apply_entries(gc, key):
@@ -3427,6 +3479,18 @@ def _save_undo(pid, items):
         json.dump(items, fh, ensure_ascii=False)
 
 
+def _append_undo(pid, items):
+    """Neu Angelegtes an die Undo-Liste ANHAENGEN, nicht ersetzen.
+
+    Ersetzen verlor stillschweigend den vorigen Lauf: ein zweiter Lauf, bei dem nichts
+    durchging (Upstream-Fehler), schrieb eine leere Liste — der Rueckgaengig-Knopf
+    verschwand, die Eintraege des ersten Laufs blieben verwaist in Paperless zurueck.
+    Die Liste haelt jetzt alles, was das Portal angelegt und noch nicht entfernt hat."""
+    if not items:
+        return
+    _save_undo(pid, _load_undo(pid) + items)
+
+
 def _load_undo(pid):
     try:
         with open(os.path.join(UNDO_DIR, pid + ".json"), encoding="utf-8") as fh:
@@ -3442,8 +3506,11 @@ def anwenden():
     act = profs.get(aid, {})
     url = act.get("paperless_url")
     token = _dec(act.get("paperless_token"))
+    undo = _load_undo(aid)
     ctx = {"active": act, "productive": bool(act.get("productive")),
-           "err": request.args.get("err"), "undo_available": bool(_load_undo(aid))}
+           "err": request.args.get("err"), "undo_count": len(undo),
+           # bei „nur lesen“ gar nicht erst anbieten — die Route weist es ohnehin ab
+           "undo_available": bool(undo) and not act.get("readonly")}
     if act.get("readonly"):
         return render_template("anwenden.html", blocked="Dieses Profil ist auf „nur lesen“ gesetzt — Schreiben gesperrt.", groups=None, **ctx)
     if not act.get("generator_config"):
@@ -3490,11 +3557,18 @@ def anwenden_post():
     tagid = {row["name"].strip().lower(): row["id"]
              for row in snap.get("tags", [])
              if isinstance(row, dict) and row.get("name") and row.get("id") is not None}
-    created, errors = [], []
+    created, errors, done = [], [], set()
     for _label, key, _ep in _APPLY_CATS:  # Reihenfolge wichtig: Eltern-Tags vor Kindern
         for e in _gc_apply_entries(gc, key):
-            if (key + "|" + e["name"]) not in selected:
+            sel = key + "|" + e["name"]
+            if sel not in selected:
                 continue
+            # Ein Haken = ein Objekt. Die Vorschau fasst Namensdubletten der Config zu
+            # einem Haken zusammen (dedupliziert per 'seen') — ohne dieselbe Sperre hier
+            # legte ein Haken so viele Objekte an, wie der Name in der Config vorkommt.
+            if sel in done:
+                continue
+            done.add(sel)
             payload = dict(e["payload"])
             if key == "tags" and e["parent_name"]:
                 pid = tagid.get(e["parent_name"].strip().lower())
@@ -3510,7 +3584,7 @@ def anwenden_post():
                     tagid[e["name"].strip().lower()] = oid
             else:
                 errors.append("%s: %s" % (e["name"], err))
-    _save_undo(aid, created)
+    _append_undo(aid, created)
     _log_activity("apply", "Anwenden auf %s: %d angelegt%s"
                   % (act.get("name"), len(created),
                      (", %d Fehler" % len(errors)) if errors else ""),
@@ -3523,18 +3597,56 @@ def anwenden_post():
 
 @app.route("/anwenden/undo", methods=["POST"])
 def anwenden_undo():
+    """Rueckgaengig LOESCHT in Paperless — dieselben Riegel wie beim Anlegen.
+
+    Vorher hatte dieser Pfad gar keine: kein „nur lesen“, keine Passwort-Abfrage. Das
+    Anlegen war streng gesichert, das Loeschen — der destruktivere Weg — stand offen."""
     profs = load_profiles()
     aid = _active_id()
     act = profs.get(aid, {})
     url = act.get("paperless_url")
     token = _dec(act.get("paperless_token"))
+    if act.get("readonly"):
+        return redirect(url_for("anwenden",
+                                err="Dieses Profil ist auf „nur lesen“ gesetzt — es wurde NICHTS entfernt."))
+    if not url:
+        return redirect(url_for("anwenden", err="Keine Paperless-URL gesetzt — es wurde NICHTS entfernt."))
+    if not check_password_hash(load_config()["admin_pw_hash"], request.form.get("password", "")):
+        return redirect(url_for("anwenden", err="Passwort falsch — es wurde NICHTS entfernt."))
     undo = _load_undo(aid)
-    removed = 0
+    removed, kept, fremd, weg = 0, [], [], 0
     for it in reversed(undo):  # Kinder vor Eltern loeschen
-        if it.get("id") and _api_delete(url, token, it.get("endpoint"), it["id"]):
+        oid, ep, name = it.get("id"), it.get("endpoint"), it.get("name") or ""
+        if not oid or not ep:
+            continue
+        # IDs allein sind KEIN Beweis. Die Liste haengt am Profil, nicht an der Instanz:
+        # zeigt das Profil nach einem Umzug (Test->Prod) auf eine andere Paperless-Instanz,
+        # trifft dieselbe ID dort ein voellig fremdes Objekt. Belegt: Undo loeschte in der
+        # neuen Instanz ein fremdes Tag. Deshalb vor JEDEM Loeschen Name gegen ID pruefen.
+        state, ist = _api_name_of(url, token, ep, oid)
+        if state == "weg":
+            weg += 1               # existiert nicht mehr -> nichts zu tun, aus der Liste
+            continue
+        if state == "fehler":
+            kept.append(it)        # Instanz gerade nicht erreichbar -> spaeter nachholen
+            continue
+        if (ist or "").strip().lower() != name.strip().lower():
+            fremd.append("%s (ID %s heißt dort „%s“)" % (name, oid, ist))
+            kept.append(it)        # gehoert nicht uns -> NICHT anfassen
+            continue
+        if _api_delete(url, token, ep, oid):
             removed += 1
-    _save_undo(aid, [])
-    _log_activity("undo", "Rückgängig auf %s: %d Einträge entfernt" % (act.get("name"), removed))
+        else:
+            kept.append(it)
+    _save_undo(aid, list(reversed(kept)))
+    rest = [x for x in (("%d nicht entfernbar" % len(kept)) if kept else "",
+                        ("%d bereits weg" % weg) if weg else "") if x]
+    _log_activity("undo", "Rückgängig auf %s: %d Einträge entfernt%s"
+                  % (act.get("name"), removed, (" (" + ", ".join(rest) + ")") if rest else ""),
+                  level=("warn" if (kept or fremd) else "ok"),
+                  detail=("NICHT entfernt — diese IDs tragen in der Instanz einen anderen "
+                          "Namen. Zeigt das Profil noch auf dieselbe Paperless-Instanz?\n"
+                          + "\n".join("· " + f for f in fremd)) if fremd else None)
     return redirect(url_for("protokoll"))
 
 

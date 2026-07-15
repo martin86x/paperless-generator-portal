@@ -14,7 +14,7 @@
       <div class="msg ok">✓ Alles aktuell — keine fehlenden Einträge.</div>
     {% else %}
       {% if productive %}<div class="msg err">⚠ PRODUKTIVSYSTEM — Änderungen wirken sofort auf das Live-System.</div>{% endif %}
-      <p class="hint">Vor dem Schreiben wird automatisch ein Instanz-Snapshot als Restore-Punkt gesichert. Danach ist „rückgängig" möglich.</p>
+      <p class="hint">Vor dem Schreiben wird der Ist-Stand der Instanz als Snapshot gesichert (zum Nachschlagen, kein Ein-Klick-Restore). Zurücknehmen lässt sich, was das Portal selbst angelegt hat — siehe „rückgängig“ unten.</p>
       <form method="post" action="{{ url_for('anwenden_post') }}"
             onsubmit="return confirm('Ausgewählte Einträge jetzt in {{ active.name }} anlegen?');">
         {% for g in groups %}
@@ -34,9 +34,13 @@
 
     {% if undo_available %}
     <hr class="divider">
+    <h2>Rückgängig ({{ undo_count }})</h2>
+    <p class="hint">Entfernt aus <strong>{{ active.name }}</strong> die {{ undo_count }} Einträge, die das Portal angelegt hat. Vorhandenes bleibt unberührt.</p>
     <form method="post" action="{{ url_for('anwenden_undo') }}"
-          onsubmit="return confirm('Die zuletzt angelegten Einträge wieder entfernen?');">
-      <button type="submit" style="background:var(--bg3);border:1px solid var(--border)">↩ Letzte Anwendung rückgängig machen</button>
+          onsubmit="return confirm('{{ undo_count }} vom Portal angelegte Einträge aus {{ active.name }} entfernen?');">
+      <label for="undo_password">Passwort bestätigen (Sicherheitsabfrage)</label>
+      <input type="password" id="undo_password" name="password" required autocomplete="off">
+      <button type="submit" style="background:var(--bg3);border:1px solid var(--border)">↩ Angelegte Einträge wieder entfernen</button>
     </form>
     {% endif %}
   </div>
