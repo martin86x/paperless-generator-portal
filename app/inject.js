@@ -300,26 +300,40 @@
       }
     }
 
-    // Bash-Skript-Weg im Portal-Modus: Sektion 11 „So wendest du das Skript an" ist
-    // reine SSH/scp-Anleitung — im Portal richtet der Direkt-Modus über den Proxy ein.
-    // Sektion + Sidebar-Link ausblenden. (Sektion 09 bleibt: sie hält Health-Check,
-    // Statistik und die Dry-Run/Ausführen-Buttons; Sektion 10 taucht ohnehin nur nach
-    // dem Bash-Generieren auf.)
+    // Sektion 11 „So wendest du das Skript an" (SSH/scp) ausblenden — reiner Bash-Weg;
+    // im Portal richtet der Direkt-Modus über den Proxy ein.
     var howto = document.getElementById('s-howto');
     if (howto) howto.style.display = 'none';
     var howtoLink = document.querySelector('.sb-link[onclick*="s-howto"]');
     if (howtoLink) howtoLink.style.display = 'none';
 
-    // In Sektion 09 die reinen Bash-/Standalone-Info-Blöcke ausblenden: der
-    // „Was du herunterladen musst"-Kasten (WinSCP/.sh/.token.env) und der CORS-Hinweis
-    // für den Direktmodus. Beides ist im Portal-Modus (Proxy, same-origin) gegenstandslos.
+    // Diagnose bündeln: Health-Check + Statistik aus Sektion 09 nach oben in die
+    // Werkzeuge (Sektion 12, vor die Tab-Leiste) verschieben, dann Sektion 09 ganz
+    // ausblenden. Im Portal ist 09 sonst nur der gegenstandslose Bash-Skript-Button —
+    // ausgeführt wird über „▶ Direkt-Ausführung", die Diagnose gehört zu den Werkzeugen.
+    // Verschoben werden fertige Elemente mit festen IDs (#health-results/#st-*), die
+    // Funktion (runFullHealthCheck/updateStats schreiben per ID) bleibt erhalten.
     var sgen = document.getElementById('s-gen');
-    if (sgen) {
-      Array.prototype.forEach.call(sgen.children, function (c) {
-        if (c.tagName === 'DIV' && c.textContent.indexOf('herunterladen musst') >= 0) c.style.display = 'none';
-      });
-      var corsHint = document.getElementById('cors-hint-s12');
-      if (corsHint) corsHint.style.display = 'none';
+    var stools = document.getElementById('s-tools');
+    if (sgen && stools) {
+      var toolsTabs = document.getElementById('tools-tabs');
+      var health = document.getElementById('health-results');
+      var healthBlock = health && health.parentElement; // Wrapper: Überschrift + „Neu prüfen" + Ergebnisse
+      var statsBar = sgen.querySelector('.stats-bar');
+      if (healthBlock && toolsTabs) stools.insertBefore(healthBlock, toolsTabs);
+      if (statsBar && toolsTabs) stools.insertBefore(statsBar, toolsTabs);
+      sgen.style.display = 'none';
+      var genLink = document.querySelector('.sb-link[onclick*="s-gen"]');
+      if (genLink) genLink.style.display = 'none';
+      // Alle Sprünge zur (jetzt ausgeblendeten) Sektion 09 auf die Werkzeuge umleiten:
+      // Kopfzeilen-Badge, rechte Werkzeug-Leiste, Tastatur-Shortcut „h" und der Bash-Pfad
+      // rufen alle goTo('s-gen'). Ein Wrapper fängt sie gemeinsam ab, sodass der
+      // Health-Check an seinem neuen Ort in den Werkzeugen angesprungen wird.
+      if (typeof window.goTo === 'function' && !window._plxGoToWrapped) {
+        var _origGoTo = window.goTo;
+        window.goTo = function (id) { return _origGoTo(id === 's-gen' ? 's-tools' : id); };
+        window._plxGoToWrapped = true;
+      }
     }
   }
 
