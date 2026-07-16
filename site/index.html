@@ -5252,6 +5252,11 @@ function resetFields() {
   if(!confirm("Alle Felder auf Standard zurücksetzen?")) return;
   FIELDS.length = 0;
   FIELDS_ORIG.forEach(f => FIELDS.unshift([...f]));
+  // Auch die Feldgruppen zurücksetzen — sonst kommen die Felder zurück, aber eine
+  // zuvor gelöschte Gruppe (z. B. „Rechnung") fehlt weiter, und ihre Felder hängen
+  // verwaist im Array ohne sichtbare Gruppe.
+  FIELD_GROUPS.length = 0;
+  FIELD_GROUPS_ORIG.forEach(g => FIELD_GROUPS.push({...g}));
   renderFieldsEditor(); renderWorkflowEditor(); renderFristWorkflows();
 }
 
