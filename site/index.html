@@ -3686,10 +3686,13 @@ function renderTypeEditor() {
   }
   TYPES.forEach(function(t, i) {
     const wrap = document.createElement("div");
-    wrap.style.cssText = "background:var(--bg3);border:1px solid var(--border);border-radius:7px;margin-bottom:.4rem;overflow:hidden;";
+    // Optik wie der Tag-Editor: gemeinsame .acc-Klassen statt eigener Inline-Nachbau.
+    // .te-acc + .te-body + .acc-arr sind der Vertrag von toggleTeAcc().
+    wrap.className = "acc te-acc";
     if(!plxOn(t)) wrap.style.opacity = "0.55";
     wrap.draggable = true;
     wrap.dataset.idx = i;
+    wrap.dataset.open = "0";
     // Drag-and-Drop
     (function(srcI) {
       wrap.addEventListener('dragstart', function(e) {
@@ -3731,41 +3734,39 @@ function renderTypeEditor() {
         if(typeof autoSave === 'function') autoSave();
       });
     })(i);
-    // Header-Zeile: Name + ↑↓✕
+    // Kopfzeile — Klick klappt das Matching auf, wie beim Tag-Editor.
     const row = document.createElement("div");
-    row.style.cssText = "display:flex;align-items:center;gap:.4rem;padding:.45rem .7rem;";
+    row.className = "acc-h te-head";
+    row.onclick = function(){ toggleTeAcc(row); };
     // Drag-Handle
     const dragHandle = document.createElement("span");
     dragHandle.innerHTML = "&#8942;&#8942;";
     dragHandle.title = "Ziehen zum Sortieren";
     dragHandle.style.cssText = "cursor:grab;color:var(--text-muted);font-size:.85rem;letter-spacing:-2px;flex-shrink:0;user-select:none;padding:0 .1rem";
+    dragHandle.onclick = function(e){ e.stopPropagation(); };
     const inp = document.createElement("input"); inp.type="text"; inp.value=t.name;
     inp.placeholder="Dokumenttyp Name"; inp.style.cssText="flex:1;padding:.3rem .5rem;font-size:.82rem;font-weight:600";
+    inp.onclick=function(e){ e.stopPropagation(); };  // sonst klappt Tippen den Kopf auf
     inp.oninput=(function(i2){return function(){TYPES[i2].name=this.value;};})(i);
     inp.onblur=function(){buildEditorTypes();buildEditorTags();};
     const upBtn=document.createElement("button");upBtn.className="btn-add-child";upBtn.textContent="↑";upBtn.title="Nach oben";
     if(i===0)upBtn.disabled=true;
-    upBtn.onclick=(function(i2){return function(){moveType(i2,-1);};})(i);
+    upBtn.onclick=(function(i2){return function(e){e.stopPropagation();moveType(i2,-1);};})(i);
     const dnBtn=document.createElement("button");dnBtn.className="btn-add-child";dnBtn.textContent="↓";dnBtn.title="Nach unten";
     if(i===TYPES.length-1)dnBtn.disabled=true;
-    dnBtn.onclick=(function(i2){return function(){moveType(i2,1);};})(i);
+    dnBtn.onclick=(function(i2){return function(e){e.stopPropagation();moveType(i2,1);};})(i);
     const delBtn=document.createElement("button");delBtn.className="btn-del";delBtn.textContent="✕";
-    delBtn.onclick=(function(i2){return function(){deleteDocType(i2);};})(i);
-    // Toggle-Matching Button
-    const mBtn=document.createElement("button");mBtn.className="btn-sec";
-    mBtn.style.cssText="font-size:.67rem;padding:.2rem .5rem;color:var(--accent)";
-    mBtn.textContent="Matching ▶";
-    mBtn.onclick=function(){
-      const mb=document.getElementById("type-match-"+i);
-      if(mb){const open=mb.style.display!=="none";mb.style.display=open?"none":"block";mBtn.textContent=open?"Matching ▶":"Matching ▼";}
-    };
+    delBtn.onclick=(function(i2){return function(e){e.stopPropagation();deleteDocType(i2);};})(i);
     const enTog=plxToggle(plxOn(t),(function(i2){return function(on){TYPES[i2].enabled=on;renderTypeEditor();updateStats();};})(i));
     const enBadge=plxBadge(plxOn(t));
-    row.appendChild(dragHandle);row.appendChild(enTog);row.appendChild(inp);row.appendChild(enBadge);row.appendChild(upBtn);row.appendChild(dnBtn);row.appendChild(mBtn);row.appendChild(delBtn);
+    // Aufklapp-Pfeil statt eigenem „Matching ▶“-Knopf — toggleTeAcc dreht ihn.
+    const arr=document.createElement("span");arr.className="acc-arr";arr.textContent="▶";
+    row.appendChild(dragHandle);row.appendChild(enTog);row.appendChild(inp);row.appendChild(enBadge);row.appendChild(upBtn);row.appendChild(dnBtn);row.appendChild(delBtn);row.appendChild(arr);
     wrap.appendChild(row);
-    // Matching-Body
+    // Matching-Body — .acc-b/.te-body: von toggleTeAcc ge-/entfaltet
     const matchDiv=document.createElement("div");matchDiv.id="type-match-"+i;
-    matchDiv.style.cssText="display:none"+";padding:.45rem .7rem .6rem;border-top:1px solid var(--border);background:var(--bg2);";
+    matchDiv.className="acc-b te-body";
+    matchDiv.style.cssText="padding:.45rem .7rem .6rem;background:var(--bg2);";
     const grid=document.createElement("div");grid.style.cssText="display:grid;grid-template-columns:180px 1fr;gap:.5rem;align-items:start";
     // Algo
     const d1=document.createElement("div");
@@ -3848,10 +3849,12 @@ function renderCorrespondentEditor() {
   }
   CORRESPONDENTS.forEach(function(c, i) {
     const wrap = document.createElement("div");
-    wrap.style.cssText = "background:var(--bg3);border:1px solid var(--border);border-radius:7px;padding:.6rem .8rem;margin-bottom:.4rem;";
+    // Optik wie der Tag-Editor (siehe renderTypeEditor): gemeinsame .acc-Klassen.
+    wrap.className = "acc te-acc";
     if(!plxOn(c)) wrap.style.opacity = "0.55";
     wrap.draggable = true;
     wrap.dataset.idx = i;
+    wrap.dataset.open = "0";
     (function(srcI) {
       wrap.addEventListener('dragstart', function(e) {
         e.dataTransfer.effectAllowed = 'move';
@@ -3888,18 +3891,21 @@ function renderCorrespondentEditor() {
         if(typeof autoSave === 'function') autoSave();
       });
     })(i);
-    // Zeile 1: Name + Del
+    // Kopfzeile — Klick klappt das Matching auf (wie Tags/Typen).
     const row1 = document.createElement("div");
-    row1.style.cssText = "display:flex;align-items:center;gap:.5rem;margin-bottom:.45rem";
+    row1.className = "acc-h te-head";
+    row1.onclick = function(){ toggleTeAcc(row1); };
     const inp = document.createElement("input"); inp.type="text"; inp.value=c.name;
     inp.placeholder="Name (z.B. Finanzamt)"; inp.style.cssText="flex:1;padding:.32rem .55rem;font-size:.82rem;font-weight:600";
+    inp.onclick=function(e){ e.stopPropagation(); };
     inp.oninput=(function(i2){return function(){CORRESPONDENTS[i2].name=this.value;};})(i);
     const db = document.createElement("button"); db.className="btn-del"; db.textContent="✕"; db.title="Löschen";
-    db.onclick=(function(i2){return function(){deleteCorrespondent(i2);};})(i);
+    db.onclick=(function(i2){return function(e){e.stopPropagation();deleteCorrespondent(i2);};})(i);
     const corrDragHandle = document.createElement('span');
     corrDragHandle.innerHTML = '&#8942;&#8942;';
     corrDragHandle.title = 'Ziehen zum Sortieren';
     corrDragHandle.style.cssText = 'cursor:grab;color:var(--text-muted);font-size:.85rem;letter-spacing:-2px;flex-shrink:0;user-select:none;padding:0 .1rem';
+    corrDragHandle.onclick = function(e){ e.stopPropagation(); };
     const corrEn=plxToggle(plxOn(c),(function(i2){return function(on){CORRESPONDENTS[i2].enabled=on;renderCorrespondentEditor();updateStats();};})(i));
     const corrBadge=plxBadge(plxOn(c));
     row1.appendChild(corrDragHandle);
@@ -3928,25 +3934,17 @@ function renderCorrespondentEditor() {
     ta.oninput=(function(i2){return function(){CORRESPONDENTS[i2].match=this.value;};})(i);
     div2.appendChild(lbl2); div2.appendChild(ta);
     row2.appendChild(div1); row2.appendChild(div2);
-    // Matching-Akkordeon
+    // Matching-Body — .acc-b/.te-body: von toggleTeAcc ge-/entfaltet
     var mWrap = document.createElement("div");
     mWrap.id = "corr-match-" + i;
-    mWrap.style.cssText = "display:none;border-top:1px solid var(--border);padding:.45rem .7rem .55rem;background:var(--bg2);";
+    mWrap.className = "acc-b te-body";
+    mWrap.style.cssText = "padding:.45rem .7rem .55rem;background:var(--bg2);";
     mWrap.appendChild(row2);
-    // Toggle-Button in row1
-    var mToggle = document.createElement("button");
-    mToggle.className = "btn-sec";
-    mToggle.style.cssText = "font-size:.67rem;padding:.2rem .5rem;color:var(--accent)";
-    mToggle.textContent = "Matching ▶";
-    mToggle.onclick = (function(i2){ return function() {
-      var mb = document.getElementById("corr-match-" + i2);
-      if(!mb) return;
-      var open = mb.style.display !== "none";
-      mb.style.display = open ? "none" : "block";
-      this.textContent = open ? "Matching ▶" : "Matching ▼";
-    }; })(i);
-    // Toggle vor Del-Button einfügen
-    row1.insertBefore(mToggle, db);
+    // Aufklapp-Pfeil statt „Matching ▶“-Knopf
+    var arr = document.createElement("span");
+    arr.className = "acc-arr";
+    arr.textContent = "▶";
+    row1.appendChild(arr);
     wrap.appendChild(mWrap);
     list.appendChild(wrap);
   });
@@ -5062,14 +5060,17 @@ function renderFieldsEditor() {
   FIELD_GROUPS.forEach((grp, gi) => {
     const grpFields = FIELDS.filter(f => f[2] === grp.id);
     const grpDiv = document.createElement("div");
-    grpDiv.style.cssText = "margin-bottom:.4rem;border:1px solid var(--border);border-radius:8px;overflow:hidden;";
+    // Optik wie der Tag-Editor: gemeinsame .acc-Karte. Der Felder-Editor ist zweistufig
+    // (Gruppen mit Feld-Zeilen) und behält seine eigene Klapp-Logik unten.
+    grpDiv.className = "acc te-acc";
     const grpCollapsed = grpFields.length>6;   // lange Gruppen (>6 Felder) standardmäßig zu
     // Kopfzeile als kompakte, klickbare Karte (ganze Zeile toggelt)
     const hdr = document.createElement("div");
-    hdr.style.cssText = "display:flex;align-items:center;gap:.5rem;padding:.42rem .6rem;background:rgba(79,142,247,.05);cursor:pointer;user-select:none;";
+    hdr.className = "acc-h te-head";
     const grpChevron=document.createElement("span");
+    // Chevron steht hier LINKS (Gruppen-Kopf) — margin-left:0 hebt das auto der .acc-arr auf.
     grpChevron.className="acc-arr";
-    grpChevron.style.cssText="color:var(--text-muted);font-size:.65rem;flex-shrink:0;width:.8rem;text-align:center";
+    grpChevron.style.cssText="color:var(--text-muted);font-size:.65rem;flex-shrink:0;width:.8rem;text-align:center;margin-left:0";
     grpChevron.textContent = grpCollapsed ? "▶" : "▼";
     const inp = document.createElement("input");
     inp.type="text"; inp.value=grp.label;
@@ -5252,26 +5253,39 @@ function renderPathsEditor() {
   _markEdited("s-edit-paths");
   const list = document.getElementById("paths-editor-list");
   if(!list) return;
+  // Offene Karten merken — sonst klappt die Algo-Änderung (die neu rendert) sie zu.
+  const openState = {};
+  list.querySelectorAll(".te-acc[data-idx]").forEach(el => {
+    if(el.dataset.open === "1") openState[el.dataset.idx] = true;
+  });
   list.innerHTML = "";
   STORAGE_PATHS.forEach(function(sp, i) {
     const div = document.createElement("div");
-    div.style.cssText = "background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:.8rem 1rem;margin-bottom:.6rem;";
+    // Optik wie der Tag-Editor: aufklappbare Karte, Name im bg3-Kopf, Details im Body.
+    div.className = "acc te-acc";
+    div.dataset.idx = i;
+    div.dataset.open = openState[i] ? "1" : "0";
     if(!plxOn(sp)) div.style.opacity="0.55";
-    // Zeile 1: Aktiv-Toggle + Name + Del
+    // Kopfzeile: Aktiv-Toggle + Name + Del + Aufklapp-Pfeil
     const row1 = document.createElement("div");
-    row1.style.cssText = "display:grid;grid-template-columns:20px 1fr 36px;gap:.5rem;align-items:center;margin-bottom:.5rem";
+    row1.className = "acc-h te-head";
+    row1.onclick = function(){ toggleTeAcc(row1); };
     const spEn=plxToggle(plxOn(sp),(function(i2){return function(on){STORAGE_PATHS[i2].enabled=on;renderPathsEditor();updateStats();};})(i));
-    spEn.style.marginTop="1.2rem";
     row1.appendChild(spEn);
-    const nameWrap = document.createElement("div");
-    const lbl0 = document.createElement("span"); lbl0.className="flabel"; lbl0.style.fontSize=".64rem"; lbl0.textContent="Name";
     const nameInp = document.createElement("input"); nameInp.type="text"; nameInp.value=sp.name;
-    nameInp.placeholder="z.B. Standard-Pfad"; nameInp.style.cssText="padding:.32rem .55rem;font-size:.78rem;width:100%";
+    nameInp.placeholder="z.B. Standard-Pfad"; nameInp.style.cssText="flex:1;padding:.32rem .55rem;font-size:.82rem;font-weight:600";
+    nameInp.onclick=function(e){ e.stopPropagation(); };
     nameInp.oninput=(function(i2){return function(){STORAGE_PATHS[i2].name=this.value;};})(i);
-    nameWrap.appendChild(lbl0); nameWrap.appendChild(nameInp);
-    const db = document.createElement("button"); db.className="btn-del"; db.textContent="✕"; db.style.marginTop="1.2rem";
-    db.onclick=(function(i2){return function(){deleteStoragePath(i2);};})(i);
-    row1.appendChild(nameWrap); row1.appendChild(db); div.appendChild(row1);
+    const spBadge=plxBadge(plxOn(sp));
+    const db = document.createElement("button"); db.className="btn-del"; db.textContent="✕";
+    db.onclick=(function(i2){return function(e){e.stopPropagation();deleteStoragePath(i2);};})(i);
+    const spArr=document.createElement("span"); spArr.className="acc-arr"; spArr.textContent=openState[i]?"▼":"▶";
+    row1.appendChild(nameInp); row1.appendChild(spBadge); row1.appendChild(db); row1.appendChild(spArr);
+    div.appendChild(row1);
+    // Body — .acc-b/.te-body: von toggleTeAcc ge-/entfaltet
+    const body = document.createElement("div");
+    body.className = "acc-b te-body" + (openState[i] ? " open" : "");
+    body.style.cssText = "padding:.7rem 1rem .8rem;background:var(--bg2);";
     // Pfad-Template
     const pathWrap = document.createElement("div"); pathWrap.style.marginBottom=".5rem";
     const lbl1 = document.createElement("span"); lbl1.className="flabel"; lbl1.style.fontSize=".64rem";
@@ -5302,7 +5316,7 @@ function renderPathsEditor() {
     const hasOld=(sp.path.match(/\{[a-z_]+\}/g)||[]).length>0;
     oldVarHint.style.cssText="display:"+(hasOld?"block":"none")+";font-size:.67rem;color:var(--warn);margin-top:.2rem";
     oldVarHint.innerHTML='⚠ Alter Variablenstil <code>{var}</code> erkannt – bitte auf <code>{{ var }}</code> (Jinja2) umstellen.';
-    pathWrap.appendChild(lbl1); pathWrap.appendChild(pathInp); pathWrap.appendChild(pathHint); pathWrap.appendChild(oldVarHint); div.appendChild(pathWrap);
+    pathWrap.appendChild(lbl1); pathWrap.appendChild(pathInp); pathWrap.appendChild(pathHint); pathWrap.appendChild(oldVarHint); body.appendChild(pathWrap);
     // Algorithmus + Match
     const row2 = document.createElement("div");
     row2.style.cssText = "display:grid;grid-template-columns:180px 1fr;gap:.5rem;align-items:start";
@@ -5331,7 +5345,8 @@ function renderPathsEditor() {
       div2.appendChild(lbl3); div2.appendChild(matchInp);
       row2.appendChild(div2);
     }
-    div.appendChild(row2);
+    body.appendChild(row2);
+    div.appendChild(body);
     list.appendChild(div);
   });
   updatePathBadge();
@@ -6179,12 +6194,13 @@ function renderWorkflowEditor() {
 
   WORKFLOWS.forEach(function(wf, i) {
     const wrap = document.createElement("div");
-    wrap.style.cssText = "background:var(--bg3);border:1px solid var(--border);border-radius:8px;margin-bottom:.7rem;overflow:hidden;";
+    // Optik wie der Tag-Editor: transparente Karte, bg3-Kopfstreifen (gemeinsame .acc-Klassen).
+    wrap.className = "acc te-acc";
     if(!wf.enabled) wrap.style.opacity = "0.55";
 
     // ── Header ──
     const hdr = document.createElement("div");
-    hdr.style.cssText = "display:flex;align-items:center;gap:.5rem;padding:.55rem .8rem;cursor:pointer;";
+    hdr.className = "acc-h te-head";
 
     // Enable/Disable Toggle
     const tog = document.createElement("input"); tog.type="checkbox"; tog.checked=wf.enabled;
