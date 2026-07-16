@@ -309,6 +309,18 @@
     if (howto) howto.style.display = 'none';
     var howtoLink = document.querySelector('.sb-link[onclick*="s-howto"]');
     if (howtoLink) howtoLink.style.display = 'none';
+
+    // In Sektion 09 die reinen Bash-/Standalone-Info-Blöcke ausblenden: der
+    // „Was du herunterladen musst"-Kasten (WinSCP/.sh/.token.env) und der CORS-Hinweis
+    // für den Direktmodus. Beides ist im Portal-Modus (Proxy, same-origin) gegenstandslos.
+    var sgen = document.getElementById('s-gen');
+    if (sgen) {
+      Array.prototype.forEach.call(sgen.children, function (c) {
+        if (c.tagName === 'DIV' && c.textContent.indexOf('herunterladen musst') >= 0) c.style.display = 'none';
+      });
+      var corsHint = document.getElementById('cors-hint-s12');
+      if (corsHint) corsHint.style.display = 'none';
+    }
   }
 
   // Sentinel-Token (40 Hex): Der /api/-Proxy verwirft den Client-Authorization-Header und
