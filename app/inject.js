@@ -63,6 +63,8 @@
       if (r.ok) {
         try { localStorage.setItem('paperless_gen_cfg_v2', JSON.stringify(applyOrigin(snap))); } catch (e) {}
         setDirty(false);
+        // Gespeicherter Stand = neue Referenz fuers gezielte Zuruecksetzen im Generator
+        try { if (typeof plxMarkSaved === 'function') plxMarkSaved(); } catch (e) {}
         toast('Profil gespeichert ✓');
       } else {
         toast('Speichern fehlgeschlagen (' + r.status + ')', 3500);

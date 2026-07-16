@@ -687,7 +687,8 @@ input.valid{border-color:var(--accent2)!important;}
       <button class="btn-sort" onclick="sortTagsAlpha()">&#8593;&#8595; Alphabetisch sortieren</button>
       <button class="btn-sec" onclick="expandAllTags()" style="font-size:.74rem;padding:.3rem .7rem">&#9660; Alle auf</button>
       <button class="btn-sec" onclick="collapseAllTags()" style="font-size:.74rem;padding:.3rem .7rem">&#9654; Alle zu</button>
-      <button class="btn-sec" onclick="resetTags()" style="font-size:.74rem;padding:.3rem .7rem;margin-left:auto;color:var(--warn);border-color:rgba(247,201,72,.3)">&#8635; Zur&uuml;cksetzen</button>
+      <button class="btn-sec" onclick="restoreDeleted('tags')" title="Stellt Tags wieder her, die seit der letzten Speicherung gel&ouml;scht wurden (samt Kind-Tags und Matching-Regeln) &ndash; Bestehendes bleibt unangetastet" style="font-size:.74rem;padding:.3rem .7rem;margin-left:auto;color:var(--accent2);border-color:rgba(56,217,169,.3)">&#8634; Gel&ouml;schtes wiederherstellen</button>
+      <button class="btn-sec" onclick="resetTags()" title="Setzt ALLE Tags auf den Werksstand zur&uuml;ck" style="font-size:.74rem;padding:.3rem .7rem;color:var(--warn);border-color:rgba(247,201,72,.3)">&#8635; Werkseinstellung</button>
     </div>
     <div id="tag-editor-list"></div>
     <div id="me-tags-c" style="display:none"></div>
@@ -702,7 +703,8 @@ input.valid{border-color:var(--accent2)!important;}
       <button class="btn-sort" onclick="sortTypesAlpha()">&#8593;&#8595; Alphabetisch sortieren</button>
       <input class="editor-search" type="text" id="type-search" placeholder="Typen suchen..." oninput="filterTypes(this.value)" style="max-width:200px">
       <span class="search-count" id="type-search-count"></span>
-      <button class="btn-sec" onclick="resetTypes()" style="font-size:.74rem;padding:.3rem .7rem;margin-left:auto;color:var(--warn);border-color:rgba(247,201,72,.3)">&#8635; Zur&uuml;cksetzen</button>
+      <button class="btn-sec" onclick="restoreDeleted('types')" title="Stellt Dokumenttypen wieder her, die seit der letzten Speicherung gel&ouml;scht wurden &ndash; Bestehendes bleibt unangetastet" style="font-size:.74rem;padding:.3rem .7rem;margin-left:auto;color:var(--accent2);border-color:rgba(56,217,169,.3)">&#8634; Gel&ouml;schtes wiederherstellen</button>
+      <button class="btn-sec" onclick="resetTypes()" title="Setzt ALLE Dokumenttypen auf den Werksstand zur&uuml;ck" style="font-size:.74rem;padding:.3rem .7rem;color:var(--warn);border-color:rgba(247,201,72,.3)">&#8635; Werkseinstellung</button>
     </div>
     <div id="type-editor-list"></div>
   </div>
@@ -717,7 +719,8 @@ input.valid{border-color:var(--accent2)!important;}
       <button class="btn-sort" onclick="sortFieldsAlpha()">&#8593;&#8595; Alphabetisch sortieren</button>
       <input class="editor-search" type="text" id="field-search" placeholder="Felder suchen..." oninput="filterFields(this.value)" style="max-width:220px">
       <span class="search-count" id="field-search-count"></span>
-      <button class="btn-sec" onclick="resetFields()" style="font-size:.74rem;padding:.3rem .7rem;margin-left:auto;color:var(--warn);border-color:rgba(247,201,72,.3)">&#8635; Zur&uuml;cksetzen</button>
+      <button class="btn-sec" onclick="restoreDeleted('fields')" title="Stellt Felder und Gruppen wieder her, die seit der letzten Speicherung gel&ouml;scht wurden &ndash; Bestehendes bleibt unangetastet" style="font-size:.74rem;padding:.3rem .7rem;margin-left:auto;color:var(--accent2);border-color:rgba(56,217,169,.3)">&#8634; Gel&ouml;schtes wiederherstellen</button>
+      <button class="btn-sec" onclick="resetFields()" title="Setzt ALLE Felder und Gruppen auf den Werksstand zur&uuml;ck" style="font-size:.74rem;padding:.3rem .7rem;color:var(--warn);border-color:rgba(247,201,72,.3)">&#8635; Werkseinstellung</button>
     </div>
     <div id="fields-editor-list"></div>
   </div>
@@ -735,7 +738,8 @@ input.valid{border-color:var(--accent2)!important;}
     <div class="callout info">&#8505;&#65039; <strong>Felder werden nur zugewiesen</strong>, kein Standardwert wird gesetzt. Das ist eine API-Einschr&auml;nkung von Paperless-ngx (Stand Mai 2026). Die Felder erscheinen danach leer am Dokument und k&ouml;nnen manuell bef&uuml;llt werden.</div>
     <div class="editor-toolbar">
       <button class="btn-add" onclick="addWorkflow()">+ Arbeitsablauf hinzuf&uuml;gen</button>
-      <button class="btn-sec" onclick="resetWorkflows()" style="font-size:.74rem;padding:.3rem .7rem;margin-left:auto;color:var(--warn);border-color:rgba(247,201,72,.3)">&#8635; Zur&uuml;cksetzen</button>
+      <button class="btn-sec" onclick="restoreDeleted('workflows')" title="Stellt Arbeitsabl&auml;ufe und Frist-Gruppen wieder her, die seit der letzten Speicherung gel&ouml;scht wurden &ndash; Bestehendes bleibt unangetastet" style="font-size:.74rem;padding:.3rem .7rem;margin-left:auto;color:var(--accent2);border-color:rgba(56,217,169,.3)">&#8634; Gel&ouml;schtes wiederherstellen</button>
+      <button class="btn-sec" onclick="resetWorkflows()" title="Setzt ALLE Arbeitsabl&auml;ufe auf den Werksstand zur&uuml;ck" style="font-size:.74rem;padding:.3rem .7rem;color:var(--warn);border-color:rgba(247,201,72,.3)">&#8635; Werkseinstellung</button>
     </div>
     <div id="workflow-editor-list"></div>
 
@@ -880,6 +884,7 @@ input.valid{border-color:var(--accent2)!important;}
     </div>
     <div class="editor-toolbar">
       <button class="btn-add" onclick="addStoragePath()">+ Speicherpfad hinzuf&uuml;gen</button>
+      <button class="btn-sec" onclick="restoreDeleted('paths')" title="Stellt Speicherpfade wieder her, die seit der letzten Speicherung gel&ouml;scht wurden &ndash; Bestehendes bleibt unangetastet" style="font-size:.74rem;padding:.3rem .7rem;margin-left:auto;color:var(--accent2);border-color:rgba(56,217,169,.3)">&#8634; Gel&ouml;schtes wiederherstellen</button>
     </div>
     <div id="paths-editor-list"></div>
   </div>
@@ -892,7 +897,8 @@ input.valid{border-color:var(--accent2)!important;}
       <button class="btn-add" onclick="addCorrespondent()">+ Korrespondent hinzuf&uuml;gen</button>
       <button class="btn-sort" onclick="sortCorrespondentsAlpha()">&#8593;&#8595; Alphabetisch sortieren</button>
       <input class="editor-search" type="text" id="corr-search" placeholder="Suchen..." oninput="filterCorrespondents(this.value)" style="max-width:180px">
-      <button class="btn-sec" onclick="resetCorrespondents()" style="font-size:.74rem;padding:.3rem .7rem;margin-left:auto;color:var(--warn);border-color:rgba(247,201,72,.3)">&#8635; Zur&uuml;cksetzen</button>
+      <button class="btn-sec" onclick="restoreDeleted('correspondents')" title="Stellt Korrespondenten wieder her, die seit der letzten Speicherung gel&ouml;scht wurden &ndash; Bestehendes bleibt unangetastet" style="font-size:.74rem;padding:.3rem .7rem;margin-left:auto;color:var(--accent2);border-color:rgba(56,217,169,.3)">&#8634; Gel&ouml;schtes wiederherstellen</button>
+      <button class="btn-sec" onclick="resetCorrespondents()" title="Setzt ALLE Korrespondenten auf den Werksstand zur&uuml;ck" style="font-size:.74rem;padding:.3rem .7rem;color:var(--warn);border-color:rgba(247,201,72,.3)">&#8635; Werkseinstellung</button>
     </div>
     <div id="corr-editor-list"></div>
   </div>
@@ -3443,6 +3449,7 @@ function renderTagEditor() {
         <button class="btn-add-child" onclick="event.stopPropagation(); moveTag(${pi},-1)" title="Nach oben" ${pi===0?'disabled style="opacity:.3"':''}>↑</button>
         <button class="btn-add-child" onclick="event.stopPropagation(); moveTag(${pi},1)"  title="Nach unten" ${pi===TAGS.length-1?'disabled style="opacity:.3"':''}>↓</button>
         <button class="btn-add-child" onclick="event.stopPropagation(); addChildTag(${pi})">+ Kind</button>
+        ${(typeof plxResetBtnHtml==='function')?plxResetBtnHtml('tag',par.name):''}
         <button class="btn-del" onclick="event.stopPropagation(); deleteParentTag(${pi})" title="Löschen">✕</button>
         ${inboxBadge}
         <span class="acc-arr" style="margin-left:.3rem">${isOpen ? '▼' : '▶'}</span>
@@ -3762,7 +3769,9 @@ function renderTypeEditor() {
     const enBadge=plxBadge(plxOn(t));
     // Aufklapp-Pfeil statt eigenem „Matching ▶“-Knopf — toggleTeAcc dreht ihn.
     const arr=document.createElement("span");arr.className="acc-arr";arr.textContent="▶";
-    row.appendChild(dragHandle);row.appendChild(enTog);row.appendChild(inp);row.appendChild(enBadge);row.appendChild(upBtn);row.appendChild(dnBtn);row.appendChild(delBtn);row.appendChild(arr);
+    // ↺ nur für Einträge, die es im Speicher-Stand gibt (11-restore-saved.js)
+    const rstBtn=(typeof plxResetBtn==='function')?plxResetBtn('type',t.name):null;
+    row.appendChild(dragHandle);row.appendChild(enTog);row.appendChild(inp);row.appendChild(enBadge);row.appendChild(upBtn);row.appendChild(dnBtn);if(rstBtn)row.appendChild(rstBtn);row.appendChild(delBtn);row.appendChild(arr);
     wrap.appendChild(row);
     // Matching-Body — .acc-b/.te-body: von toggleTeAcc ge-/entfaltet
     const matchDiv=document.createElement("div");matchDiv.id="type-match-"+i;
@@ -3912,7 +3921,8 @@ function renderCorrespondentEditor() {
     const corrBadge=plxBadge(plxOn(c));
     row1.appendChild(corrDragHandle);
     row1.appendChild(corrEn);
-    row1.appendChild(inp); row1.appendChild(corrBadge); row1.appendChild(db); wrap.appendChild(row1);
+    const corrRst=(typeof plxResetBtn==='function')?plxResetBtn('corr',c.name):null;
+    row1.appendChild(inp); row1.appendChild(corrBadge); if(corrRst)row1.appendChild(corrRst); row1.appendChild(db); wrap.appendChild(row1);
     // Zeile 2: Algorithmus + Hint
     const row2 = document.createElement("div");
     row2.style.cssText = "display:grid;grid-template-columns:180px 1fr;gap:.5rem;align-items:start";
@@ -4836,6 +4846,8 @@ function exportConfig() {
   a.href="data:application/json;charset=utf-8,"+encodeURIComponent(JSON.stringify(cfg,null,2));
   a.download="paperless-generator-config-v"+GENERATOR_VERSION+".json";
   document.body.appendChild(a);a.click();document.body.removeChild(a);
+  // Gespeicherter Stand = Referenz fuers gezielte Zuruecksetzen (11-restore-saved.js)
+  if (typeof plxMarkSaved === 'function') plxMarkSaved();
 }
 // Legacy-Alias
 function exportConfig_v2(){exportConfig();}
@@ -5110,7 +5122,10 @@ function renderFieldsEditor() {
       if(gi3>=0)FIELD_GROUPS.splice(gi3,1);
       renderFieldsEditor(); renderWorkflowEditor(); renderFristWorkflows();
     };})(grp.id);
-    hdr.appendChild(grpChevron); hdr.appendChild(inp); hdr.appendChild(cntBadge); hdr.appendChild(addBtn); hdr.appendChild(delBtn);
+    // ↺ auf Speicher-Stand (11-restore-saved.js) — nur wenn die Gruppe dort existiert
+    const grpRst=(typeof plxResetBtn==='function')?plxResetBtn('fgroup',grp.id):null;
+    if(grpRst){grpRst.style.cssText="font-size:.65rem;padding:.15rem .4rem;flex-shrink:0";grpRst.title="Gruppe samt Feldbestand auf den Stand der letzten Speicherung zurücksetzen";}
+    hdr.appendChild(grpChevron); hdr.appendChild(inp); hdr.appendChild(cntBadge); hdr.appendChild(addBtn); if(grpRst)hdr.appendChild(grpRst); hdr.appendChild(delBtn);
     grpDiv.appendChild(hdr);
     const grpBody=document.createElement("div");
     grpBody.style.cssText="padding:.4rem .4rem .12rem;";
@@ -5119,7 +5134,7 @@ function renderFieldsEditor() {
     grpFields.forEach(f => {
       const i = FIELDS.indexOf(f);
       const row = document.createElement("div");
-      row.style.cssText = "display:grid;grid-template-columns:20px 1fr 140px auto 32px;gap:.4rem;align-items:center;padding:.35rem .5rem;background:var(--bg3);border:1px solid var(--border);border-radius:6px;margin-bottom:.28rem;";
+      row.style.cssText = "display:grid;grid-template-columns:20px 1fr 140px auto 32px 32px;gap:.4rem;align-items:center;padding:.35rem .5rem;background:var(--bg3);border:1px solid var(--border);border-radius:6px;margin-bottom:.28rem;";
       if(!fieldOn(f)) row.style.opacity="0.55";
       const fEn=plxToggle(fieldOn(f),(function(i2){return function(on){setFieldEnabled(FIELDS[i2],on);renderFieldsEditor();updateStats();};})(i));
       row.appendChild(fEn);
@@ -5154,6 +5169,10 @@ function renderFieldsEditor() {
         // Placeholder span to keep grid alignment
         const ph = document.createElement("span"); row.appendChild(ph);
       }
+      // ↺-Spalte: Speicher-Stand-Reset oder leerer Platzhalter (Grid-Ausrichtung)
+      const fRst=(typeof plxResetBtn==='function')?plxResetBtn('field',f[0]):null;
+      if(fRst)fRst.style.cssText="font-size:.65rem;padding:.15rem .4rem";
+      row.appendChild(fRst||document.createElement("span"));
       row.appendChild(db);
       grpBody.appendChild(row);
     });
@@ -5173,7 +5192,7 @@ function renderFieldsEditor() {
     extra.forEach(f => {
       const i=FIELDS.indexOf(f);
       const row=document.createElement("div");
-      row.style.cssText="display:grid;grid-template-columns:20px 1fr 140px auto 32px;gap:.4rem;align-items:center;padding:.35rem .5rem;background:var(--bg3);border:1px solid var(--border);border-radius:6px;margin-bottom:.28rem;";
+      row.style.cssText="display:grid;grid-template-columns:20px 1fr 140px auto 32px 32px;gap:.4rem;align-items:center;padding:.35rem .5rem;background:var(--bg3);border:1px solid var(--border);border-radius:6px;margin-bottom:.28rem;";
       if(!fieldOn(f)) row.style.opacity="0.55";
       const fEn=plxToggle(fieldOn(f),(function(i2){return function(on){setFieldEnabled(FIELDS[i2],on);renderFieldsEditor();updateStats();};})(i));
       row.appendChild(fEn);
@@ -5206,6 +5225,10 @@ function renderFieldsEditor() {
         // Placeholder span to maintain grid alignment
         const ph = document.createElement("span"); row.appendChild(ph);
       }
+      // ↺-Spalte: Speicher-Stand-Reset (holt ggf. auch die gelöschte Gruppe zurück)
+      const fRstEx=(typeof plxResetBtn==='function')?plxResetBtn('field',f[0]):null;
+      if(fRstEx)fRstEx.style.cssText="font-size:.65rem;padding:.15rem .4rem";
+      row.appendChild(fRstEx||document.createElement("span"));
       row.appendChild(db);
       exDiv.appendChild(row);
     });
@@ -5298,7 +5321,8 @@ function renderPathsEditor() {
     const db = document.createElement("button"); db.className="btn-del"; db.textContent="✕";
     db.onclick=(function(i2){return function(e){e.stopPropagation();deleteStoragePath(i2);};})(i);
     const spArr=document.createElement("span"); spArr.className="acc-arr"; spArr.textContent=openState[i]?"▼":"▶";
-    row1.appendChild(nameInp); row1.appendChild(spBadge); row1.appendChild(db); row1.appendChild(spArr);
+    const spRst=(typeof plxResetBtn==='function')?plxResetBtn('path',sp.name):null;
+    row1.appendChild(nameInp); row1.appendChild(spBadge); if(spRst)row1.appendChild(spRst); row1.appendChild(db); row1.appendChild(spArr);
     div.appendChild(row1);
     // Body — .acc-b/.te-body: von toggleTeAcc ge-/entfaltet
     const body = document.createElement("div");
@@ -6259,7 +6283,8 @@ function renderWorkflowEditor() {
       WORKFLOWS.splice(i2,1); renderWorkflowEditor(); updateWfStats();
     };})(i);
 
-    hdr.appendChild(tog); hdr.appendChild(nameInp); hdr.appendChild(badge); hdr.appendChild(arrBtn); hdr.appendChild(delBtn);
+    const wfRst=(typeof plxResetBtn==='function')?plxResetBtn('wf',wf.name):null;
+    hdr.appendChild(tog); hdr.appendChild(nameInp); hdr.appendChild(badge); hdr.appendChild(arrBtn); if(wfRst)hdr.appendChild(wfRst); hdr.appendChild(delBtn);
 
     // ── Body ──
     const body = document.createElement("div");
@@ -8551,6 +8576,8 @@ function _applyLoadedConfig(cfg) {
   renderTagEditor(); renderTypeEditor(); renderCorrespondentEditor();
   renderFieldsEditor(); renderPathsEditor(); renderWorkflowEditor();
   buildEditorTypes(); buildEditorTags(); updateStats(); updateHowto(); updatePaths(); checkInboxTag();
+  // Geladener Stand = Referenz fuers gezielte Zuruecksetzen (11-restore-saved.js)
+  if (typeof plxMarkSaved === 'function') plxMarkSaved();
 }
 
 // Auto-Save bei Inputs ueberall
@@ -13140,6 +13167,239 @@ document.addEventListener('DOMContentLoaded', function() {
   var tagCnt  = document.getElementById('mt-tag-cnt');
   if(typeCnt && typeof TYPES !== 'undefined') typeCnt.textContent = TYPES.filter(function(t){ return t.match && t.algo > 0; }).length;
   if(tagCnt  && typeof TAG_MATCH !== 'undefined') tagCnt.textContent = TAG_MATCH.length;
+});
+// ═══════════════════════════════════════════════════════════════════════════
+// GEZIELTES ZURÜCKSETZEN — Referenz ist die ZULETZT GESPEICHERTE Konfiguration
+// (nicht die Werkseinstellung; dafür gibt es weiterhin die „Werkseinstellung"-
+// Knöpfe). Der Referenz-Snapshot wird aktualisiert:
+//   - nach jedem Config-Load (_applyLoadedConfig: AutoSave, Import, Portal-Profil)
+//   - nach jedem expliziten Speichern (Portal „Profil speichern" via plxMarkSaved,
+//     Standalone „Konfiguration speichern")
+//   - Fallback: kurz nach dem Seitenstart, falls nichts geladen wurde
+// Zwei Mechaniken je Editor:
+//   - restoreDeleted(kind): stellt NUR seit der letzten Speicherung GELÖSCHTE
+//     Einträge wieder her (nicht-destruktiv), samt Abhängigkeiten — fehlt die
+//     Gruppe eines Feldes, kommt sie mit; fehlt die Match-Regel eines Tags, dito.
+//   - plxResetOne(kind, key): setzt EINEN Eintrag auf den Speicher-Stand zurück.
+// Identität = Name (Gruppen: id). Ein umbenannter Eintrag gilt als „gelöscht" —
+// die Vorschau im Bestätigungs-Dialog zeigt, was wiederhergestellt würde.
+// ═══════════════════════════════════════════════════════════════════════════
+
+var _plxSaved = null;
+
+function plxMarkSaved() {
+  try { if (typeof getConfigSnapshot === 'function') _plxSaved = getConfigSnapshot(); } catch (e) {}
+}
+
+// Hat der Eintrag einen Referenz-Stand? (steuert, ob der ↺-Knopf erscheint)
+function plxHasSaved(kind, key) {
+  var s = _plxSaved; if (!s) return false;
+  switch (kind) {
+    case 'tag':    return (s.tags || []).some(function (t) { return t.name === key; });
+    case 'type':   return (s.types || []).some(function (t) { return t.name === key; });
+    case 'fgroup': return (s.fieldGroups || []).some(function (g) { return g.id === key; });
+    case 'field':  return (s.fields || []).some(function (f) { return f[0] === key; });
+    case 'corr':   return (s.correspondents || []).some(function (c) { return c.name === key; });
+    case 'path':   return (s.storagePaths || []).some(function (p) { return p.name === key; });
+    case 'wf':     return (s.workflows || []).some(function (w) { return w.name === key; });
+  }
+  return false;
+}
+
+function _plxCopy(o) { return JSON.parse(JSON.stringify(o)); }
+
+function _plxRerenderAll() {
+  ['renderTagEditor','renderTypeEditor','renderFieldsEditor','renderCorrespondentEditor',
+   'renderPathsEditor','renderWorkflowEditor','renderFristWorkflows','buildEditorTags',
+   'buildEditorTypes','updateStats'].forEach(function (fn) {
+    try { if (typeof window[fn] === 'function') window[fn](); } catch (e) {}
+  });
+  try { if (typeof autoSave === 'function') autoSave(); } catch (e) {}
+}
+
+// ── Seit der letzten Speicherung Gelöschtes wiederherstellen ────────────────
+function restoreDeleted(kind) {
+  var s = _plxSaved;
+  if (!s) { alert('Keine gespeicherte Konfiguration als Referenz vorhanden.'); return; }
+  var plan = [];   // [Beschreibung, Ausführ-Funktion]
+
+  if (kind === 'tags') {
+    (s.tags || []).forEach(function (st) {
+      var live = TAGS.find(function (t) { return t.name === st.name; });
+      if (!live) {
+        plan.push(['Eltern-Tag „' + st.name + '" (mit ' + (st.children || []).length + ' Kind-Tags)',
+          function () { TAGS.push(_plxCopy(st)); }]);
+      } else {
+        (st.children || []).forEach(function (sc) {
+          if (!(live.children || []).some(function (c) { return c.name === sc.name; })) {
+            plan.push(['Kind-Tag „' + sc.name + '" (unter „' + st.name + '")',
+              function () { live.children = live.children || []; live.children.push(_plxCopy(sc)); }]);
+          }
+        });
+      }
+    });
+    // Match-Regeln: wiederherstellen, wenn sie im Speicher-Stand existieren, aktuell
+    // fehlen UND ihr Tag nach dem Plan existiert (Abhängigkeit Tag -> Regel).
+    var tagNamesAfter = {};
+    TAGS.forEach(function (t) { tagNamesAfter[t.name] = 1; (t.children || []).forEach(function (c) { tagNamesAfter[c.name] = 1; }); });
+    (s.tags || []).forEach(function (st) {
+      if (!TAGS.some(function (t) { return t.name === st.name; })) {
+        tagNamesAfter[st.name] = 1; (st.children || []).forEach(function (c) { tagNamesAfter[c.name] = 1; });
+      }
+    });
+    (s.tagMatch || []).forEach(function (sm) {
+      if (!TAG_MATCH.some(function (m) { return m.name === sm.name; }) && tagNamesAfter[sm.name]) {
+        plan.push(['Match-Regel für „' + sm.name + '"', function () { TAG_MATCH.push(_plxCopy(sm)); }]);
+      }
+    });
+  } else if (kind === 'types') {
+    (s.types || []).forEach(function (st) {
+      if (!TYPES.some(function (t) { return t.name === st.name; })) {
+        plan.push(['Dokumenttyp „' + st.name + '"', function () { TYPES.push(_plxCopy(st)); }]);
+      }
+    });
+  } else if (kind === 'fields') {
+    // Gruppen ZUERST (Felder hängen daran)
+    (s.fieldGroups || []).forEach(function (sg) {
+      if (!FIELD_GROUPS.some(function (g) { return g.id === sg.id; })) {
+        plan.push(['Feldgruppe „' + sg.label + '"', function () { FIELD_GROUPS.push(_plxCopy(sg)); }]);
+      }
+    });
+    (s.fields || []).forEach(function (sf) {
+      if (!FIELDS.some(function (f) { return f[0] === sf[0]; })) {
+        plan.push(['Feld „' + sf[0] + '"', function () { FIELDS.push(_plxCopy(sf)); }]);
+      }
+    });
+  } else if (kind === 'correspondents') {
+    (s.correspondents || []).forEach(function (sc) {
+      if (!CORRESPONDENTS.some(function (c) { return c.name === sc.name; })) {
+        plan.push(['Korrespondent „' + sc.name + '"', function () { CORRESPONDENTS.push(_plxCopy(sc)); }]);
+      }
+    });
+  } else if (kind === 'paths') {
+    (s.storagePaths || []).forEach(function (sp) {
+      if (!STORAGE_PATHS.some(function (p) { return p.name === sp.name; })) {
+        plan.push(['Speicherpfad „' + sp.name + '"', function () { STORAGE_PATHS.push(_plxCopy(sp)); }]);
+      }
+    });
+  } else if (kind === 'workflows') {
+    (s.workflows || []).forEach(function (sw) {
+      if (!WORKFLOWS.some(function (w) { return w.name === sw.name; })) {
+        plan.push(['Arbeitsablauf „' + sw.name + '"', function () { WORKFLOWS.push(_plxCopy(sw)); }]);
+      }
+    });
+    (s.fristConfigs || []).forEach(function (sf) {
+      if (!FRIST_CONFIGS.some(function (c) { return c.group === sf.group; })) {
+        plan.push(['Frist-Gruppe „' + (sf.label || sf.group) + '"', function () { FRIST_CONFIGS.push(_plxCopy(sf)); }]);
+      }
+    });
+  }
+
+  if (!plan.length) {
+    if (typeof showToast === 'function') showToast('Nichts gelöscht seit der letzten Speicherung ✓');
+    else alert('Nichts gelöscht seit der letzten Speicherung.');
+    return;
+  }
+  var liste = plan.map(function (p) { return '• ' + p[0]; }).join('\n');
+  if (!confirm('Seit der letzten Speicherung gelöscht:\n\n' + liste + '\n\nWiederherstellen? (Bestehendes bleibt unangetastet.)')) return;
+  plan.forEach(function (p) { p[1](); });
+  _plxRerenderAll();
+  if (typeof showToast === 'function') showToast(plan.length + ' Eintrag/Einträge wiederhergestellt ✓');
+}
+
+// ── EIN Objekt auf den Stand der letzten Speicherung zurücksetzen ───────────
+function plxResetOne(kind, key) {
+  var s = _plxSaved;
+  if (!s) { alert('Keine gespeicherte Konfiguration als Referenz vorhanden.'); return; }
+  var label = { tag: 'Eltern-Tag', type: 'Dokumenttyp', fgroup: 'Feldgruppe', field: 'Feld',
+                corr: 'Korrespondent', path: 'Speicherpfad', wf: 'Arbeitsablauf' }[kind] || 'Eintrag';
+  if (!confirm(label + ' „' + key + '" auf den Stand der letzten Speicherung zurücksetzen?')) return;
+
+  function replaceByName(liveArr, savedArr, nameOf) {
+    var saved = savedArr.find(function (x) { return nameOf(x) === key; });
+    if (!saved) return false;
+    var idx = -1;
+    liveArr.forEach(function (x, i) { if (nameOf(x) === key) idx = i; });
+    if (idx >= 0) liveArr.splice(idx, 1, _plxCopy(saved)); else liveArr.push(_plxCopy(saved));
+    return true;
+  }
+
+  var ok = false;
+  if (kind === 'tag') {
+    ok = replaceByName(TAGS, s.tags || [], function (t) { return t.name; });
+    if (ok) {
+      // Match-Regeln der (Snapshot-)Kinder ergänzen, falls sie aktuell fehlen —
+      // nur ergänzen, nichts löschen (keine Überraschungen an fremden Regeln).
+      var st = (s.tags || []).find(function (t) { return t.name === key; });
+      (st.children || []).forEach(function (sc) {
+        var sm = (s.tagMatch || []).find(function (m) { return m.name === sc.name; });
+        if (sm && !TAG_MATCH.some(function (m) { return m.name === sm.name; })) TAG_MATCH.push(_plxCopy(sm));
+      });
+    }
+  } else if (kind === 'type') {
+    ok = replaceByName(TYPES, s.types || [], function (t) { return t.name; });
+  } else if (kind === 'fgroup') {
+    var sg = (s.fieldGroups || []).find(function (g) { return g.id === key; });
+    if (sg) {
+      var gi = FIELD_GROUPS.findIndex(function (g) { return g.id === key; });
+      if (gi >= 0) FIELD_GROUPS.splice(gi, 1, _plxCopy(sg)); else FIELD_GROUPS.push(_plxCopy(sg));
+      // Feldbestand der Gruppe exakt auf Speicher-Stand: aktuelle Felder der Gruppe
+      // raus, Snapshot-Felder der Gruppe rein.
+      for (var i = FIELDS.length - 1; i >= 0; i--) { if (FIELDS[i][2] === key) FIELDS.splice(i, 1); }
+      (s.fields || []).forEach(function (sf) { if (sf[2] === key) FIELDS.push(_plxCopy(sf)); });
+      ok = true;
+    }
+  } else if (kind === 'field') {
+    var sf = (s.fields || []).find(function (f) { return f[0] === key; });
+    if (sf) {
+      var fi = FIELDS.findIndex(function (f) { return f[0] === key; });
+      if (fi >= 0) FIELDS.splice(fi, 1, _plxCopy(sf)); else FIELDS.push(_plxCopy(sf));
+      // Abhängigkeit: gehört das Feld zu einer Gruppe, die aktuell fehlt, kommt sie mit.
+      if (!FIELD_GROUPS.some(function (g) { return g.id === sf[2]; })) {
+        var sgg = (s.fieldGroups || []).find(function (g) { return g.id === sf[2]; });
+        if (sgg) FIELD_GROUPS.push(_plxCopy(sgg));
+      }
+      ok = true;
+    }
+  } else if (kind === 'corr') {
+    ok = replaceByName(CORRESPONDENTS, s.correspondents || [], function (c) { return c.name; });
+  } else if (kind === 'path') {
+    ok = replaceByName(STORAGE_PATHS, s.storagePaths || [], function (p) { return p.name; });
+  } else if (kind === 'wf') {
+    ok = replaceByName(WORKFLOWS, s.workflows || [], function (w) { return w.name; });
+  }
+
+  if (!ok) { alert('„' + key + '" existiert in der letzten Speicherung nicht.'); return; }
+  _plxRerenderAll();
+  if (typeof showToast === 'function') showToast('„' + key + '" zurückgesetzt ✓');
+}
+
+// Kleiner einheitlicher ↺-Knopf für die Editor-Köpfe (nur wenn Referenz existiert).
+function plxResetBtn(kind, key) {
+  if (!plxHasSaved(kind, key)) return null;
+  var b = document.createElement('button');
+  b.className = 'btn-add-child';
+  b.textContent = '↺';
+  b.title = 'Auf den Stand der letzten Speicherung zurücksetzen';
+  b.onclick = function (e) { e.stopPropagation(); plxResetOne(kind, key); };
+  return b;
+}
+
+// HTML-Variante für template-string-Renderer (Tag-Editor): fertiger Button-HTML
+// oder '' — Name wird erst JS-String-, dann HTML-Attribut-escaped, damit auch
+// Namen mit ' " & \ sicher im inline-onclick landen. Render-Zeit-Name, damit der
+// ↺ auch ein zwischenzeitliches Umbenennen auf den Speicher-Stand zurückholt.
+function plxResetBtnHtml(kind, key) {
+  if (!plxHasSaved(kind, key)) return '';
+  var js = String(key).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  var attr = js.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  return '<button class="btn-add-child" onclick="event.stopPropagation();plxResetOne(\'' + kind + '\',\'' + attr + '\')" title="Auf den Stand der letzten Speicherung zurücksetzen">↺</button>';
+}
+
+// Fallback-Referenz: falls bis kurz nach dem Start nichts geladen/gespeichert wurde
+// (frische Sitzung), gilt der Sitzungs-Anfangszustand als Referenz.
+window.addEventListener('load', function () {
+  setTimeout(function () { if (!_plxSaved) plxMarkSaved(); }, 2600);
 });
 </script>
 </body>
