@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Paperless-ngx Setup Generator v3.95</title>
+<title>Paperless-ngx Setup Generator v3.96</title>
 <!-- Schriften inline (offline, kein Google-Fonts-CDN mehr; v3.78) -->
 <style>/* Google Fonts inline (v3.78) - Sora + JetBrains Mono (400/600/700), latin-Subset, base64. Ersetzt den @import; voll offline. */
 /* latin */
@@ -352,14 +352,14 @@ input.valid{border-color:var(--accent2)!important;}
   <button id="hamburger-btn" onclick="toggleSidebar()" aria-label="Navigation">
     <span></span><span></span><span></span>
   </button>
-  <span id="topbar-title">Setup Generator v3.95</span>
+  <span id="topbar-title">Setup Generator v3.96</span>
   <span id="topbar-conn-dot" class="sticky-conn-dot" title="Verbindungsstatus"></span>
-  <span id="topbar-badge">v3.95</span>
+  <span id="topbar-badge">v3.96</span>
 </div>
 <aside id="sidebar">
   <div class="sb-header">
     <div class="sb-logo">Paperless-ngx</div>
-    <div class="sb-title">Setup Generator v3.95</div>
+    <div class="sb-title">Setup Generator v3.96</div>
   </div>
   <nav class="sb-nav">
     <span class="sb-label">Konfiguration</span>
@@ -387,7 +387,7 @@ input.valid{border-color:var(--accent2)!important;}
 <main id="content">
 
   <div class="hero">
-    <div class="badge" id="hdr-badge">v3.95 &middot; Bash + Direkt &middot; REST API &middot; Stand: <span id="badge-date">15.07.2026</span></div>
+    <div class="badge" id="hdr-badge">v3.96 &middot; Bash + Direkt &middot; REST API &middot; Stand: <span id="badge-date">16.07.2026</span></div>
     <h1>Paperless-ngx<br>Setup Generator</h1>
     <p>Richtet eine frische Paperless-ngx-Instanz vollautomatisch ein &ndash; Tags, Dokumenttypen, Felder, Korrespondenten, Speicherpfade und Arbeitsabl&auml;ufe &ndash; per Bash-Skript oder direkt aus dem Browser via REST API.</p>
     <div style="margin-top:.6rem">
@@ -4198,7 +4198,7 @@ const AN_HINTS=[
   "Unscharfe Suche – toleriert Tippfehler",
   "Automatisch trainiert aus manuell beschrifteten Dokumenten"
 ];
-const GENERATOR_VERSION = "3.95";
+const GENERATOR_VERSION = "3.96";
 
 function updateVersionWarnings(){
   const v=document.getElementById("inp-plx-version");
@@ -11357,35 +11357,27 @@ function runDupCheck() {
   const out = document.getElementById('dup-results');
   if(!out) return;
 
-  // Match-Begriffe je Objektart getrennt sammeln. Nur eine ECHTE Kollision liegt vor,
-  // wenn zwei Objekte DERSELBEN Art (Typ/Typ, Tag/Tag, Korr/Korr) denselben Begriff
-  // teilen – dann konkurrieren sie um denselben Slot. Ein Begriff, der z. B. in einem
-  // Typ UND einem Tag steht, ist unkritisch (verschiedene, unabhaengige Felder).
-  const allTerms = {}; // term → [{cls, name}, ...]
-
-  function addTerms(source, cls, name) {
-    const terms = source.split(/\s+/).filter(Boolean).map(t=>t.toLowerCase().replace(/^"(.*)"$/,'$1'));
-    terms.forEach(function(t) {
-      if(!t || t.length < 3) return;
-      if(!allTerms[t]) allTerms[t] = [];
-      if(!allTerms[t].some(o=>o.cls===cls&&o.name===name)) allTerms[t].push({cls:cls, name:name});
-    });
-  }
-
-  TYPES.forEach(function(t) { if(t.algo>0&&t.match) addTerms(t.match, 'Typ', t.name); });
-  TAG_MATCH.forEach(function(tm) { if(tm.algo>0&&tm.match) addTerms(tm.match, 'Tag', tm.name); });
-  CORRESPONDENTS.forEach(function(c) { if(c.algo>0&&c.match) addTerms(c.match, 'Korrespondent', c.name); });
-
-  // In echte Kollisionen (gleiche Art ≥2) und unkritische Cross-Art-Ueberschneidungen trennen
+  // Begriffe kommen aus _detectMatchConflicts() (07-health-match.js) — der einzigen
+  // Stelle, die den Matching-Algorithmus korrekt beruecksichtigt. Diese Funktion hatte
+  // frueher eine eigene Sammlung, die JEDEN match-String stur nach Leerzeichen zerlegte
+  // und `algo` ignorierte. Das meldete Geister: zwei Korrespondenten mit algo=3
+  // (LITERAL) und den match-Strings 'Dr. med. Elena Andreea Cotora' bzw. 'Dr. med.
+  // Wolfgang Raab' kollidierten angeblich bei "dr." und "med." — Paperless sucht bei
+  // LITERAL aber den GANZEN String als Phrase, die beiden treffen sich nie. Wortweise
+  // zerlegen ist ausschliesslich bei algo=1 (ANY) richtig.
+  //
+  // Nur eine ECHTE Kollision liegt vor, wenn zwei Objekte DERSELBEN Art (Typ/Typ,
+  // Tag/Tag, Korr/Korr) denselben Begriff teilen — dann konkurrieren sie um denselben
+  // Slot. Ein Begriff, der z. B. in einem Typ UND einem Tag steht, ist unkritisch
+  // (verschiedene, unabhaengige Felder).
   const hard = []; // [term, byCls, collidingClasses]
   const soft = []; // [term, objs]
-  Object.entries(allTerms).forEach(function([term, objs]) {
-    if(objs.length < 2) return;
+  _detectMatchConflicts().forEach(function(c) {
     const byCls = {};
-    objs.forEach(o=>{ (byCls[o.cls]=byCls[o.cls]||[]).push(o.name); });
-    const colliding = Object.keys(byCls).filter(c=>byCls[c].length>1);
-    if(colliding.length) hard.push([term, byCls, colliding]);
-    else soft.push([term, objs]);
+    c.items.forEach(function(i){ (byCls[i.cat]=byCls[i.cat]||[]).push(i.name); });
+    const colliding = Object.keys(byCls).filter(x=>byCls[x].length>1);
+    if(colliding.length) hard.push([c.term, byCls, colliding]);
+    else soft.push([c.term, c.items.map(function(i){ return {cls:i.cat, name:i.name}; })]);
   });
 
   if(!hard.length && !soft.length) {
