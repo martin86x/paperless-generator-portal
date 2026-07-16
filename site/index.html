@@ -7202,9 +7202,29 @@ function deleteFristConfig(group) {
   renderFristWorkflows();
 }
 
+// Frist-Karte auf-/zuklappen. Kopf (Emoji + Name + Auslöser-Badge) bleibt sichtbar,
+// der Rest (Filter, Erinnerungen, Betreff & Body) klappt weg — für die Übersicht.
+function fristToggleCard(group) {
+  var card = document.getElementById('frist-card-'+group);
+  if(!card) return;
+  var body = card.querySelector('.frist-body');
+  var arr  = card.querySelector('.frist-arr');
+  if(!body) return;
+  var open = body.style.display !== 'none';
+  body.style.display = open ? 'none' : '';
+  card.dataset.open = open ? '0' : '1';
+  if(arr) arr.textContent = open ? '▶' : '▼';
+}
+
 function renderFristWorkflows() {
   var el = document.getElementById("frist-wf-preview");
   if(!el) return;
+
+  // Offen-Zustand der Karten merken. Standard ist EINGEKLAPPT; nur was der Nutzer
+  // aufgeklappt hatte, bleibt beim Neu-Rendern offen (sonst klappt die gerade
+  // bearbeitete Gruppe bei jeder Eingabe wieder zu).
+  var fristOpen = {};
+  el.querySelectorAll('[data-fg]').forEach(function(c){ if(c.dataset.open==='1') fristOpen[c.dataset.fg]=true; });
 
   // Migration aller FRIST_CONFIGS sicherstellen
   FRIST_CONFIGS.forEach(function(cfg){ _migrateFristConfig(cfg); });
@@ -7222,21 +7242,27 @@ function renderFristWorkflows() {
     var noFilter = !cfg.doctype && !cfg.tagFilter;
     var borderColor = noFilter ? 'rgba(247,111,111,.4)' : 'var(--border)';
 
-    html += '<div id="frist-card-'+cfg.group+'" style="background:var(--bg3);border:1px solid '+borderColor+';border-radius:8px;padding:.75rem 1rem;">';
+    var _open = fristOpen[cfg.group];
+    html += '<div id="frist-card-'+cfg.group+'" data-fg="'+cfg.group+'" data-open="'+(_open?'1':'0')+'" style="background:var(--bg3);border:1px solid '+borderColor+';border-radius:8px;padding:.75rem 1rem;">';
 
-    // Zeile 1: Icon-Input + Label-Input + Trigger-Badge + Delete
-    html += '<div style="display:flex;align-items:center;gap:.45rem;margin-bottom:.55rem;flex-wrap:wrap">';
+    // Zeile 1 (Kopf, immer sichtbar): Chevron + Icon + Label + Trigger-Badge + Delete.
+    // Klick auf den Kopf klappt die Karte auf/zu; Eingabefelder + Löschen stoppen das.
+    html += '<div onclick="fristToggleCard(\''+cfg.group+'\')" style="display:flex;align-items:center;gap:.45rem;flex-wrap:wrap;cursor:pointer">';
+    html += '<span class="frist-arr" style="font-size:.8rem;color:var(--accent);font-weight:700;flex-shrink:0">'+(_open?'▼':'▶')+'</span>';
     html += '<input type="text" value="'+cfg.icon.replace(/"/g,'&quot;')+'"'
-          + ' oninput="fristSet(\''+cfg.group+'\',\'icon\',this.value)"'
+          + ' onclick="event.stopPropagation()" oninput="fristSet(\''+cfg.group+'\',\'icon\',this.value)"'
           + ' style="width:2.8rem;text-align:center;font-size:1rem;padding:.18rem .2rem;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text)" title="Emoji">';
     html += '<input type="text" value="'+cfg.label.replace(/"/g,'&quot;')+'"'
-          + ' oninput="fristSet(\''+cfg.group+'\',\'label\',this.value)"'
+          + ' onclick="event.stopPropagation()" oninput="fristSet(\''+cfg.group+'\',\'label\',this.value)"'
           + ' style="flex:1;min-width:8rem;font-weight:700;font-size:.85rem;color:#fff;padding:.28rem .5rem;background:var(--bg);border:1px solid var(--border);border-radius:5px" placeholder="Gruppen-Name">';
     html += '<span style="font-family:JetBrains Mono,monospace;font-size:.63rem;color:#8de8cf;'
           + 'background:rgba(56,217,169,.1);border:1px solid rgba(56,217,169,.25);border-radius:3px;padding:.1rem .38rem;white-space:nowrap;flex-shrink:0">'
           + '⏰ Dokument geplant (Typ 4)</span>';
-    html += '<button class="btn-del" onclick="deleteFristConfig(\''+cfg.group+'\')" title="Gruppe löschen" style="flex-shrink:0">✕</button>';
+    html += '<button class="btn-del" onclick="event.stopPropagation();deleteFristConfig(\''+cfg.group+'\')" title="Gruppe löschen" style="flex-shrink:0">✕</button>';
     html += '</div>';
+
+    // Einklappbarer Rest der Karte (Filter, Warnungen, Auslöser, Erinnerungen, Betreff & Body)
+    html += '<div class="frist-body" style="display:'+(_open?'':'none')+';margin-top:.55rem">';
 
     // Zeile 2: Dokumenttyp-Filter + Tag-Filter
     html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.4rem;margin-bottom:.3rem">';
@@ -7350,6 +7376,7 @@ function renderFristWorkflows() {
     html += '<button class="btn-add" onclick="fristAddReminder(\''+cfg.group+'\')" style="font-size:.68rem;padding:.22rem .55rem;margin-top:.1rem">+ Erinnerung hinzufügen</button>';
     html += '</div>'; // reminders container end
 
+    html += '</div>'; // frist-body end
     html += '</div>'; // card end
   });
 
