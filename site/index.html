@@ -5054,6 +5054,12 @@ function renderFieldsEditor() {
   _markEdited("s-prev-fields");
   const list = document.getElementById("fields-editor-list");
   if(!list) return;
+  // Welche Gruppen waren offen? Standard ist ZU — beim Neu-Rendern (z. B. Feld-Toggle)
+  // aber den Zustand erhalten, sonst klappt die gerade bearbeitete Gruppe wieder zu.
+  const openState = {};
+  list.querySelectorAll(".te-acc[data-gid]").forEach(el => {
+    if(el.dataset.open === "1") openState[el.dataset.gid] = true;
+  });
   list.innerHTML = "";
   const tc={string:"#4f8ef7",longtext:"#60a5fa",monetary:"#f7c948",date:"#38d9a9",boolean:"#f76f6f",select:"#c084fc",integer:"#fb923c",url:"#67e8f9",float:"#94a3b8",documentlink:"#e879f9"};
   const DT_H={"string":"Text","longtext":"Langer Text","monetary":"Betrag \u20ac","date":"Datum/Frist","boolean":"Ja/Nein","select":"Dropdown","integer":"Ganzzahl","float":"Kommazahl","url":"Link","documentlink":"Dok-Verknüpfung"};
@@ -5064,14 +5070,18 @@ function renderFieldsEditor() {
     // Optik wie der Tag-Editor: gemeinsame .acc-Karte. Der Felder-Editor ist zweistufig
     // (Gruppen mit Feld-Zeilen) und behält seine eigene Klapp-Logik unten.
     grpDiv.className = "acc te-acc";
-    const grpCollapsed = grpFields.length>6;   // lange Gruppen (>6 Felder) standardmäßig zu
+    grpDiv.dataset.gid = grp.id;
+    // Standardmäßig eingeklappt; nur offen, wenn der Nutzer die Gruppe aufgeklappt hatte.
+    const grpCollapsed = !openState[grp.id];
+    grpDiv.dataset.open = grpCollapsed ? "0" : "1";
     // Kopfzeile als kompakte, klickbare Karte (ganze Zeile toggelt)
     const hdr = document.createElement("div");
     hdr.className = "acc-h te-head";
     const grpChevron=document.createElement("span");
-    // Chevron steht hier LINKS (Gruppen-Kopf) — margin-left:0 hebt das auto der .acc-arr auf.
+    // Chevron steht hier LINKS (Gruppen-Kopf). Farbe/Größe kommen aus der .acc-arr-Klasse
+    // (accent-blau) — hier nur die Breite fixieren, keine eigene Farbe mehr setzen.
     grpChevron.className="acc-arr";
-    grpChevron.style.cssText="color:var(--text-muted);font-size:.65rem;flex-shrink:0;width:.8rem;text-align:center;margin-left:0";
+    grpChevron.style.cssText="flex-shrink:0;width:.8rem;text-align:center";
     grpChevron.textContent = grpCollapsed ? "▶" : "▼";
     const inp = document.createElement("input");
     inp.type="text"; inp.value=grp.label;
@@ -5104,7 +5114,7 @@ function renderFieldsEditor() {
     const grpBody=document.createElement("div");
     grpBody.style.cssText="padding:.4rem .4rem .12rem;";
     if(grpCollapsed) grpBody.style.display="none";
-    hdr.onclick=(function(b,ch){return function(){const hid=b.style.display==="none";b.style.display=hid?"":"none";ch.textContent=hid?"▼":"▶";};})(grpBody,grpChevron);
+    hdr.onclick=(function(b,ch,gd){return function(){const hid=b.style.display==="none";b.style.display=hid?"":"none";ch.textContent=hid?"▼":"▶";gd.dataset.open=hid?"1":"0";};})(grpBody,grpChevron,grpDiv);
     grpFields.forEach(f => {
       const i = FIELDS.indexOf(f);
       const row = document.createElement("div");
