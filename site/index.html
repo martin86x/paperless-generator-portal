@@ -143,7 +143,7 @@
   .acc{border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:.55rem;}
   .acc-h{display:flex;align-items:center;gap:.65rem;padding:.65rem .9rem;background:var(--bg3);cursor:pointer;font-size:.82rem;font-weight:600;color:var(--text);user-select:none;transition:background .15s;}
   .acc-h:hover{background:#202840;}
-  .acc-arr{font-size:.58rem;color:var(--text-muted);transition:transform .2s;margin-left:auto;}
+  .acc-arr{font-size:.8rem;color:var(--accent);font-weight:700;transition:transform .2s;order:-1;margin-left:0;margin-right:.15rem;flex-shrink:0;}
   .acc-h.open .acc-arr{transform:rotate(90deg);}
   .acc-b{display:none;border-top:1px solid var(--border);}
   .acc-b.open{display:block;}
@@ -3567,6 +3567,7 @@ function deleteParentTag(pi) {
 }
 
 function deleteChildTag(pi, ci) {
+  if (!confirm(`Kind-Tag "${TAGS[pi].children[ci].name}" löschen?`)) return;
   TAGS[pi].children.splice(ci, 1);
   renderTagEditor();
 }
