@@ -241,7 +241,13 @@
     var h = sc.querySelector('h2');
     if (h) sc.insertBefore(b, h.nextSibling); else sc.insertBefore(b, sc.firstChild);
 
-    var st = document.getElementById('setup-steps'); if (st) st.style.display = 'none';
+    // Den GANZEN "Einrichtung – Schritt für Schritt"-Block ausblenden (Kopfbalken +
+    // Inhalt). Er beschreibt den Standalone-Weg (lokaler http.server, CORS in der
+    // docker-compose, Verbindung per Datei) — im Portal-Modus alles gegenstandslos und
+    // verwirrend. Vorher wurde nur der Inhalt (#setup-steps) versteckt, der Kopfbalken
+    // blieb klickbar und klappte die Schritte wieder auf. Jetzt das Eltern-Panel weg.
+    var st = document.getElementById('setup-steps');
+    if (st) { var panel = st.parentElement; (panel || st).style.display = 'none'; }
 
     // Im Portal-Modus wirkungslose Verbindungs-/Bash-Felder ausblenden (Proxy übernimmt die
     // Verbindung; IP/Pfade nur für den optionalen Bash-Export). Sichtbar bleiben
@@ -293,6 +299,16 @@
         em.addEventListener('input', chk); chk();
       }
     }
+
+    // Bash-Skript-Weg im Portal-Modus: Sektion 11 „So wendest du das Skript an" ist
+    // reine SSH/scp-Anleitung — im Portal richtet der Direkt-Modus über den Proxy ein.
+    // Sektion + Sidebar-Link ausblenden. (Sektion 09 bleibt: sie hält Health-Check,
+    // Statistik und die Dry-Run/Ausführen-Buttons; Sektion 10 taucht ohnehin nur nach
+    // dem Bash-Generieren auf.)
+    var howto = document.getElementById('s-howto');
+    if (howto) howto.style.display = 'none';
+    var howtoLink = document.querySelector('.sb-link[onclick*="s-howto"]');
+    if (howtoLink) howtoLink.style.display = 'none';
   }
 
   // Sentinel-Token (40 Hex): Der /api/-Proxy verwirft den Client-Authorization-Header und
