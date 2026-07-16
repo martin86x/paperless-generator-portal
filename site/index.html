@@ -3897,8 +3897,8 @@ function renderCorrespondentEditor() {
     row1.className = "acc-h te-head";
     row1.onclick = function(){ toggleTeAcc(row1); };
     const inp = document.createElement("input"); inp.type="text"; inp.value=c.name;
-    // Kopf-Titel-Schrift wie Abschnitt 05 (Felder): klein, fett, uppercase, gedämpft.
-    inp.placeholder="Name (z.B. Finanzamt)"; inp.style.cssText="flex:1;padding:.32rem .55rem;font-size:.75rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.1em";
+    // Kopf-Titel: uppercase-Layout, aber helle Textfarbe wie die Tag-Namen (Abschnitt 03).
+    inp.placeholder="Name (z.B. Finanzamt)"; inp.style.cssText="flex:1;padding:.32rem .55rem;font-size:.75rem;font-weight:700;color:var(--text);text-transform:uppercase;letter-spacing:.1em";
     inp.onclick=function(e){ e.stopPropagation(); };
     inp.oninput=(function(i2){return function(){CORRESPONDENTS[i2].name=this.value;};})(i);
     const db = document.createElement("button"); db.className="btn-del"; db.textContent="✕"; db.title="Löschen";
@@ -5086,7 +5086,7 @@ function renderFieldsEditor() {
     grpChevron.textContent = grpCollapsed ? "▶" : "▼";
     const inp = document.createElement("input");
     inp.type="text"; inp.value=grp.label;
-    inp.style.cssText="font-size:.75rem;font-weight:700;color:var(--text-muted);background:none;border:none;text-transform:uppercase;letter-spacing:.1em;flex:1;padding:0;outline:none;cursor:text";
+    inp.style.cssText="font-size:.75rem;font-weight:700;color:var(--text);background:none;border:none;text-transform:uppercase;letter-spacing:.1em;flex:1;padding:0;outline:none;cursor:text";
     inp.onclick=function(e){e.stopPropagation();};
     inp.oninput = (function(gi2){return function(){FIELD_GROUPS[gi2].label=this.value;};})(gi);
     const cntBadge=document.createElement("span");
@@ -5285,8 +5285,8 @@ function renderPathsEditor() {
     const spEn=plxToggle(plxOn(sp),(function(i2){return function(on){STORAGE_PATHS[i2].enabled=on;renderPathsEditor();updateStats();};})(i));
     row1.appendChild(spEn);
     const nameInp = document.createElement("input"); nameInp.type="text"; nameInp.value=sp.name;
-    // Kopf-Titel-Schrift wie Abschnitt 05 (Felder): klein, fett, uppercase, gedämpft.
-    nameInp.placeholder="z.B. Standard-Pfad"; nameInp.style.cssText="flex:1;padding:.32rem .55rem;font-size:.75rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.1em";
+    // Kopf-Titel: uppercase-Layout, aber helle Textfarbe wie die Tag-Namen (Abschnitt 03).
+    nameInp.placeholder="z.B. Standard-Pfad"; nameInp.style.cssText="flex:1;padding:.32rem .55rem;font-size:.75rem;font-weight:700;color:var(--text);text-transform:uppercase;letter-spacing:.1em";
     nameInp.onclick=function(e){ e.stopPropagation(); };
     nameInp.oninput=(function(i2){return function(){STORAGE_PATHS[i2].name=this.value;};})(i);
     const spBadge=plxBadge(plxOn(sp));
@@ -6228,8 +6228,8 @@ function renderWorkflowEditor() {
     // Name
     const nameInp = document.createElement("input"); nameInp.type="text"; nameInp.value=wf.name;
     nameInp.placeholder="Arbeitsablauf-Name";
-    // Kopf-Titel-Schrift wie Abschnitt 05 (Felder): klein, fett, uppercase, gedämpft.
-    nameInp.style.cssText="flex:1;padding:.28rem .5rem;font-size:.75rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.1em";
+    // Kopf-Titel: uppercase-Layout, aber helle Textfarbe wie die Tag-Namen (Abschnitt 03).
+    nameInp.style.cssText="flex:1;padding:.28rem .5rem;font-size:.75rem;font-weight:700;color:var(--text);text-transform:uppercase;letter-spacing:.1em";
     nameInp.onclick=function(e){e.stopPropagation();};
     nameInp.oninput=(function(i2){return function(){WORKFLOWS[i2].name=this.value;};})(i);
 
