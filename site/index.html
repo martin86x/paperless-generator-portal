@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Paperless-ngx Setup Generator v3.96</title>
+<title>Paperless-ngx Setup Generator v3.97</title>
 <!-- Schriften inline (offline, kein Google-Fonts-CDN mehr; v3.78) -->
 <style>/* Google Fonts inline (v3.78) - Sora + JetBrains Mono (400/600/700), latin-Subset, base64. Ersetzt den @import; voll offline. */
 /* latin */
@@ -352,14 +352,14 @@ input.valid{border-color:var(--accent2)!important;}
   <button id="hamburger-btn" onclick="toggleSidebar()" aria-label="Navigation">
     <span></span><span></span><span></span>
   </button>
-  <span id="topbar-title">Setup Generator v3.96</span>
+  <span id="topbar-title">Setup Generator v3.97</span>
   <span id="topbar-conn-dot" class="sticky-conn-dot" title="Verbindungsstatus"></span>
-  <span id="topbar-badge">v3.96</span>
+  <span id="topbar-badge">v3.97</span>
 </div>
 <aside id="sidebar">
   <div class="sb-header">
     <div class="sb-logo">Paperless-ngx</div>
-    <div class="sb-title">Setup Generator v3.96</div>
+    <div class="sb-title">Setup Generator v3.97</div>
   </div>
   <nav class="sb-nav">
     <span class="sb-label">Konfiguration</span>
@@ -387,7 +387,7 @@ input.valid{border-color:var(--accent2)!important;}
 <main id="content">
 
   <div class="hero">
-    <div class="badge" id="hdr-badge">v3.96 &middot; Bash + Direkt &middot; REST API &middot; Stand: <span id="badge-date">16.07.2026</span></div>
+    <div class="badge" id="hdr-badge">v3.97 &middot; Bash + Direkt &middot; REST API &middot; Stand: <span id="badge-date">17.07.2026</span></div>
     <h1>Paperless-ngx<br>Setup Generator</h1>
     <p>Richtet eine frische Paperless-ngx-Instanz vollautomatisch ein &ndash; Tags, Dokumenttypen, Felder, Korrespondenten, Speicherpfade und Arbeitsabl&auml;ufe &ndash; per Bash-Skript oder direkt aus dem Browser via REST API.</p>
     <div style="margin-top:.6rem">
@@ -2339,11 +2339,11 @@ IBAN DE12 3456 7890';runMatchTest();" style="font-size:.72rem;padding:.28rem .65
 const TAGS=[
   {name:"\u{1F4E5} Posteingang",color:"#3b82f6",isInbox:true,children:[]},
   {name:"\u{1F4B0} Finanzen",color:"#15803d",children:[{name:"Steuer",color:"#22c55e"},{name:"Investitionen",color:"#4ade80"},{name:"Kredite",color:"#86efac"},{name:"Depot",color:"#bbf7d0"}]},
-  {name:"\u{1F3E5} Gesundheit",color:"#b91c1c",children:[{name:"Arztbesuche",color:"#ef4444"},{name:"Rezepte",color:"#f87171"},{name:"Krankenhaus",color:"#dc2626"},{name:"Krankenkasse",color:"#fca5a5"},{name:"Zahnärzte",color:"#fecaca"}]},
+  {name:"\u{1F3E5} Gesundheit",color:"#b91c1c",children:[{name:"Arztbesuche",color:"#ef4444"},{name:"Rezepte",color:"#f87171"},{name:"Krankenhaus",color:"#dc2626"},{name:"Krankenkasse",color:"#fca5a5"},{name:"Zahnärzte",color:"#fecaca"},{name:"Krankengeld",color:"#f43f5e"},{name:"Impfung",color:"#fb7185"}]},
   {name:"\u{1F3E0} Wohnen",color:"#c2410c",children:[{name:"Miete",color:"#f97316"},{name:"Nebenkosten",color:"#fb923c"},{name:"Reparaturen",color:"#ea580c"},{name:"Hausrat",color:"#fdba74"},{name:"Möbel",color:"#fed7aa"},{name:"Mieterhöhung",color:"#fed7aa"}]},
   {name:"\u{1F697} Fahrzeug",color:"#a16207",children:[{name:"TÜV",color:"#facc15"},{name:"Reparatur",color:"#ca8a04"},{name:"Tankquittungen",color:"#fde047"},{name:"Zulassung",color:"#fef08a"}]},
   {name:"\u{1F4BC} Arbeit",color:"#7e22ce",children:[{name:"Lohnabrechnung",color:"#a855f7"},{name:"Anstellungsvertrag",color:"#9333ea"},{name:"Weiterbildung",color:"#c084fc"},{name:"Reisekosten",color:"#d8b4fe"},{name:"Bescheinigungen",color:"#e9d5ff"}]},
-  {name:"\u{1F3DB} Behörden",color:"#1e3a8a",children:[{name:"Finanzamt",color:"#1d4ed8"},{name:"Sozialamt",color:"#1e40af"},{name:"Rentenbescheid",color:"#2563eb"},{name:"Bürgeramt",color:"#3b82f6"},{name:"Gericht",color:"#60a5fa"}]},
+  {name:"\u{1F3DB} Behörden",color:"#1e3a8a",children:[{name:"Finanzamt",color:"#1d4ed8"},{name:"Sozialamt",color:"#1e40af"},{name:"Rentenbescheid",color:"#2563eb"},{name:"Bürgeramt",color:"#3b82f6"},{name:"Gericht",color:"#60a5fa"},{name:"Sozialversicherung",color:"#93c5fd"}]},
   {name:"\u{1F4E6} Einkäufe",color:"#0e7490",children:[{name:"Elektronik",color:"#0891b2"},{name:"Kleidung",color:"#22d3ee"},{name:"Garantien",color:"#67e8f9"},{name:"Lebensmittel",color:"#a5f3fc"}]},
   {name:"\u{1F4CB} Verträge",color:"#9d174d",children:[{name:"Strom",color:"#ec4899"},{name:"Internet",color:"#db2777"},{name:"Handy",color:"#f472b6"},{name:"Streaming",color:"#f9a8d4"},{name:"Mitgliedschaft",color:"#fce7f3"}]},
   {name:"\u{1F6E1}️ Versicherungen",color:"#0f766e",children:[{name:"Hausratversicherung",color:"#14b8a6"},{name:"Kfz-Versicherung",color:"#2dd4bf"},{name:"Rechtsschutz",color:"#5eead4"},{name:"Brillen-Zusatz",color:"#99f6e4"},{name:"Zahnersatz",color:"#ccfbf1"},{name:"Berufsunfähigkeit",color:"#0f766e"},{name:"Lebensversicherung",color:"#134e4a"}]},
@@ -2365,6 +2365,8 @@ const TAG_MATCH=[
   {name:"Arztbesuche",algo:1,match:"Kassenärztlich Krankenschein Überweisungsschein Arztüberweisung"},
   {name:"Krankenkasse",algo:1,match:"Krankenkasse Kassenleistung Versichertennummer Knappschaft AOK Barmer DAK TK Techniker"},
   {name:"Krankenhaus",algo:1,match:"Krankenhaus Klinikum stationär Aufnahme Entlassung Bettenhaus"},
+  {name:"Krankengeld",algo:1,match:"Krankengeld Krankengeldbezug Krankengeldbescheinigung Entgeltfortzahlung Krankentagegeld"},
+  {name:"Impfung",algo:1,match:"Impfung Impfpass Impfbescheinigung Impfnachweis Schutzimpfung Impfausweis"},
 
   // ── Wohnen ────────────────────────────────────────────────
   {name:"Miete",algo:1,match:"Kaltmiete Warmmiete Mietzahlung Mietbetrag"},
@@ -2388,6 +2390,7 @@ const TAG_MATCH=[
   {name:"Finanzamt",algo:1,match:"Finanzamt Steueridentifikationsnummer Steuerbescheid"},
   {name:"Rentenbescheid",algo:1,match:"Renteninformation Rentenauskunft DRV-Bescheid Rentenbescheid Rentenanpassung"},
   {name:"Sozialamt",algo:1,match:"Bürgergeld Jobcenter Sozialleistung Bewilligungsbescheid Grundsicherung"},
+  {name:"Sozialversicherung",algo:1,match:"Sozialversicherung Sozialversicherungsnummer Sozialversicherungsausweis Rentenversicherung Pflegeversicherung Arbeitslosenversicherung"},
   {name:"Bürgeramt",algo:1,match:"Einwohnermeldeamt Meldebescheinigung Anmeldebestätigung Ummeldung"},
 
   // ── Einkäufe ──────────────────────────────────────────────
@@ -2505,6 +2508,7 @@ const FIELDS=[
   ["Bezahlt","boolean","rechnung"],
   ["Zahlungsdatum","date","rechnung"],
   ["Zahlungsart","select","rechnung",{select_options:["Überweisung","Lastschrift","Kreditkarte","Bar","PayPal","Sonstige"]}],
+  ["Erstattungsdatum","date","rechnung"],
   ["Zahlungsziel Q1","date","rechnung"],
   ["Zahlungsziel Q2","date","rechnung"],
   ["Zahlungsziel Q3","date","rechnung"],
@@ -4208,7 +4212,7 @@ const AN_HINTS=[
   "Unscharfe Suche – toleriert Tippfehler",
   "Automatisch trainiert aus manuell beschrifteten Dokumenten"
 ];
-const GENERATOR_VERSION = "3.96";
+const GENERATOR_VERSION = "3.97";
 
 function updateVersionWarnings(){
   const v=document.getElementById("inp-plx-version");
