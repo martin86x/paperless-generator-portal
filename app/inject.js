@@ -114,6 +114,50 @@
     if (head) document.body.style.paddingTop = head.offsetHeight + 'px';
   }
 
+  // ── Blanko-Profil ─────────────────────────────────────────────────────────────
+  // Bestehende (fremde) Instanz: nur Verwaltung/Auswertung, keine Generator-Vorschlaege.
+  // Reine Anzeige-Anpassung per Injektion — der Generator selbst bleibt unveraendert.
+  var _BLANK_HIDE = ['s-quick', 's-sel', 's-edit-tags', 's-edit-types', 's-prev-fields',
+    's-edit-workflows', 's-edit-paths', 's-edit-corr', 's-gen', 's-direct', 's-out', 's-howto'];
+
+  function applyBlankMode() {
+    if (!document.getElementById('plx-blank-css')) {
+      var css = _BLANK_HIDE.map(function (id) {
+        return '#' + id + ',.sb-link[data-sid="' + id + '"],.sb-link[onclick*=' + JSON.stringify("'" + id + "'") + ']';
+      }).join(',') + '{display:none!important}' +
+        '#plx-health-badge{display:none!important}' +
+        '.sb-label:nth-of-type(2),.sb-label:nth-of-type(4){display:none!important}';
+      var st = document.createElement('style');
+      st.id = 'plx-blank-css'; st.textContent = css;
+      document.head.appendChild(st);
+    }
+    var head = document.getElementById('plx-portal-head');
+    if (head && !document.getElementById('plx-blank-banner')) {
+      var b = document.createElement('div');
+      b.id = 'plx-blank-banner';
+      b.style.cssText = 'background:#1e3a5f;color:#dbe9ff;text-align:center;padding:5px 12px;font-size:12px;font-family:system-ui,sans-serif';
+      b.textContent = 'Blanko-Profil: nur Verwaltung und Auswertung, keine Generator-Vorschläge. Löschen bleibt gesperrt.';
+      head.insertBefore(b, head.firstChild);
+      syncHeadPadding();
+    }
+    try { if (typeof switchToolsTab === 'function') switchToolsTab('online'); } catch (e) {}
+  }
+
+  function emptyGeneratorLists() {
+    var lists = [function () { return TAGS; }, function () { return TAG_MATCH; },
+      function () { return TYPES; }, function () { return CORRESPONDENTS; },
+      function () { return FIELDS; }, function () { return STORAGE_PATHS; },
+      function () { return WORKFLOWS; }, function () { return FRIST_CONFIGS; }];
+    lists.forEach(function (g) {
+      try { var a = g(); if (Array.isArray(a)) a.length = 0; } catch (e) {}
+    });
+    ['renderTagEditor', 'renderTypeEditor', 'renderCorrespondentEditor', 'renderFieldsEditor',
+     'renderPathsEditor', 'renderWorkflowEditor', 'renderFristWorkflows', 'buildEditorTypes',
+     'buildEditorTags', 'updateStats', 'updateHowto', 'updatePaths'].forEach(function (fn) {
+      try { if (typeof window[fn] === 'function') window[fn](); } catch (e) {}
+    });
+  }
+
   function showProductiveBanner(name, color, readonly) {
     var head = document.getElementById('plx-portal-head');
     if (!head) return; // Kopf wird von buildNav() erzeugt; Banner lebt darin
@@ -142,6 +186,7 @@
             _dropdown.appendChild(op);
           });
         }
+        if (d.active_blank) applyBlankMode();
         if (d.active_productive) showProductiveBanner(d.active_name, d.active_color, d.active_readonly);
         else removeProductiveBanner();
       }).catch(function () {});
@@ -380,9 +425,20 @@
   }
 
   function loadActiveProfileConfig() {
+    var blankP = fetch('/portal/profiles.json').then(function (r) {
+      return r.ok ? r.json() : null;
+    }).then(function (d) { return !!(d && d.active_blank); }).catch(function () { return false; });
     fetch('/portal/config').then(function (r) {
       if (r.status === 401) { location.href = '/login'; return null; }
       return r.ok ? r.json() : null;
+    }).then(function (cfg) {
+      return blankP.then(function (isBlank) {
+        // Blanko-Profil: Generator-Vorschlaege leeren
+        // (auch mit gespeicherter Config: Blanko heisst immer ohne Vorschlaege — Bestand per
+        // Werkzeug „Instanz-Import“ laden)
+        if (isBlank) { _loading = true; emptyGeneratorLists(); _loading = false; return null; }
+        return cfg;
+      });
     }).then(function (cfg) {
       try {
         if (cfg && typeof _applyLoadedConfig === 'function') {

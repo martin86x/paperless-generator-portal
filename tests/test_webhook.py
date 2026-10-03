@@ -230,7 +230,7 @@ with open(A.PROFILES_PATH, "w", encoding="utf-8") as fh:
     json.dump({"p1": {"name": "MitKanal", "paperless_url": "http://a:8000",
                       "notifications": CHAN},
                "p2": {"name": "OhneKanal", "paperless_url": "http://b:8000"}}, fh)
-A._profile_digest_line = lambda url, token, gc: "✓ 5 Dokumente"
+A._profile_digest_line = lambda url, token, gc, blank=False: "✓ 5 Dokumente"
 
 reset()
 set_hook(digest=True)

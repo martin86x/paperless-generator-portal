@@ -809,6 +809,7 @@ def _inject_active_profile():
             "name": p.get("name") or "",
             "productive": bool(p.get("productive")),
             "readonly": bool(p.get("readonly")),
+            "blank": bool(p.get("blank")),
             "color": p.get("color") or "",
         }}
     except Exception:
@@ -1381,6 +1382,7 @@ def profiles():
             "conn_kind": kind, "conn_text": text,
             "productive": bool(p.get("productive")),
             "readonly": bool(p.get("readonly")),
+            "blank": bool(p.get("blank")),
             "color": p.get("color") or "",
             "notif": ", ".join(notif_bits),
             "watch": pw,
@@ -1807,6 +1809,7 @@ def verwaltung_overview():
         "cockpit.html",
         active={"id": aid, "name": act.get("name") or "", "url": url or "",
                 "productive": bool(act.get("productive")), "readonly": bool(act.get("readonly")),
+                "blank": bool(act.get("blank")),
                 "conn_kind": kind, "conn_text": text,
                 "has_config": act.get("generator_config") is not None},
         stats=stats, wall=_status_wall(), watcher_on=_wc["enabled"], portal=portal)
@@ -1838,7 +1841,8 @@ def dashboard():
         token = _dec(p.get("paperless_token"))
         card = {"id": pid, "name": p.get("name") or "(ohne Name)", "active": pid == aid,
                 "url": url or "", "online": False, "stats": None, "drift": None, "info": None,
-                "has_config": p.get("generator_config") is not None}
+                "has_config": p.get("generator_config") is not None,
+                "blank": bool(p.get("blank"))}
         if url:
             total = _api_count(url, token, "documents/?page_size=1")
             if total is not None:
@@ -1851,7 +1855,8 @@ def dashboard():
                     "no_corr": _api_count(url, token, "documents/?correspondent__isnull=true&page_size=1"),
                 }
                 gc = p.get("generator_config") or {}
-                if card["has_config"]:
+                # Blanko-Profil: keine Generator-Vorgaben, also auch kein Drift-Abgleich
+                if card["has_config"] and not card["blank"]:
                     drift = []
                     for label, key, ep in _DRIFT_CATS:
                         cfg_n = _count_active(gc, key)
@@ -2635,7 +2640,7 @@ def _run_watch_cycle(wc, dispatch=True):
         checks = []
         if pw["checks"]["downtime"]:
             checks.append(_chk_downtime(url, token))
-        if pw["checks"]["drift"]:
+        if pw["checks"]["drift"] and not p.get("blank"):  # Blanko: keine Vorgaben, kein Drift
             checks.append(_chk_drift(url, token, p.get("generator_config") or {}))
         if pw["checks"]["task_fail"]:
             checks.append(_chk_task_fail(url, token))
@@ -2659,7 +2664,7 @@ def _run_watch_cycle(wc, dispatch=True):
     return results
 
 
-def _profile_digest_line(url, token, gc):
+def _profile_digest_line(url, token, gc, blank=False):
     """Einzeilige Statuszusammenfassung eines Profils fuer den Tages-Digest."""
     d = _chk_downtime(url, token)
     if d["status"] != "ok":
@@ -2671,8 +2676,9 @@ def _profile_digest_line(url, token, gc):
     inbox = _api_count(url, token, "documents/?is_in_inbox=true&page_size=1")
     if inbox:
         parts.append("%s im Posteingang" % inbox)
-    dr = _chk_drift(url, token, gc)
-    parts.append("keine Drift" if dr["status"] == "ok" else dr["detail"])
+    if not blank:
+        dr = _chk_drift(url, token, gc)
+        parts.append("keine Drift" if dr["status"] == "ok" else dr["detail"])
     return "✓ " + ", ".join(parts)
 
 
@@ -2695,7 +2701,7 @@ def _send_digest():
             continue
         name = p.get("name") or pid
         token = _dec(p.get("paperless_token"))
-        line = _profile_digest_line(url, token, p.get("generator_config") or {})
+        line = _profile_digest_line(url, token, p.get("generator_config") or {}, bool(p.get("blank")))
         if chan:
             _dispatch_notification(p, "digest", "Paperless-Digest: %s" % name, line)
         if hook:
@@ -4263,7 +4269,9 @@ def anwenden():
     ctx = {"active": act, "productive": bool(act.get("productive")),
            "err": request.args.get("err"), "undo_count": len(undo),
            # bei „nur lesen“ gar nicht erst anbieten — die Route weist es ohnehin ab
-           "undo_available": bool(undo) and not act.get("readonly")}
+           "undo_available": bool(undo) and not act.get("readonly") and not act.get("blank")}
+    if act.get("blank"):
+        return render_template("anwenden.html", blocked="Blanko-Profil — es gibt keine Generator-Vorgaben, die angewendet werden könnten.", groups=None, **ctx)
     if act.get("readonly"):
         return render_template("anwenden.html", blocked="Dieses Profil ist auf „nur lesen“ gesetzt — Schreiben gesperrt.", groups=None, **ctx)
     if not act.get("generator_config"):
@@ -4295,7 +4303,7 @@ def anwenden_post():
     act = profs.get(aid, {})
     url = act.get("paperless_url")
     token = _dec(act.get("paperless_token"))
-    if act.get("readonly") or not url:
+    if act.get("readonly") or act.get("blank") or not url:
         return redirect(url_for("anwenden"))
     if not check_password_hash(load_config()["admin_pw_hash"], request.form.get("password", "")):
         return redirect(url_for("anwenden", err="Passwort falsch — es wurde NICHTS geändert."))
@@ -4449,11 +4457,15 @@ def profiles_create():
     name = request.form.get("name", "").strip() or "Neues Profil"
     profs = load_profiles()
     pid = _new_profile_id()
+    blank = bool(request.form.get("blank"))
+    # Blanko-Profil (bestehende fremde Instanz): startet ohne Generator-Vorgaben und
+    # standardmaessig „nur lesen“ — Schreiben schaltet man bewusst pro Profil frei.
     profs[pid] = {"name": name, "paperless_url": "", "paperless_token": "",
-                  "generator_config": None, "productive": False, "readonly": False, "color": ""}
+                  "generator_config": None, "productive": False, "readonly": blank,
+                  "blank": blank, "color": ""}
     save_profiles(profs)
     set_active_profile(pid)
-    _log_activity("profile", "Profil angelegt: %s" % name)
+    _log_activity("profile", "Profil angelegt: %s%s" % (name, " (Blanko, nur lesen)" if blank else ""))
     return redirect(url_for("verwaltung", tab="profiles", msg="Profil angelegt und aktiviert."))
 
 
@@ -4665,11 +4677,16 @@ def profiles_flags(pid):
     if pid not in profs:
         return redirect(url_for("verwaltung", tab="profiles", err="Profil nicht gefunden."))
     profs[pid]["productive"] = bool(request.form.get("productive"))
+    was_blank = bool(profs[pid].get("blank"))
+    profs[pid]["blank"] = bool(request.form.get("blank"))
     profs[pid]["readonly"] = bool(request.form.get("readonly"))
+    if profs[pid]["blank"] and not was_blank:
+        profs[pid]["readonly"] = True  # beim Einschalten von Blanko immer erst „nur lesen“
     profs[pid]["color"] = request.form.get("color", "").strip()[:16]
     save_profiles(profs)
-    _log_activity("profile", "Flags geaendert (%s): produktiv=%s, readonly=%s"
-                  % (profs[pid].get("name"), profs[pid]["productive"], profs[pid]["readonly"]))
+    _log_activity("profile", "Flags geaendert (%s): produktiv=%s, readonly=%s, blanko=%s"
+                  % (profs[pid].get("name"), profs[pid]["productive"], profs[pid]["readonly"],
+                     profs[pid]["blank"]))
     return redirect(url_for("verwaltung", tab="profiles", msg="Profil-Einstellungen gespeichert."))
 
 
@@ -4749,6 +4766,7 @@ def portal_profiles_list():
         "active_name": act.get("name") or "",
         "active_productive": bool(act.get("productive")),
         "active_readonly": bool(act.get("readonly")),
+        "active_blank": bool(act.get("blank")),
         "active_color": act.get("color") or "",
         "profiles": [{"id": pid, "name": p.get("name") or "(ohne Name)"}
                      for pid, p in profs.items()],

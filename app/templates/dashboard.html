@@ -58,6 +58,8 @@
         {% endfor %}
       </div>
       {% if c.active %}<div style="margin-top:8px"><a class="link" href="{{ url_for('anwenden') }}">Fehlende Einträge anwenden →</a></div>{% endif %}
+      {% elif c.blank %}
+      <p class="hint">Blanko-Profil — keine Generator-Vorgaben, daher kein Drift-Abgleich.</p>
       {% else %}
       <p class="hint">Noch keine Config in diesem Profil gespeichert — kein Drift-Abgleich möglich.</p>
       {% endif %}

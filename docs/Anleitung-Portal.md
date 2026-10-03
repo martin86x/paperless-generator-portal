@@ -1,6 +1,6 @@
 # Anleitung: Paperless Generator Portal
 
-Stand: Portal v1.14.1 · für Anwender (kein Entwickler-Wissen nötig)
+Stand: Portal v1.14.2 · für Anwender (kein Entwickler-Wissen nötig)
 
 Diese Anleitung beschreibt nur, was es im Portal wirklich gibt. Stellen, bei denen ich mir nach dem Lesen des Codes nicht sicher bin, sind mit **(unsicher)** oder **Hinweis** gekennzeichnet. Zugangsdaten, Tokens und IP-Adressen stehen hier bewusst nicht drin; wo sie gebraucht werden, steht ein Platzhalter wie `<Portal-Adresse>`.
 
@@ -139,6 +139,8 @@ Je Profil:
 - **Instanz-Snapshots:** Belege, die beim „Anwenden“ entstehen (zum Nachschlagen).
 
 Oben: **⬇ Alle Profile sichern** (JSON mit allen Profilen und entschlüsselten Tokens, also vertraulich behandeln) und **⬆ Wiederherstellen** (ersetzt alle Profile, vorher wird automatisch gesichert). Unten: **Neues Profil** anlegen.
+
+**Blanko-Profil (bestehende Instanz ohne Generator-Vorschläge):** Beim Anlegen oder unter „Sicherheits-Einstellungen“ lässt sich ein Profil als **Blanko-Profil** markieren. Es ist für eine vorhandene (auch fremde) Paperless-Instanz gedacht, die nur verwaltet und ausgewertet werden soll. Der Generator zeigt dann keine Vorschläge und blendet Auswahl, Editoren, Skript-Erzeugung und Direkt-Ausführung aus; übrig bleiben Verbindung und Werkzeuge (Tab „Online“, dort auch der Instanz-Import). Drift-Abgleich und „Konfiguration anwenden“ sind aus. Beim Einschalten wird **„Nur lesen“** automatisch gesetzt; Schreiben schaltest du bewusst selbst frei. Dokumente löschen bleibt immer gesperrt.
 
 ### 5.3 Auswertung
 
