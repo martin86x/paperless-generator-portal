@@ -1679,6 +1679,7 @@ def _fmt_size(n):
 # Reiter der Verwaltungs-Shell: (id, Label, Endpunkt des Fragments). Reihenfolge = Anzeige.
 _VERW_TABS = [
     ("overview", "Überblick", "verwaltung_overview"),
+    ("einrichtung", "Einrichtung", "einrichtung_page"),
     ("profiles", "Profile", "profiles"),
     ("kennzahlen", "Kennzahlen", "dashboard"),
     ("trends", "Trends", "trends"),
@@ -1695,6 +1696,7 @@ _VERW_TABS = [
 # (?tab=trends, ?tab=version ...) und alle Redirects mit tab=<alt> bleiben gueltig.
 _VERW_GROUPS = [
     ("overview", "Überblick", ["overview"]),
+    ("einrichtung", "Einrichtung", ["einrichtung"]),
     ("profiles", "Profile", ["profiles"]),
     ("kennzahlen", "Auswertung", ["kennzahlen", "trends"]),
     ("werkzeuge", "Werkzeuge", ["werkzeuge"]),
@@ -1702,6 +1704,115 @@ _VERW_GROUPS = [
     ("benachrichtigungen", "Benachrichtigungen", ["benachrichtigungen"]),
     ("konto", "System", ["konto", "version", "protokoll"]),
 ]
+
+
+# Kurzbeschreibung je Reiter-Gruppe (steht unter der Reiterleiste)
+_VERW_DESC = {
+    "overview": "Status des aktiven Profils auf einen Blick.",
+    "einrichtung": "Schritt-für-Schritt-Liste: was ist eingerichtet, was fehlt noch.",
+    "profiles": "Paperless-Instanzen anbinden, Schutz-Schalter (nur lesen, produktiv, Blanko) und Konfigurationsstände.",
+    "kennzahlen": "Zahlen und Verlauf der Instanz, nur lesend.",
+    "werkzeuge": "Prüf- und Hilfswerkzeuge für die Instanz.",
+    "waechter": "Dauerüberwachung: Erreichbarkeit, Fehler, Lücken. Eigene Kontrolle pro Profil.",
+    "benachrichtigungen": "Wohin Meldungen gehen (Pushover, ntfy, E-Mail) und wie wichtig sie sind.",
+    "konto": "Passwort, Recovery-Codes, API-Zugang, Portal-Sicherung, Update und Protokoll.",
+}
+
+
+@app.route("/verwaltung/einrichtung")
+def einrichtung_page():
+    """Gefuehrte Checkliste: Status je Schritt aus bereits gespeicherten Angaben —
+    BEWUSST ohne Netzzugriff und ohne Schreiben."""
+    cfg = load_config()
+    profs = load_profiles()
+    act = profs.get(_active_id(), {})
+    blank = bool(act.get("blank"))
+    has_conn = bool(act.get("paperless_url") and act.get("paperless_token"))
+    pw_ok = not cfg.get("is_default_pw")
+    api_tok = bool((cfg.get("api_token") or {}).get("hash"))
+    notif = any(_has_channel(p) for p in profs.values())
+    watcher_on = bool(_watcher_cfg().get("enabled"))
+    bts = _last_backup_ts()
+    backup_ok = bool(bts) and (int(time.time()) - bts) / 86400.0 < 30
+    rec_left = _recovery_remaining()
+    update_ok = bool(_helper_alive() or cfg.get("lxc_id"))
+    protect = bool(act.get("readonly") or act.get("productive"))
+    prot_txt = []
+    if act.get("readonly"):
+        prot_txt.append("nur lesen")
+    if act.get("productive"):
+        prot_txt.append("Produktivsystem")
+    if blank:
+        prot_txt.append("Blanko")
+
+    def st(ok, required=True):
+        return "done" if ok else ("open" if required else "optional")
+
+    conn_detail = ("Verbunden mit %s." % act.get("paperless_url")) if has_conn else "Adresse oder Token fehlt."
+    raw = [
+        ("Zugang & Sicherheit", "Wer darf ins Portal, und wie sicher ist der Zugang?", [
+            ("Passwort ändern", "Das Start-Passwort durch ein eigenes ersetzen.",
+             st(pw_ok), "Passwort ist gesetzt." if pw_ok else "Noch das Standard-Passwort.",
+             "konto", "Konto öffnen", True),
+            ("Recovery-Codes sichern",
+             "Einmal-Codes für den Fall, dass du das Passwort vergisst. Ausdrucken und sicher aufbewahren.",
+             st(rec_left > 0), ("%d Codes übrig." % rec_left) if rec_left > 0 else "Noch keine erzeugt.",
+             "konto", "Codes erzeugen", True),
+            ("Paperless-Instanz anbinden",
+             "Adresse und API-Token der Paperless-Instanz eintragen%s." % (
+                 " (bei einem Blanko-Profil nötig für Import und Auswertung)" if blank else ""),
+             st(has_conn), conn_detail, "profiles", "Zu den Profilen", True),
+            ("Schutz-Schalter festlegen",
+             "„Nur lesen“ sperrt jeden Schreibzugriff, „Produktiv“ zeigt einen Warnbalken, „Blanko“ ist für "
+             "bestehende Instanzen ohne Generator-Vorschläge. Dokumente löschen ist immer gesperrt.",
+             st(protect),
+             ("Aktuell: " + ", ".join(prot_txt) + ".") if protect
+             else "Noch kein Schalter gesetzt (Empfehlung: nur lesen, solange du nur auswertest).",
+             "profiles", "Schalter ansehen", True),
+            ("API-Zugang für Claude (Konnektor)",
+             "Ein eigener Token, mit dem Claude das Portal bedienen darf. Nur nötig, wenn du das nutzen willst.",
+             st(api_tok, False), "Token vorhanden." if api_tok else "Nicht eingerichtet.",
+             "konto", "API-Zugang", False),
+        ]),
+        ("Überwachung & Meldungen", "Das Portal soll sich melden, wenn etwas nicht stimmt.", [
+            ("Benachrichtigungen einrichten",
+             "Kanal wählen (Pushover, ntfy oder E-Mail) und mit dem Testknopf prüfen.",
+             st(notif), "Mindestens ein Kanal aktiv." if notif else "Kein Kanal aktiv.",
+             "benachrichtigungen", "Kanäle einrichten", True),
+            ("Wächter einschalten",
+             "Prüft regelmäßig Erreichbarkeit, fehlgeschlagene Aufgaben und ASN-Lücken.",
+             st(watcher_on), "Wächter läuft." if watcher_on else "Wächter ist aus.",
+             "waechter", "Wächter öffnen", True),
+        ]),
+        ("Sicherung & Pflege", "Damit nichts verloren geht und das Portal aktuell bleibt.", [
+            ("Portal-Sicherung erstellen",
+             "Ein Backup von Profilen, Einstellungen und Konfigurationen. Mindestens einmal im Monat.",
+             st(backup_ok), ("Letzte Sicherung: %s." % _fmt_rel_ts(bts)) if bts else "Noch keine Sicherung.",
+             "version", "Sicherung öffnen", True),
+            ("Updates einrichten",
+             "1-Klick-Update über den Host-Helfer oder Container-ID für den fertigen Server-Befehl.",
+             st(update_ok, False), "Update-Weg ist bereit." if update_ok else "Noch nicht eingerichtet.",
+             "version", "Update öffnen", False),
+        ]),
+    ]
+    groups, n = [], 0
+    total = done = 0
+    next_step = None
+    for label, desc, steps in raw:
+        items = []
+        for title, sdesc, status, detail, tab, btn, required in steps:
+            n += 1
+            item = {"n": n, "title": title, "desc": sdesc, "status": status, "detail": detail,
+                    "tab": tab, "label": btn}
+            if required:
+                total += 1
+                done += status == "done"
+                if status == "open" and next_step is None:
+                    next_step = item
+            items.append(item)
+        groups.append({"label": label, "desc": desc, "steps": items})
+    return render_template("einrichtung.html", groups=groups, done=done, total=total,
+                           pct=int(100 * done / total) if total else 100, next_step=next_step)
 
 
 @app.route("/verwaltung")
@@ -1724,7 +1835,7 @@ def verwaltung():
             if tid == requested and err:
                 args["err"] = err
             parts.append({"id": tid, "label": by_id[tid][1], "src": url_for(by_id[tid][2], **args)})
-        tabs.append({"id": gid, "label": glabel, "parts": parts})
+        tabs.append({"id": gid, "label": glabel, "parts": parts, "desc": _VERW_DESC.get(gid, "")})
     return render_template("verwaltung_shell.html", tabs=tabs, active=active, focus=requested)
 
 

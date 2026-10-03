@@ -1,0 +1,41 @@
+{% extends layout %}
+{% block title %}Einrichtung — Paperless Generator Portal{% endblock %}
+{% block content %}
+{% if not embed %}{% include "_subnav.html" %}{% endif %}
+<div style="width:100%;max-width:920px">
+  <div class="card">
+    <h1 style="margin:0;font-size:18px">Einrichtung Schritt für Schritt</h1>
+    <p class="sub" style="margin:6px 0 0">Der Reihe nach durchgehen: Jeder Schritt zeigt, ob er erledigt ist, und führt direkt zur passenden Einstellung. Alles lässt sich später ändern. Hier wird nichts bei Paperless abgefragt oder geschrieben.</p>
+    <div style="margin-top:12px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;height:10px;overflow:hidden" title="{{ done }} von {{ total }} Pflichtschritten erledigt">
+      <div style="width:{{ pct }}%;height:100%;background:#16a34a"></div>
+    </div>
+    <p style="margin:6px 0 0;font-size:13px;color:var(--text-dim)">
+      {{ done }} von {{ total }} Pflichtschritten erledigt{% if next_step %} — als Nächstes: <strong style="color:var(--text)">{{ next_step.title }}</strong>{% else %} — alles Wichtige ist eingerichtet.{% endif %}
+    </p>
+  </div>
+
+  {% for g in groups %}
+  <div class="card" style="margin-top:14px">
+    <h2 style="margin:0 0 4px;font-size:13px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px">{{ g.label }}</h2>
+    <p class="hint" style="margin:0 0 8px">{{ g.desc }}</p>
+    {% for s in g.steps %}
+    <div style="display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--border)">
+      <div style="flex:0 0 26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;
+                  {% if s.status == 'done' %}background:#16a34a;color:#fff{% elif s.status == 'optional' %}background:var(--bg3);color:var(--text-dim);border:1px solid var(--border){% else %}background:#b45309;color:#fff{% endif %}">
+        {% if s.status == 'done' %}✓{% else %}{{ s.n }}{% endif %}
+      </div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:14px;font-weight:600">{{ s.title }}
+          {% if s.status == 'optional' %}<span style="font-size:11px;font-weight:400;color:var(--text-dim);border:1px solid var(--border);border-radius:6px;padding:0 6px;margin-left:6px">optional</span>{% endif %}
+          {% if next_step and next_step.n == s.n %}<span style="font-size:11px;font-weight:600;background:#1e3a5f;color:#bcd6ff;border-radius:6px;padding:0 6px;margin-left:6px">als Nächstes</span>{% endif %}
+        </div>
+        <div style="font-size:13px;color:var(--text-dim);margin-top:2px">{{ s.desc }}</div>
+        <div style="font-size:12px;margin-top:4px;color:{% if s.status == 'done' %}var(--ok){% else %}var(--text-dim){% endif %}">{{ s.detail }}</div>
+      </div>
+      <a class="link" href="{{ url_for('verwaltung', tab=s.tab) }}" style="flex:0 0 auto;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;white-space:nowrap">{{ s.label }} →</a>
+    </div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

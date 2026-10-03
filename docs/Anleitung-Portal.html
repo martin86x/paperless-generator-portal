@@ -7,7 +7,7 @@ code{background:#222833;color:#c8d6ee;padding:1px 5px;border-radius:3px;font-siz
 blockquote{margin:1em 0;padding:8px 14px;background:#222018;color:#e3d3a8;border-left:4px solid #b7862a}hr{border:none;border-top:1px solid #2d333d;margin:1.5em 0}
 @media print{body{background:#fff;color:#1a1a1a;margin:0;padding:0;max-width:none;font-size:11pt}h1,h2,h3,strong,th{color:#000}h1{border-color:#3b82f6}h2{border-color:#ccc}th,td{border-color:#bbb}th{background:#eef2f8}tr:nth-child(even) td{background:#fff}code,pre{background:#f0f2f5;color:#000;border-color:#ddd}blockquote{background:#fff7e6;color:#1a1a1a;border-color:#f59e0b}hr{border-color:#ddd}a{color:inherit}}</style></head><body>
 <h1>Anleitung: Paperless Generator Portal</h1>
-<p>Stand: Portal v1.14.1 · für Anwender (kein Entwickler-Wissen nötig)</p>
+<p>Stand: Portal v1.14.6 · für Anwender (kein Entwickler-Wissen nötig)</p>
 <p>Diese Anleitung beschreibt nur, was es im Portal wirklich gibt. Stellen, bei denen ich mir nach dem Lesen des Codes nicht sicher bin, sind mit <strong>(unsicher)</strong> oder <strong>Hinweis</strong> gekennzeichnet. Zugangsdaten, Tokens und IP-Adressen stehen hier bewusst nicht drin; wo sie gebraucht werden, steht ein Platzhalter wie <code>&lt;Portal-Adresse&gt;</code>.</p>
 <hr>
 <h2>1. Was ist das Portal?</h2>
@@ -70,7 +70,15 @@ blockquote{margin:1em 0;padding:8px 14px;background:#222018;color:#e3d3a8;border
 <p>Die Einrichtung des Konnektors auf dem PC (Token-Datei, <code>claude mcp add</code>) steht in <code>tools/portal-mcp/README.md</code> im Portal-Ordner.</p>
 <hr>
 <h2>5. Die Verwaltung</h2>
-<p>Aufruf: <strong>⚙ Verwaltung</strong> in der Kopfleiste (oder <code>http://&lt;Portal-Adresse&gt;:8080/verwaltung</code>). Oben gibt es sieben Reiter. Der gewählte Reiter steht in der Adresse (<code>?tab=…</code>), du kannst also Lesezeichen setzen.</p>
+<p>Aufruf: <strong>⚙ Verwaltung</strong> in der Kopfleiste (oder <code>http://&lt;Portal-Adresse&gt;:8080/verwaltung</code>). Oben gibt es acht Reiter, der zweite ist die geführte <strong>Einrichtung</strong>. Der gewählte Reiter steht in der Adresse (<code>?tab=…</code>), du kannst also Lesezeichen setzen.</p>
+<h3>Einrichtung Schritt für Schritt</h3>
+<p>Der Reiter <strong>Einrichtung</strong> ist eine Checkliste durch alle wichtigen Einstellungen. Jeder Schritt zeigt, ob er <strong>erledigt</strong> (grüner Haken) oder <strong>offen</strong> ist, und führt mit einem Knopf direkt zur passenden Stelle. Ein Balken zeigt, wie viele Pflichtschritte erledigt sind, und der nächste offene Schritt ist markiert. Die Seite fragt nichts bei Paperless ab und ändert nichts.</p>
+<ul>
+<li><strong>Zugang &amp; Sicherheit:</strong> Passwort ändern, Recovery-Codes sichern, Paperless-Instanz anbinden, Schutz-Schalter festlegen (nur lesen, Produktiv, Blanko), optional der API-Zugang für Claude.</li>
+<li><strong>Überwachung &amp; Meldungen:</strong> Benachrichtigungen einrichten, Wächter einschalten.</li>
+<li><strong>Sicherung &amp; Pflege:</strong> Portal-Sicherung erstellen (mindestens monatlich), optional Update-Weg einrichten.</li>
+</ul>
+<p>Unter der Reiterleiste steht außerdem bei jedem Reiter eine <strong>Kurzbeschreibung</strong>, wofür er da ist.</p>
 <h3>5.1 Überblick</h3>
 <ul>
 <li>Kopfkarte mit aktivem Profil, Verbindungsstatus (grün/rot) und Schnellknöpfen: <strong>Generator öffnen</strong>, <strong>Konfiguration anwenden</strong>, <strong>Paperless öffnen</strong>, <strong>Benachrichtigungen</strong>, <strong>Wächter</strong>, <strong>Profile sichern</strong>.</li>
@@ -95,6 +103,7 @@ blockquote{margin:1em 0;padding:8px 14px;background:#222018;color:#e3d3a8;border
 <li><strong>Instanz-Snapshots:</strong> Belege, die beim „Anwenden“ entstehen (zum Nachschlagen).</li>
 </ul>
 <p>Oben: <strong>⬇ Alle Profile sichern</strong> (JSON mit allen Profilen und entschlüsselten Tokens, also vertraulich behandeln) und <strong>⬆ Wiederherstellen</strong> (ersetzt alle Profile, vorher wird automatisch gesichert). Unten: <strong>Neues Profil</strong> anlegen.</p>
+<p><strong>Blanko-Profil (bestehende Instanz ohne Generator-Vorschläge):</strong> Beim Anlegen oder unter „Sicherheits-Einstellungen“ lässt sich ein Profil als <strong>Blanko-Profil</strong> markieren. Es ist für eine vorhandene (auch fremde) Paperless-Instanz gedacht, die nur verwaltet und ausgewertet werden soll. Der Generator startet dann leer, in jeder Liste steht nur ein „Beispiel“-Eintrag (ersetzen oder löschen), damit man sieht, was zu tun ist. Skript-Erzeugung und Direkt-Ausführung sind ausgeblendet, die Beispiele werden also nie in eine Instanz geschrieben. Die Werkzeuge (Tab „Online“, dort auch der Instanz-Import) bleiben nutzbar. Im blauen Hinweisbalken oben steht der Knopf <strong>„Eigene Instanz importieren“</strong>: Er liest Tags, Typen, Korrespondenten, Felder, Pfade und Arbeitsabläufe aus der angebundenen Instanz (nur lesend) und ersetzt die Beispiele vollständig. Fehlen für das Profil noch Adresse und Token, verweist er auf Verwaltung → Profile. Mit <strong>„Vorschläge dazuladen“</strong> (neben dem Import-Knopf) holst du dir einzelne Standard-Vorschläge des Generators (Tags, Typen, Korrespondenten, Felder, Pfade, Arbeitsabläufe) per Häkchenliste zurück. Dein Bestand bleibt dabei unverändert, vorhandene Namen werden nicht doppelt angelegt, und es wird nichts in Paperless geschrieben. Was du im Blanko-Profil mit „Profil speichern“ sicherst, kommt beim nächsten Öffnen wieder. Drift-Abgleich und „Konfiguration anwenden“ sind aus. Beim Einschalten wird <strong>„Nur lesen“</strong> automatisch gesetzt; Schreiben schaltest du bewusst selbst frei. Ein Blanko-Profil lässt sich auch ohne Adresse und Token anlegen, zum Ausprobieren; die Adresse trägst du später unter „Verbindung“ nach. Dokumente löschen bleibt immer gesperrt.</p>
 <h3>5.3 Auswertung</h3>
 <p>Zwei Teile untereinander:</p>
 <ul>

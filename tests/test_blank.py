@@ -163,6 +163,26 @@ check("im Blanko-Profil gespeicherte Config wird erkannt", "plxBlank" in js)
 check("Import-Button vorhanden und ruft den Instanz-Import", "Eigene Instanz importieren" in js and "runInstanzImport()" in js)
 check("Import-Button prüft die Verbindung zuerst", "active_has_connection" in js)
 
+
+print("Einrichtung (Checkliste)")
+reset()
+NET.clear()
+page = client().get("/verwaltung/einrichtung?embed=1").data.decode("utf-8")
+check("Seite zeigt die Schritte", "Passwort ändern" in page and "Wächter einschalten" in page)
+check("Fortschritt und nächster Schritt", "Pflichtschritten erledigt" in page and "als Nächstes" in page)
+eq("kein Netzzugriff beim Öffnen", NET, [])
+reset()
+page = client().get("/verwaltung?tab=einrichtung").data.decode("utf-8")
+check("Reiter Einrichtung in der Verwaltung mit Kurzbeschreibung", "vtab-einrichtung" in page and "Schritt-für-Schritt-Liste" in page)
+r = A.app.test_client().get("/verwaltung/einrichtung")
+eq("ohne Login -> Login", r.status_code, 302)
+
+print("Vorschläge dazuladen (Quelltext)")
+check("Auswahlfenster und Zusammenführen vorhanden", "openSuggestionModal" in js and "mergeSuggestions" in js)
+check("Button im Blanko-Hinweis", "Vorschläge dazuladen" in js)
+check("nur Browser: keine API-Aufrufe im Auswahlfenster",
+      "fetch(" not in js.split("function openSuggestionModal", 1)[1].split("function emptyGeneratorLists", 1)[0])
+
 print("\n%d Prüfungen, %d Fehler" % (_count[0], len(_fails)))
 for f in _fails:
     print("  - " + f)

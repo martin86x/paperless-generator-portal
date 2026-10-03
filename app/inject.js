@@ -148,6 +148,13 @@
       ib.style.cssText = 'background:#2563eb;color:#fff;border:1px solid #60a5fa;border-radius:6px;padding:4px 10px;font-size:12px;font-weight:600;cursor:pointer';
       ib.addEventListener('click', importOwnInstance);
       b.appendChild(ib);
+      var sb = document.createElement('button');
+      sb.id = 'plx-blank-suggest';
+      sb.textContent = '➕ Vorschläge dazuladen';
+      sb.title = 'Einzelne Standard-Vorschläge des Generators auswählen und zum Bestand hinzufügen';
+      sb.style.cssText = 'background:#1f2f4a;color:#dbe9ff;border:1px solid #4b6a9b;border-radius:6px;padding:4px 10px;font-size:12px;font-weight:600;cursor:pointer';
+      sb.addEventListener('click', openSuggestionModal);
+      b.appendChild(sb);
       head.insertBefore(b, head.firstChild);
       syncHeadPadding();
     }
@@ -174,6 +181,169 @@
       }).catch(function () {});
   }
 
+  // ── Vorschlaege dazuladen ─────────────────────────────────────────────────────
+  // Einzelne Standard-Vorschlaege des Generators (aus den *_ORIG-Kopien) per Auswahl in die
+  // aktuelle Liste zusammenfuehren. Vorhandenes bleibt unveraendert, Namen gelten als gleich
+  // ohne Beachtung der Gross-/Kleinschreibung (keine Dubletten). Reine Browser-Aenderung.
+  var _defaultTagMatch = null;
+
+  function renderAllLists() {
+    ['renderTagEditor', 'renderTypeEditor', 'renderCorrespondentEditor', 'renderFieldsEditor',
+     'renderPathsEditor', 'renderWorkflowEditor', 'renderFristWorkflows', 'buildEditorTypes',
+     'buildEditorTags', 'updateStats', 'updateHowto', 'updatePaths'].forEach(function (fn) {
+      try { if (typeof window[fn] === 'function') window[fn](); } catch (e) {}
+    });
+  }
+
+  function _low(x) { return String(x || '').trim().toLowerCase(); }
+  function _clone(x) { return JSON.parse(JSON.stringify(x)); }
+
+  // Katalog: je Kategorie eine Liste {key, label, have}. key ist der Name (Tags: P|Eltern, C|Eltern|Kind).
+  function suggestionCatalog() {
+    var cat = [];
+    var haveTag = {};
+    TAGS.forEach(function (p) {
+      haveTag[_low(p.name)] = true;
+      (p.children || []).forEach(function (c) { haveTag[_low(c.name)] = true; });
+    });
+    var tagItems = [];
+    TAGS_ORIG.forEach(function (p) {
+      tagItems.push({ key: 'P|' + p.name, label: p.name, have: !!haveTag[_low(p.name)], group: true });
+      (p.children || []).forEach(function (c) {
+        tagItems.push({ key: 'C|' + p.name + '|' + c.name, label: c.name, have: !!haveTag[_low(c.name)], sub: true });
+      });
+    });
+    cat.push({ id: 'tags', title: 'Tags', items: tagItems });
+    function plain(id, title, cur, orig, nameOf) {
+      var have = {};
+      cur.forEach(function (e) { have[_low(nameOf(e))] = true; });
+      cat.push({ id: id, title: title, items: orig.map(function (e) {
+        return { key: nameOf(e), label: nameOf(e), have: !!have[_low(nameOf(e))] };
+      }) });
+    }
+    plain('types', 'Dokumenttypen', TYPES, TYPES_ORIG, function (e) { return e.name; });
+    plain('corr', 'Korrespondenten', CORRESPONDENTS, CORR_ORIG, function (e) { return e.name; });
+    plain('fields', 'Benutzerdefinierte Felder', FIELDS, FIELDS_ORIG, function (e) { return e[0]; });
+    plain('paths', 'Speicherpfade', STORAGE_PATHS, PATHS_ORIG, function (e) { return e.name; });
+    plain('wf', 'Arbeitsabläufe', WORKFLOWS, WORKFLOWS_ORIG, function (e) { return e.name; });
+    return cat;
+  }
+
+  // sel: {"tags|P|Name": true, "types|Name": true, ...}; Rueckgabe: Anzahl neu angelegter Eintraege.
+  function mergeSuggestions(sel) {
+    var n = 0;
+    function has(list, nameOf, name) {
+      return list.some(function (e) { return _low(nameOf(e)) === _low(name); });
+    }
+    function tagExists(name) {
+      return TAGS.some(function (p) {
+        return _low(p.name) === _low(name) ||
+          (p.children || []).some(function (c) { return _low(c.name) === _low(name); });
+      });
+    }
+    // Tags: Eltern zuerst, Kinder haengen sich an einen vorhandenen oder neu angelegten Eltern-Tag.
+    TAGS_ORIG.forEach(function (p) {
+      var parent = TAGS.filter(function (x) { return _low(x.name) === _low(p.name); })[0];
+      if (sel['tags|P|' + p.name] && !tagExists(p.name)) {
+        parent = _clone(p); parent.children = [];
+        TAGS.push(parent); n++;
+      }
+      (p.children || []).forEach(function (c) {
+        if (!sel['tags|C|' + p.name + '|' + c.name] || tagExists(c.name)) return;
+        if (!parent) { parent = _clone(p); parent.children = []; TAGS.push(parent); n++; }
+        parent.children = parent.children || [];
+        parent.children.push(_clone(c)); n++;
+        (_defaultTagMatch || []).forEach(function (tm) {
+          if (_low(tm.name) === _low(c.name) && !has(TAG_MATCH, function (e) { return e.name; }, tm.name))
+            TAG_MATCH.push(_clone(tm));
+        });
+      });
+    });
+    function pick(list, orig, nameOf, id) {
+      orig.forEach(function (e) {
+        if (sel[id + '|' + nameOf(e)] && !has(list, nameOf, nameOf(e))) { list.push(_clone(e)); n++; }
+      });
+    }
+    pick(TYPES, TYPES_ORIG, function (e) { return e.name; }, 'types');
+    pick(CORRESPONDENTS, CORR_ORIG, function (e) { return e.name; }, 'corr');
+    pick(FIELDS, FIELDS_ORIG, function (e) { return e[0]; }, 'fields');
+    pick(STORAGE_PATHS, PATHS_ORIG, function (e) { return e.name; }, 'paths');
+    pick(WORKFLOWS, WORKFLOWS_ORIG, function (e) { return e.name; }, 'wf');
+    return n;
+  }
+
+  function openSuggestionModal() {
+    if (typeof TAGS_ORIG === 'undefined') { toast('Standard-Vorschläge nicht verfügbar', 3000); return; }
+    var old = document.getElementById('plx-sug'); if (old) old.remove();
+    var cat = suggestionCatalog();
+    var ov = document.createElement('div');
+    ov.id = 'plx-sug';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:2147483646;display:flex;align-items:center;justify-content:center;font-family:system-ui,sans-serif';
+    var box = document.createElement('div');
+    box.style.cssText = 'background:#171a21;color:#e6e9ef;border:1px solid #2b303b;border-radius:10px;width:min(720px,94vw);max-height:84vh;display:flex;flex-direction:column';
+    var h = document.createElement('div');
+    h.style.cssText = 'padding:14px 16px;border-bottom:1px solid #2b303b';
+    var ht = document.createElement('strong'); ht.style.fontSize = '15px'; ht.textContent = 'Vorschläge dazuladen';
+    var hd = document.createElement('div'); hd.style.cssText = 'font-size:12px;color:#9aa3b2;margin-top:4px';
+    hd.textContent = 'Haken setzen, was du aus den Standard-Vorschlägen übernehmen willst. Dein Bestand bleibt unverändert, vorhandene Namen werden nicht doppelt angelegt. Es wird nichts in Paperless geschrieben.';
+    h.appendChild(ht); h.appendChild(hd); box.appendChild(h);
+    var body = document.createElement('div');
+    body.style.cssText = 'overflow:auto;padding:10px 16px';
+    var checks = [];
+    cat.forEach(function (c) {
+      var free = c.items.filter(function (i) { return !i.have; });
+      var t = document.createElement('div');
+      t.style.cssText = 'display:flex;align-items:center;gap:10px;margin:12px 0 4px;font-weight:600;font-size:13px';
+      t.appendChild(document.createTextNode(c.title + ' (' + free.length + ' verfügbar)'));
+      var all = document.createElement('button');
+      all.textContent = 'alle'; all.type = 'button';
+      all.style.cssText = 'font-size:11px;background:#1f232c;color:#cbd5e1;border:1px solid #2b303b;border-radius:5px;padding:1px 8px;cursor:pointer';
+      var none = all.cloneNode(); none.textContent = 'keine';
+      t.appendChild(all); t.appendChild(none); body.appendChild(t);
+      var grid = document.createElement('div');
+      grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:2px 12px';
+      var mine = [];
+      c.items.forEach(function (i) {
+        var l = document.createElement('label');
+        l.style.cssText = 'font-size:12px;display:flex;gap:6px;align-items:center;' + (i.sub ? 'padding-left:14px;' : '') + (i.have ? 'opacity:.45;' : '') + (i.group ? 'font-weight:600;' : '');
+        var cb = document.createElement('input'); cb.type = 'checkbox'; cb.disabled = i.have;
+        cb.setAttribute('data-key', c.id + '|' + i.key);
+        l.appendChild(cb);
+        l.appendChild(document.createTextNode(i.label + (i.have ? ' (vorhanden)' : '')));
+        grid.appendChild(l); checks.push(cb); mine.push(cb);
+      });
+      all.addEventListener('click', function () { mine.forEach(function (cb) { if (!cb.disabled) cb.checked = true; }); });
+      none.addEventListener('click', function () { mine.forEach(function (cb) { cb.checked = false; }); });
+      body.appendChild(grid);
+    });
+    var note = document.createElement('div');
+    note.style.cssText = 'font-size:11px;color:#9aa3b2;margin:12px 0 4px';
+    note.textContent = 'Arbeitsabläufe setzen passende Dokumenttypen und Felder voraus. Wähle die dazugehörigen mit aus.';
+    body.appendChild(note);
+    box.appendChild(body);
+    var f = document.createElement('div');
+    f.style.cssText = 'padding:12px 16px;border-top:1px solid #2b303b;display:flex;gap:8px;justify-content:flex-end';
+    var cancel = document.createElement('button'); cancel.type = 'button'; cancel.textContent = 'Abbrechen';
+    cancel.style.cssText = 'background:#1f232c;color:#e6e9ef;border:1px solid #2b303b;border-radius:6px;padding:6px 12px;cursor:pointer';
+    var ok = document.createElement('button'); ok.type = 'button'; ok.textContent = 'Auswahl dazuladen';
+    ok.style.cssText = 'background:#2563eb;color:#fff;border:1px solid #60a5fa;border-radius:6px;padding:6px 12px;font-weight:600;cursor:pointer';
+    cancel.addEventListener('click', function () { ov.remove(); });
+    ok.addEventListener('click', function () {
+      var sel = {};
+      checks.forEach(function (cb) { if (cb.checked) sel[cb.getAttribute('data-key')] = true; });
+      var n = 0;
+      try { n = mergeSuggestions(sel); } catch (e) { toast('Dazuladen fehlgeschlagen', 3000); }
+      renderAllLists();
+      if (n) setDirty(true);
+      ov.remove();
+      toast(n ? n + ' Vorschläge dazugeladen' : 'Nichts ausgewählt', 3000);
+    });
+    f.appendChild(cancel); f.appendChild(ok); box.appendChild(f);
+    ov.appendChild(box);
+    ov.addEventListener('click', function (e) { if (e.target === ov) ov.remove(); });
+    document.body.appendChild(ov);
+  }
+
   function emptyGeneratorLists() {
     var lists = [function () { return TAGS; }, function () { return TAG_MATCH; },
       function () { return TYPES; }, function () { return CORRESPONDENTS; },
@@ -196,11 +366,7 @@
         trigger_added: true, trigger_updated: false, doctype: 'Beispiel-Dokumenttyp',
         fields: ['Beispiel-Feld'] });
     } catch (e) {}
-    ['renderTagEditor', 'renderTypeEditor', 'renderCorrespondentEditor', 'renderFieldsEditor',
-     'renderPathsEditor', 'renderWorkflowEditor', 'renderFristWorkflows', 'buildEditorTypes',
-     'buildEditorTags', 'updateStats', 'updateHowto', 'updatePaths'].forEach(function (fn) {
-      try { if (typeof window[fn] === 'function') window[fn](); } catch (e) {}
-    });
+    renderAllLists();
   }
 
   function showProductiveBanner(name, color, readonly) {
@@ -607,6 +773,8 @@
   }
 
   window.addEventListener('load', function () {
+    // Standard-Matching-Regeln der Tags vor jeder Aenderung merken (fuer „Vorschläge dazuladen“)
+    try { _defaultTagMatch = JSON.parse(JSON.stringify(TAG_MATCH)); } catch (e) {}
     try { buildNav(); } catch (e) {}
     loadProfilesIntoDropdown();
     try { tameSection01(); } catch (e) {}

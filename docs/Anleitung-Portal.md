@@ -1,6 +1,6 @@
 # Anleitung: Paperless Generator Portal
 
-Stand: Portal v1.14.5 · für Anwender (kein Entwickler-Wissen nötig)
+Stand: Portal v1.14.6 · für Anwender (kein Entwickler-Wissen nötig)
 
 Diese Anleitung beschreibt nur, was es im Portal wirklich gibt. Stellen, bei denen ich mir nach dem Lesen des Codes nicht sicher bin, sind mit **(unsicher)** oder **Hinweis** gekennzeichnet. Zugangsdaten, Tokens und IP-Adressen stehen hier bewusst nicht drin; wo sie gebraucht werden, steht ein Platzhalter wie `<Portal-Adresse>`.
 
@@ -110,7 +110,17 @@ Die Einrichtung des Konnektors auf dem PC (Token-Datei, `claude mcp add`) steht 
 
 ## 5. Die Verwaltung
 
-Aufruf: **⚙ Verwaltung** in der Kopfleiste (oder `http://<Portal-Adresse>:8080/verwaltung`). Oben gibt es sieben Reiter. Der gewählte Reiter steht in der Adresse (`?tab=…`), du kannst also Lesezeichen setzen.
+Aufruf: **⚙ Verwaltung** in der Kopfleiste (oder `http://<Portal-Adresse>:8080/verwaltung`). Oben gibt es acht Reiter, der zweite ist die geführte **Einrichtung**. Der gewählte Reiter steht in der Adresse (`?tab=…`), du kannst also Lesezeichen setzen.
+
+### Einrichtung Schritt für Schritt
+
+Der Reiter **Einrichtung** ist eine Checkliste durch alle wichtigen Einstellungen. Jeder Schritt zeigt, ob er **erledigt** (grüner Haken) oder **offen** ist, und führt mit einem Knopf direkt zur passenden Stelle. Ein Balken zeigt, wie viele Pflichtschritte erledigt sind, und der nächste offene Schritt ist markiert. Die Seite fragt nichts bei Paperless ab und ändert nichts.
+
+- **Zugang & Sicherheit:** Passwort ändern, Recovery-Codes sichern, Paperless-Instanz anbinden, Schutz-Schalter festlegen (nur lesen, Produktiv, Blanko), optional der API-Zugang für Claude.
+- **Überwachung & Meldungen:** Benachrichtigungen einrichten, Wächter einschalten.
+- **Sicherung & Pflege:** Portal-Sicherung erstellen (mindestens monatlich), optional Update-Weg einrichten.
+
+Unter der Reiterleiste steht außerdem bei jedem Reiter eine **Kurzbeschreibung**, wofür er da ist.
 
 ### 5.1 Überblick
 
@@ -140,7 +150,7 @@ Je Profil:
 
 Oben: **⬇ Alle Profile sichern** (JSON mit allen Profilen und entschlüsselten Tokens, also vertraulich behandeln) und **⬆ Wiederherstellen** (ersetzt alle Profile, vorher wird automatisch gesichert). Unten: **Neues Profil** anlegen.
 
-**Blanko-Profil (bestehende Instanz ohne Generator-Vorschläge):** Beim Anlegen oder unter „Sicherheits-Einstellungen“ lässt sich ein Profil als **Blanko-Profil** markieren. Es ist für eine vorhandene (auch fremde) Paperless-Instanz gedacht, die nur verwaltet und ausgewertet werden soll. Der Generator startet dann leer, in jeder Liste steht nur ein „Beispiel“-Eintrag (ersetzen oder löschen), damit man sieht, was zu tun ist. Skript-Erzeugung und Direkt-Ausführung sind ausgeblendet, die Beispiele werden also nie in eine Instanz geschrieben. Die Werkzeuge (Tab „Online“, dort auch der Instanz-Import) bleiben nutzbar. Im blauen Hinweisbalken oben steht der Knopf **„Eigene Instanz importieren“**: Er liest Tags, Typen, Korrespondenten, Felder, Pfade und Arbeitsabläufe aus der angebundenen Instanz (nur lesend) und ersetzt die Beispiele vollständig. Fehlen für das Profil noch Adresse und Token, verweist er auf Verwaltung → Profile. Was du im Blanko-Profil mit „Profil speichern“ sicherst, kommt beim nächsten Öffnen wieder. Drift-Abgleich und „Konfiguration anwenden“ sind aus. Beim Einschalten wird **„Nur lesen“** automatisch gesetzt; Schreiben schaltest du bewusst selbst frei. Ein Blanko-Profil lässt sich auch ohne Adresse und Token anlegen, zum Ausprobieren; die Adresse trägst du später unter „Verbindung“ nach. Dokumente löschen bleibt immer gesperrt.
+**Blanko-Profil (bestehende Instanz ohne Generator-Vorschläge):** Beim Anlegen oder unter „Sicherheits-Einstellungen“ lässt sich ein Profil als **Blanko-Profil** markieren. Es ist für eine vorhandene (auch fremde) Paperless-Instanz gedacht, die nur verwaltet und ausgewertet werden soll. Der Generator startet dann leer, in jeder Liste steht nur ein „Beispiel“-Eintrag (ersetzen oder löschen), damit man sieht, was zu tun ist. Skript-Erzeugung und Direkt-Ausführung sind ausgeblendet, die Beispiele werden also nie in eine Instanz geschrieben. Die Werkzeuge (Tab „Online“, dort auch der Instanz-Import) bleiben nutzbar. Im blauen Hinweisbalken oben steht der Knopf **„Eigene Instanz importieren“**: Er liest Tags, Typen, Korrespondenten, Felder, Pfade und Arbeitsabläufe aus der angebundenen Instanz (nur lesend) und ersetzt die Beispiele vollständig. Fehlen für das Profil noch Adresse und Token, verweist er auf Verwaltung → Profile. Mit **„Vorschläge dazuladen“** (neben dem Import-Knopf) holst du dir einzelne Standard-Vorschläge des Generators (Tags, Typen, Korrespondenten, Felder, Pfade, Arbeitsabläufe) per Häkchenliste zurück. Dein Bestand bleibt dabei unverändert, vorhandene Namen werden nicht doppelt angelegt, und es wird nichts in Paperless geschrieben. Was du im Blanko-Profil mit „Profil speichern“ sicherst, kommt beim nächsten Öffnen wieder. Drift-Abgleich und „Konfiguration anwenden“ sind aus. Beim Einschalten wird **„Nur lesen“** automatisch gesetzt; Schreiben schaltest du bewusst selbst frei. Ein Blanko-Profil lässt sich auch ohne Adresse und Token anlegen, zum Ausprobieren; die Adresse trägst du später unter „Verbindung“ nach. Dokumente löschen bleibt immer gesperrt.
 
 ### 5.3 Auswertung
 

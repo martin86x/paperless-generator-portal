@@ -1,5 +1,5 @@
 <div style="width:100%;max-width:920px;margin:0 auto 14px;display:flex;gap:4px;flex-wrap:wrap;font-size:13px;">
-  {% set items = [('overview','Überblick'),('profiles','Profile'),('kennzahlen','Auswertung'),('werkzeuge','Werkzeuge'),('waechter','Wächter'),('benachrichtigungen','Benachrichtigungen'),('konto','System')] %}
+  {% set items = [('overview','Überblick'),('einrichtung','Einrichtung'),('profiles','Profile'),('kennzahlen','Auswertung'),('werkzeuge','Werkzeuge'),('waechter','Wächter'),('benachrichtigungen','Benachrichtigungen'),('konto','System')] %}
   {% for tid, label in items %}
   <a href="{{ url_for('verwaltung', tab=tid) }}" style="padding:6px 12px;border-radius:8px;text-decoration:none;color:var(--text-dim);border:0.5px solid transparent">{{ label }}</a>
   {% endfor %}

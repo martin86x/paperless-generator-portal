@@ -12,6 +12,7 @@
   <!-- Panels -->
   {% for t in tabs %}
   <div class="vpanel" role="tabpanel" aria-labelledby="vtab-{{ t.id }}" id="vpanel-{{ t.id }}" data-tab="{{ t.id }}" style="display:none">
+    {% if t.desc %}<p style="margin:0 0 10px;font-size:13px;color:var(--text-dim)">{{ t.desc }}</p>{% endif %}
     {% for p in t.parts %}
     <section class="vpart" id="vpart-{{ p.id }}" data-src="{{ p.src }}">
       {% if t.parts|length > 1 %}<h2 style="margin:18px 0 8px;font-size:13px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px">{{ p.label }}</h2>{% endif %}
