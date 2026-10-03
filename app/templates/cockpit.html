@@ -2,7 +2,7 @@
 {% block title %}Verwaltung — Paperless Generator Portal{% endblock %}
 {% block content %}
 {% if not embed %}{% include "_subnav.html" %}{% endif %}
-<div style="width:100%;max-width:520px">
+<div style="width:100%;max-width:920px">
 
   <div class="card">
     <h1 style="margin:0;font-size:18px">
@@ -78,7 +78,7 @@
     <p class="hint" style="margin:10px 0 0">
       Zeigt den <strong>zuletzt erfassten</strong> Stand des <a class="link" href="{{ url_for('verwaltung', tab='waechter') }}">Wächters</a> — ohne die Instanzen erneut abzufragen, damit die Seite auch mit vielen (oder toten) Instanzen sofort steht.
       {% if not watcher_on %}<br><strong style="color:#f59e0b">Der Wächter ist aus</strong> — deshalb bleiben die Ampeln grau. <a class="link" href="{{ url_for('verwaltung', tab='waechter') }}">Einschalten →</a>{% endif %}
-      Live-Zahlen im Moment des Aufrufs gibt es im <a class="link" href="{{ url_for('dashboard') }}">Dashboard</a>.
+      Live-Zahlen im Moment des Aufrufs gibt es im <a class="link" href="{{ url_for('verwaltung', tab='kennzahlen') }}">Kennzahlen</a>.
     </p>
   </div>
 

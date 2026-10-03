@@ -2,7 +2,7 @@
 {% block title %}Wächter — Paperless Generator Portal{% endblock %}
 {% block content %}
 {% if not embed %}{% include "_subnav.html" %}{% endif %}
-<div style="width:100%;max-width:520px">
+<div style="width:100%;max-width:920px">
 
   <div class="card">
     <h1 style="margin:0;font-size:18px">Wächter</h1>
@@ -41,6 +41,7 @@
     {% endif %}
   </div>
 
+  <details style="margin-top:14px"><summary style="cursor:pointer;font-size:14px;font-weight:600;padding:10px 4px">⚙ Einstellungen (Checks, Eskalation, Digest, Report, Webhook, Metrics)</summary>
   <form method="post" action="{{ url_for('waechter') }}">
     <!-- Einstellungen -->
     <div class="card" style="margin-top:14px">
@@ -256,6 +257,7 @@
       {% endif %}
     </div>
   </form>
+  </details>
 
   <!-- Ergebnisse -->
   {% if results %}

@@ -1,24 +1,30 @@
 {% extends "base.html" %}
 {% block title %}Verwaltung — Paperless Generator Portal{% endblock %}
 {% block content %}
-<div style="width:100%;max-width:560px">
+<div style="width:100%;max-width:920px">
   <!-- Reiter -->
-  <div id="vtabs" style="display:flex;gap:4px;flex-wrap:wrap;font-size:13px;margin-bottom:14px">
+  <div id="vtabs" role="tablist" style="display:flex;gap:4px;flex-wrap:wrap;font-size:13px;margin-bottom:14px">
     {% for t in tabs %}
-    <button type="button" class="vtab" data-tab="{{ t.id }}"
+    <button type="button" role="tab" id="vtab-{{ t.id }}" aria-controls="vpanel-{{ t.id }}" class="vtab" data-tab="{{ t.id }}"
             style="padding:6px 12px;border-radius:8px;cursor:pointer;background:transparent;color:var(--text-dim);border:0.5px solid transparent;width:auto;margin:0;font-weight:400">{{ t.label }}</button>
     {% endfor %}
   </div>
   <!-- Panels -->
   {% for t in tabs %}
-  <div class="vpanel" id="vpanel-{{ t.id }}" data-tab="{{ t.id }}" data-src="{{ t.src }}" style="display:none">
-    <div class="vloading" style="color:var(--text-dim);font-size:13px;padding:20px 4px">Lädt …</div>
+  <div class="vpanel" role="tabpanel" aria-labelledby="vtab-{{ t.id }}" id="vpanel-{{ t.id }}" data-tab="{{ t.id }}" style="display:none">
+    {% for p in t.parts %}
+    <section class="vpart" id="vpart-{{ p.id }}" data-src="{{ p.src }}">
+      {% if t.parts|length > 1 %}<h2 style="margin:18px 0 8px;font-size:13px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px">{{ p.label }}</h2>{% endif %}
+      <div class="vbody"><div class="vloading" style="color:var(--text-dim);font-size:13px;padding:20px 4px">Lädt …</div></div>
+    </section>
+    {% endfor %}
   </div>
   {% endfor %}
 </div>
 <script>
 (function(){
   var active = {{ active|tojson }};
+  var focus = {{ focus|tojson }};
   var tabs = document.querySelectorAll('.vtab');
 
   function runScripts(container){
@@ -28,21 +34,24 @@
       old.parentNode.replaceChild(s, old);
     });
   }
-  function load(panel){
-    var src = panel.getAttribute('data-src');
+  function load(part){
+    var src = part.getAttribute('data-src');
+    var body = part.querySelector('.vbody');
     fetch(src, {credentials:'same-origin'})
       .then(function(r){ if(r.status===401){ location.href='/login'; return null; } return r.text(); })
       .then(function(html){
         if(html===null) return;
-        panel.innerHTML = html;
-        runScripts(panel);
-        panel.setAttribute('data-loaded','1');
+        body.innerHTML = html;
+        runScripts(body);
+        part.setAttribute('data-loaded','1');
       })
-      .catch(function(){ panel.innerHTML = '<div class="msg err">Abschnitt konnte nicht geladen werden.</div>'; });
+      .catch(function(){ body.innerHTML = '<div class="msg err">Abschnitt konnte nicht geladen werden.</div>'; });
   }
   function show(id, push){
     tabs.forEach(function(b){
       var on = b.getAttribute('data-tab')===id;
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+      b.setAttribute('tabindex', on ? '0' : '-1');
       b.style.background = on ? 'var(--bg3)' : 'transparent';
       b.style.color = on ? 'var(--text)' : 'var(--text-dim)';
       b.style.borderColor = on ? 'var(--border)' : 'transparent';
@@ -51,14 +60,31 @@
     document.querySelectorAll('.vpanel').forEach(function(p){
       var on = p.getAttribute('data-tab')===id;
       p.style.display = on ? '' : 'none';
-      if(on && !p.getAttribute('data-loaded')) load(p);
+      if(on) p.querySelectorAll('.vpart').forEach(function(s){ if(!s.getAttribute('data-loaded') && !s.getAttribute('data-loading')){ s.setAttribute('data-loading','1'); load(s); } });
     });
-    if(push){ try{ history.replaceState(null,'','?tab='+id); }catch(e){} }
+    if(push){ try{ history.pushState({tab:id},'','?tab='+id); }catch(e){} }
   }
   tabs.forEach(function(b){
     b.addEventListener('click', function(){ show(b.getAttribute('data-tab'), true); });
   });
+  tabs.forEach(function(b, i){
+    b.addEventListener('keydown', function(e){
+      var d = e.key==='ArrowRight' ? 1 : e.key==='ArrowLeft' ? -1 : 0;
+      if(!d) return;
+      var n = tabs[(i+d+tabs.length)%tabs.length];
+      n.focus(); show(n.getAttribute('data-tab'), true); e.preventDefault();
+    });
+  });
+  window.addEventListener('popstate', function(){
+    var t = new URLSearchParams(location.search).get('tab') || 'overview';
+    var hit = document.querySelector('.vpart#vpart-'+t);
+    show(hit ? hit.closest('.vpanel').getAttribute('data-tab') : t, false);
+  });
   show(active, false);
+  if(focus && focus!==active){
+    var f = document.getElementById('vpart-'+focus);
+    if(f) setTimeout(function(){ f.scrollIntoView({block:'start'}); }, 400);
+  }
 })();
 </script>
 {% endblock %}

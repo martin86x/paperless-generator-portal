@@ -1687,23 +1687,41 @@ _VERW_TABS = [
 ]
 
 
+# Reiter-Gruppen: mehrere verwandte Fragmente teilen sich einen Reiter. Alte Reiter-IDs
+# (?tab=trends, ?tab=version ...) und alle Redirects mit tab=<alt> bleiben gueltig.
+_VERW_GROUPS = [
+    ("overview", "Überblick", ["overview"]),
+    ("profiles", "Profile", ["profiles"]),
+    ("kennzahlen", "Auswertung", ["kennzahlen", "trends"]),
+    ("werkzeuge", "Werkzeuge", ["werkzeuge"]),
+    ("waechter", "Wächter", ["waechter"]),
+    ("benachrichtigungen", "Benachrichtigungen", ["benachrichtigungen"]),
+    ("konto", "System", ["konto", "version", "protokoll"]),
+]
+
+
 @app.route("/verwaltung")
 def verwaltung():
-    """Verwaltungs-Shell: EINE Seite mit In-Page-Reitern. Jeder Reiter laedt sein Fragment
+    """Verwaltungs-Shell: EINE Seite mit In-Page-Reitern. Jeder Reiter laedt seine Fragmente
     lazy per fetch(<route>?embed=1). Live-Daten also erst beim Oeffnen des Reiters."""
-    active = request.args.get("tab", "overview")
-    if active not in {t[0] for t in _VERW_TABS}:
-        active = "overview"
+    requested = request.args.get("tab", "overview")
+    by_id = {t[0]: t for t in _VERW_TABS}
+    if requested not in by_id:
+        requested = "overview"
+    active = next(g[0] for g in _VERW_GROUPS if requested in g[2])
     msg, err = request.args.get("msg"), request.args.get("err")
     tabs = []
-    for tid, label, ep in _VERW_TABS:
-        args = {"embed": 1}
-        if tid == active and msg:
-            args["msg"] = msg
-        if tid == active and err:
-            args["err"] = err
-        tabs.append({"id": tid, "label": label, "src": url_for(ep, **args)})
-    return render_template("verwaltung_shell.html", tabs=tabs, active=active)
+    for gid, glabel, members in _VERW_GROUPS:
+        parts = []
+        for tid in members:
+            args = {"embed": 1}
+            if tid == requested and msg:
+                args["msg"] = msg
+            if tid == requested and err:
+                args["err"] = err
+            parts.append({"id": tid, "label": by_id[tid][1], "src": url_for(by_id[tid][2], **args)})
+        tabs.append({"id": gid, "label": glabel, "parts": parts})
+    return render_template("verwaltung_shell.html", tabs=tabs, active=active, focus=requested)
 
 
 _WALL_ORDER = {"bad": 0, "unknown": 1, "ok": 2}

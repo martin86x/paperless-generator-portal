@@ -49,6 +49,15 @@
   .divider { border: none; border-top: 1px solid var(--border); margin: 26px 0 0; }
   code { background: var(--bg3); padding: 2px 6px; border-radius: 4px; font-size: 12.5px; }
   a.link { color: var(--accent2); text-decoration: none; }
+  .vpanel .card, main > div > .card { max-width: none; }
+  .vtab:focus-visible, a:focus-visible, button:focus-visible { outline: 2px solid var(--accent2); outline-offset: 2px; }
+  @media (max-width: 640px) {
+    header { padding: 10px 14px; flex-wrap: wrap; gap: 6px; }
+    header nav a { margin-left: 12px; }
+    main { padding: 18px 10px; }
+    .card { padding: 18px 16px; }
+    table { display: block; overflow-x: auto; }
+  }
 </style>
 </head>
 <body>
