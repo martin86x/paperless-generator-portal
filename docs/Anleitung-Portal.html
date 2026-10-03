@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="de"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Anleitung: Paperless Generator Portal</title><style>body{font-family:Segoe UI,Arial,sans-serif;max-width:860px;margin:2rem auto;padding:0 1rem;color:#1a1a1a;line-height:1.5;font-size:15px}
+h1{font-size:26px;border-bottom:3px solid #3b82f6;padding-bottom:6px}h2{font-size:20px;margin-top:2em;border-bottom:1px solid #ccc;padding-bottom:3px;break-after:avoid}h3{font-size:16px;margin-top:1.4em;break-after:avoid}
+table{border-collapse:collapse;width:100%;margin:.8em 0;font-size:13.5px}th,td{border:1px solid #bbb;padding:5px 8px;text-align:left;vertical-align:top}th{background:#eef2f8}tr{break-inside:avoid}
+code{background:#f0f2f5;padding:1px 5px;border-radius:3px;font-size:90%}pre{background:#f0f2f5;padding:10px;border-radius:6px;overflow:auto;font-size:12.5px;break-inside:avoid}
+blockquote{margin:1em 0;padding:8px 14px;background:#fff7e6;border-left:4px solid #f59e0b}hr{border:none;border-top:1px solid #ddd;margin:1.5em 0}
+@media print{body{margin:0;max-width:none;font-size:11pt}a{color:inherit}h2{page-break-after:avoid}}</style></head><body>
+<h1>Anleitung: Paperless Generator Portal</h1>
+<p>Stand: Portal v1.14.1 · für Anwender (kein Entwickler-Wissen nötig)</p>
+<p>Diese Anleitung beschreibt nur, was es im Portal wirklich gibt. Stellen, bei denen ich mir nach dem Lesen des Codes nicht sicher bin, sind mit <strong>(unsicher)</strong> oder <strong>Hinweis</strong> gekennzeichnet. Zugangsdaten, Tokens und IP-Adressen stehen hier bewusst nicht drin; wo sie gebraucht werden, steht ein Platzhalter wie <code>&lt;Portal-Adresse&gt;</code>.</p>
+<hr>
+<h2>1. Was ist das Portal?</h2>
+<p>Das Portal ist eine kleine Web-Anwendung, die im Heimnetz läuft (als Container auf dem Proxmox-Server). Sie macht drei Dinge:</p>
+<ol>
+<li>Sie stellt den <strong>Paperless-Generator</strong> dauerhaft bereit, mit Anmeldung. Der Generator baut dir die Einrichtung für Paperless-ngx (Tags, Dokumenttypen, Felder, Korrespondenten, Speicherpfade, Arbeitsabläufe).</li>
+<li>Sie verwaltet <strong>Profile</strong>: ein Profil ist eine Paperless-Instanz (Adresse, Zugangs-Token, gespeicherte Generator-Einstellungen).</li>
+<li>Sie <strong>überwacht</strong> deine Instanzen (Wächter), meldet Probleme aufs Handy, liefert einen <strong>Fristen-Kalender</strong> und eine druckbare <strong>Notfall-Mappe</strong>.</li>
+</ol>
+<p>Der Generator redet nie direkt mit Paperless, sondern über das Portal. Das Portal setzt dabei das gespeicherte Token selbst ein. Deshalb braucht Paperless keine CORS-Einstellung.</p>
+<p><strong>Aufruf im Browser:</strong> <code>http://&lt;Portal-Adresse&gt;:8080</code></p>
+<hr>
+<h2>2. Erste Einrichtung und Anmeldung</h2>
+<h3>Anmelden</h3>
+<ol>
+<li>Portal-Adresse im Browser öffnen.</li>
+<li>Benutzername und Passwort eingeben. Beim allerersten Start gilt der Standard-Zugang aus der README des Projekts (Benutzer <code>admin</code>, Passwort steht auch auf der Anmeldeseite als Hinweis). Er wird in der Einrichtung sofort ersetzt.</li>
+<li>Die Anmeldung gilt 8 Stunden, danach musst du dich neu anmelden.</li>
+</ol>
+<p><strong>Schutz vor Raten:</strong> Nach 5 Fehlversuchen von derselben Adresse innerhalb von 5 Minuten sperrt das Portal die Anmeldung kurz („Zu viele Fehlversuche, bitte einige Minuten warten“).</p>
+<h3>Einrichtungs-Assistent (nur beim ersten Mal)</h3>
+<p>Solange die Einrichtung nicht fertig ist, kommst du nicht in den Generator. Der Assistent hat drei Schritte:</p>
+<ol>
+<li><strong>Neues Passwort</strong> setzen (ersetzt den Standard-Zugang).</li>
+<li><strong>Erste Paperless-Instanz</strong> anlegen: Name, Paperless-Adresse, API-Token. Das Token holst du in Paperless unter <em>Einstellungen → Mein Profil → API-Token</em>. Es wird beim Speichern sofort geprüft und verschlüsselt abgelegt.</li>
+<li><strong>Optional:</strong> E-Mail-Adresse für Frist-Erinnerungen und die Container-ID des Portals (nur die Nummer, wird fürs Update gebraucht).</li>
+</ol>
+<p>Auf der Assistenten-Seite gibt es unten auch „Schon ein Backup?“: Hier kannst du ein Voll-Backup (ZIP) oder nur Profile (JSON) einspielen, statt alles neu einzurichten (Umzug, neuer Container).</p>
+<h3>Passwort vergessen</h3>
+<p>Auf der Anmeldeseite auf „Passwort vergessen? Recovery-Code verwenden“ klicken. Jeder der 10 Recovery-Codes funktioniert genau einmal. Danach sofort ein neues Passwort setzen. Wo du Codes erzeugst, steht in Abschnitt 8.</p>
+<hr>
+<h2>3. Die Generator-Seite (Startseite)</h2>
+<p>Nach der Anmeldung siehst du den Generator mit einer festen <strong>Kopfleiste</strong> oben. Von links nach rechts:</p>
+<table><thead><tr><th>Element</th><th>Bedeutung</th></tr></thead><tbody><tr><td><strong>Profil-Auswahl</strong></td><td>Wechselt das aktive Profil (die aktive Paperless-Instanz). Bei ungespeicherten Änderungen fragt das Portal vorher nach.</td></tr><tr><td><strong>💾 Profil speichern</strong></td><td>Speichert den Generator-Stand ins aktive Profil. Der vorige Stand landet automatisch in der Versionshistorie. Wird orange, wenn es Ungespeichertes gibt.</td></tr><tr><td><strong>● ungespeichert</strong></td><td>Erscheint, solange es Änderungen gibt, die noch nicht gespeichert sind.</td></tr><tr><td><strong>Health-Ampel</strong></td><td>🟢 alles gut, 🟡 Hinweise, 🔴 kritisch. Ein Klick springt zum Ergebnis und prüft neu.</td></tr><tr><td><strong>🚀 Alle Tools</strong></td><td>Lässt alle lesenden Diagnose-Werkzeuge einmal laufen. Es wird nichts in der Instanz geändert.</td></tr><tr><td><strong>Konnektor-Lampe und zwei Schalter</strong></td><td>Siehe Abschnitt 4.</td></tr><tr><td><strong>Update-Hinweis</strong></td><td>Erscheint nur, wenn es eine neuere Portal-Version gibt.</td></tr><tr><td><strong>⚙ Verwaltung</strong></td><td>Öffnet die Verwaltung (Abschnitt 5).</td></tr><tr><td><strong>Logout</strong></td><td>Abmelden.</td></tr></tbody></table>
+<p>Wenn das aktive Profil als <strong>Produktivsystem</strong> markiert ist, steht darüber ein farbiger Warnbalken („PRODUKTIV: … Änderungen wirken auf das Live-System“, bei „nur lesen“ mit Zusatz).</p>
+<p><strong>Die Abschnitte des Generators</strong> (Seitenleiste): 01 Verbindung &amp; Start, 02 Was soll angelegt werden?, 03 Tags, 04 Dokumenttypen, 05 Benutzerdefinierte Felder, 06 Arbeitsabläufe, 07 Speicherpfade, 08 Korrespondenten, dazu „Konfiguration speichern/laden“ und Changelog, 09 Skript generieren, 10 Direkt-Ausführung, 11 Generiertes Bash-Skript, 12 So wendest du das Skript an, 13 Werkzeuge.</p>
+<blockquote><strong>Wichtig:</strong> Der Abschnitt <strong>01 Verbindung</strong> im Generator ist im Portal-Betrieb wirkungslos. Das Portal verwirft ein dort eingetipptes Token und nimmt das aus dem Profil. Den API-Token immer im <strong>Profil</strong> eintragen (Verwaltung → Profile → Verbindung). Eine Adresse im Token-Feld führt zu rotem Status oder HTTP 401.</blockquote>
+<p>Die E-Mail-Adresse für Frist-Erinnerungen ist beim Speichern eines Profils Pflicht. Sie wird für die Frist-Arbeitsabläufe gebraucht.</p>
+<p><em>Was jeder Generator-Abschnitt im Einzelnen tut, steht in der Generator-Hilfe („So wendest du das Skript an“, Abschnitt 12) und ist nicht Teil dieser Anleitung.</em></p>
+<hr>
+<h2>4. Konnektor, die zwei Schalter und die Status-Lampe</h2>
+<p><strong>Was ist der Konnektor?</strong> Eine Brücke zwischen <strong>Claude Code auf deinem Windows-PC</strong> und dem Portal. Mit ihm kann Claude Code den Portal-Status abfragen, ein Update anstoßen und (nur wenn du es erlaubst) Paperless über das Portal lesen und ändern.</p>
+<p>Der Konnektor arbeitet mit einem eigenen <strong>Portal-Token</strong> (Abschnitt 8, „API-Zugang“). Ohne dieses Token zeigt die Kopfleiste „Konnektor: kein Token“.</p>
+<h3>Die Status-Lampe</h3>
+<table><thead><tr><th>Lampe</th><th>Text</th><th>Bedeutung</th></tr></thead><tbody><tr><td>grau</td><td>„Konnektor: kein Token“</td><td>Es gibt noch kein Portal-Token.</td></tr><tr><td>grau</td><td>„Konnektor gesperrt“</td><td>Token da, aber Schalter „Konnektor“ steht auf AUS. Aufrufe werden abgewiesen.</td></tr><tr><td>grün</td><td>„Konnektor verbunden“</td><td>Der Konnektor hat sich in den letzten 3 Minuten gemeldet (er meldet sich alle 45 Sekunden, solange Claude Code läuft).</td></tr><tr><td>rot</td><td>„Konnektor getrennt“</td><td>Token da und erlaubt, aber seit über 3 Minuten kein Lebenszeichen. Meist ist Claude Code nicht offen. Mit der Maus über die Lampe fahren zeigt „zuletzt gemeldet“.</td></tr></tbody></table>
+<h3>Die zwei Schalter</h3>
+<ol>
+<li><strong>Konnektor: AN/AUS.</strong> Lässt das Token überhaupt zu. Bei AUS wird jeder Aufruf mit dem Token abgewiesen. Ausschalten nimmt auch den Paperless-Zugriff weg.</li>
+<li><strong>Paperless: AN/AUS.</strong> Erlaubt dem Konnektor, Paperless über das Portal zu <strong>lesen und zu ändern</strong>. Nur klickbar, wenn „Konnektor“ AN ist. Beim Einschalten kommt eine Rückfrage.</li>
+</ol>
+<p>Merksatz: <strong>Standardmäßig soll beides aus sein. Paperless nur einschalten, wenn du Claude gerade etwas in Paperless tun lassen willst, und danach wieder aus.</strong></p>
+<p>Weitere Regeln:</p>
+<ul>
+<li>Beide Schalter lassen sich <strong>nur in deinem angemeldeten Browser</strong> umlegen, ohne Passwortabfrage. Das Token selbst kann sie nicht umlegen.</li>
+<li>Jede Änderung steht im <strong>Protokoll</strong> (Verwaltung → System).</li>
+<li>Ein neu erzeugtes oder widerrufenes Token setzt „Paperless“ auf AUS.</li>
+<li><strong>Dokumente löschen bleibt immer gesperrt</strong>, auch bei Paperless: AN (Abschnitt 8).</li>
+<li>Mit dem Token sind außerdem gesperrt: Passwort ändern, Recovery-Codes, Token erzeugen/widerrufen, Voll-Backup und Wiederherstellen, Profile exportieren/importieren/anlegen/wechseln/löschen, Paperless-Adresse und „nur lesen“ ändern, „Anwenden/Rückgängig“, Kalender-Einstellungen. Benachrichtigungen und Wächter darf es <strong>nur ansehen</strong>, nicht speichern.</li>
+</ul>
+<p>Die Einrichtung des Konnektors auf dem PC (Token-Datei, <code>claude mcp add</code>) steht in <code>tools/portal-mcp/README.md</code> im Portal-Ordner.</p>
+<hr>
+<h2>5. Die Verwaltung</h2>
+<p>Aufruf: <strong>⚙ Verwaltung</strong> in der Kopfleiste (oder <code>http://&lt;Portal-Adresse&gt;:8080/verwaltung</code>). Oben gibt es sieben Reiter. Der gewählte Reiter steht in der Adresse (<code>?tab=…</code>), du kannst also Lesezeichen setzen.</p>
+<h3>5.1 Überblick</h3>
+<ul>
+<li>Kopfkarte mit aktivem Profil, Verbindungsstatus (grün/rot) und Schnellknöpfen: <strong>Generator öffnen</strong>, <strong>Konfiguration anwenden</strong>, <strong>Paperless öffnen</strong>, <strong>Benachrichtigungen</strong>, <strong>Wächter</strong>, <strong>Profile sichern</strong>.</li>
+<li><strong>Kennzahlen-Kacheln</strong> der aktiven Instanz: Dokumente, Posteingang, ohne Typ, ohne Korrespondent.</li>
+<li><strong>Statuswand:</strong> eine Ampel pro Profil (grün/rot/grau) mit Dokumentzahl und Erreichbarkeit. Sie zeigt den <strong>zuletzt vom Wächter erfassten</strong> Stand, ohne die Instanzen neu abzufragen. Ist der Wächter aus, bleiben die Ampeln grau.</li>
+<li>Fußzeile: Portal-Version, Größe von <code>/config</code>, <strong>letzte Sicherung</strong> (grün unter 7 Tage, gelb unter 30, rot älter oder nie), Wächter-Status und Link „Auf Updates prüfen“.</li>
+</ul>
+<p><strong>Konfiguration anwenden</strong> (Knopf nur sichtbar, wenn das Profil eine gespeicherte Konfiguration hat und nicht „nur lesen“ ist): legt die <strong>fehlenden</strong> Einträge aus dem Profil in der Instanz an. Nur Angehaktes wird geschrieben, Dokumente werden nie verändert. Ablauf: Einträge ankreuzen, Passwort bestätigen, „Ausgewählte anwenden“. Vorher wird der Ist-Stand als Snapshot gesichert (zum Nachschlagen, <strong>kein</strong> Ein-Klick-Restore). „Rückgängig“ entfernt wieder, was das Portal selbst angelegt hat.</p>
+<h3>5.2 Profile</h3>
+<p>Ein Profil bündelt <strong>Verbindung</strong> (Adresse + Token) und <strong>Generator-Konfiguration</strong>. Genau ein Profil ist <strong>aktiv</strong>: Es bestimmt, womit der Generator arbeitet und wohin das Portal alle Paperless-Aufrufe schickt.</p>
+<p>Je Profil:</p>
+<ul>
+<li><strong>▶ Aktivieren &amp; in den Generator</strong> (bei nicht aktiven Profilen).</li>
+<li><strong>Verbindung:</strong> Paperless-Adresse, API-Token (leer lassen = behalten), Erinnerungs-E-Mail.</li>
+<li><strong>Umbenennen:</strong> nur der Anzeigename.</li>
+<li><strong>Sicherheits-Einstellungen:</strong></li>
+<li style="margin-left:1.2em"><em>Produktivsystem</em>: dauerhafter Warnbalken (Farbe frei wählbar).</li>
+<li style="margin-left:1.2em"><em>Nur lesen</em>: das Portal blockt <strong>jeden</strong> Schreibzugriff (POST/PUT/PATCH/DELETE) auf diese Instanz. Das ist der härteste Schutz.</li>
+<li><strong>Profil löschen:</strong> entfernt das Profil samt gespeicherter Konfiguration. Dokumente in Paperless bleiben unberührt.</li>
+<li><strong>Überwachung (Wächter):</strong> Instanz überwachen ja/nein und welche Checks laufen (Erreichbarkeit/Token, Konfig-Drift, ASN-Lücken, Duplikate). Überschreibt die globale Vorgabe.</li>
+<li><strong>Versionshistorie:</strong> der jeweils vorige Stand bei „Profil speichern“. „Vergleichen“ zeigt, was ein Wiederherstellen ändern würde; einzelne Kategorien sind wählbar. Der aktuelle Stand wird vorher automatisch gesichert.</li>
+<li><strong>Instanz-Snapshots:</strong> Belege, die beim „Anwenden“ entstehen (zum Nachschlagen).</li>
+</ul>
+<p>Oben: <strong>⬇ Alle Profile sichern</strong> (JSON mit allen Profilen und entschlüsselten Tokens, also vertraulich behandeln) und <strong>⬆ Wiederherstellen</strong> (ersetzt alle Profile, vorher wird automatisch gesichert). Unten: <strong>Neues Profil</strong> anlegen.</p>
+<h3>5.3 Auswertung</h3>
+<p>Zwei Teile untereinander:</p>
+<ul>
+<li><strong>Kennzahlen:</strong> Live-Zahlen jeder Instanz (Dokumente, Posteingang, ohne Typ, ohne Korrespondent) und <strong>Drift</strong>: Vergleich der gespeicherten Konfiguration mit der echten Instanz („+3 nicht angelegt“ oder „2 extra in Instanz“).</li>
+<li><strong>Trends:</strong> Kurven über Zeit (Gesamtzahl, Aufräum-Werte, Antwortzeit) mit Zeitraumwahl. Die Daten sammelt der Wächter (höchstens etwa einmal pro Stunde). Ist der Wächter aus, hilft „Jetzt erfassen“. Eine Kurve braucht mindestens 2 Messpunkte.</li>
+</ul>
+<h3>5.4 Werkzeuge</h3>
+<p>Rein lesende Prüfungen der <strong>aktiven</strong> Instanz. Jeder Punkt verlinkt in die passende gefilterte Paperless-Ansicht:</p>
+<ul>
+<li><strong>Aufräumen:</strong> ohne Dokumenttyp, ohne Korrespondent, ohne ASN-Nummer, im Posteingang.</li>
+<li><strong>ASN-Lücken:</strong> fehlende Nummern in der ASN-Folge und die nächste freie ASN.</li>
+<li><strong>Mögliche Duplikate:</strong> gleiche Titel (Heuristik, keine Garantie).</li>
+</ul>
+<h3>5.5 Wächter</h3>
+<p>Der Wächter prüft regelmäßig und <strong>rein lesend</strong> alle Profile mit hinterlegter Instanz und meldet Auffälligkeiten über deine Benachrichtigungskanäle. Er schreibt nie in eine Instanz.</p>
+<p>Oben stehen Zustand (aktiv/aus), letzter und nächster Lauf, offene Auffälligkeiten und die Liste „in Beobachtung“. Die Einstellungen sind unter <strong>⚙ Einstellungen</strong> eingeklappt:</p>
+<ul>
+<li><strong>Wächter aktiv</strong> und <strong>Intervall</strong> (Standard 60 Minuten, mindestens 5).</li>
+<li><strong>Checks (globale Vorgabe):</strong> Erreichbarkeit/Token, Konfig-Drift, Fehlgeschlagener Einzug, ASN-Lücken (ab wie vielen Lücken melden), Duplikate (standardmäßig aus, kann bei vielen Dokumenten dauern).</li>
+<li><strong>Eskalation:</strong> Alarm erst nach X schlechten Läufen in Folge (Standard 2, schützt vor Fehlalarm), Entwarnung erst nach X guten Läufen, Erinnerung alle X Minuten (0 = keine), Abstand verdoppeln, Priorität anheben ab der X. Erinnerung, Entwarnung über die Kanäle melden.</li>
+<li><strong>Tages-Digest und Heartbeat:</strong> täglich eine Kurzmeldung je Profil (damit du weißt, dass die Überwachung läuft); Heartbeat-URL für einen externen Dienst wie healthchecks.io, der Alarm schlägt, wenn das Portal selbst tot ist.</li>
+<li><strong>Wochen-/Monatsreport:</strong> Rückblick (Uptime, längster Ausfall, Dokument-Wachstum), mit Vorschau und „Report jetzt senden“.</li>
+<li><strong>Webhook / n8n</strong> (Abschnitt 7).</li>
+<li><strong>Prometheus /metrics:</strong> Wächter-Stand für Grafana &amp; Co., geschützt durch ein eigenes Token.</li>
+<li><strong>Fristen-Kalender</strong> (Abschnitt 7).</li>
+</ul>
+<p>Mit <strong>Speichern</strong> werden die Einstellungen übernommen, <strong>Jetzt prüfen</strong> speichert und startet sofort einen Lauf. Darunter stehen der <strong>letzte Prüflauf</strong> je Profil und der <strong>Verlauf</strong> (Streifen grün/rot/grau, wählbar 7 Tage, 30 Tage, alles).</p>
+<blockquote><strong>Hinweis:</strong> Tages-Digest und Report hängen an der Wächter-Schleife. Ist „Wächter aktiv“ aus, kommen sie nicht von selbst (die Knöpfe „jetzt senden“ funktionieren trotzdem).</blockquote>
+<h3>5.6 Benachrichtigungen</h3>
+<p>Kanäle für das <strong>aktive</strong> Profil. Drei stehen zur Wahl, jeder mit eigenem Test-Knopf (speichert und sendet sofort):</p>
+<ul>
+<li><strong>Pushover:</strong> API-Token (App) und User-Key.</li>
+<li><strong>ntfy:</strong> Server (z. B. der öffentliche ntfy-Dienst oder dein eigener) und Topic. Wer das Topic kennt, sieht die Meldungen, also ein schwer erratbares Topic wählen.</li>
+<li><strong>E-Mail (SMTP):</strong> Host, Port, STARTTLS (Port 465 = implizites SSL), Benutzer, Passwort, Absender, Empfänger.</li>
+</ul>
+<p>Gesetzte Passwörter und Schlüssel bleiben erhalten, wenn das Feld beim Speichern leer ist.</p>
+<p>Darunter die <strong>Priorität je Ereignis</strong> (−2 Stumm bis 2 Notfall): Instanz nicht erreichbar, Drift, fehlgeschlagene Verarbeitung, ASN-Lücken, Duplikate, Digest, Report, Portal-Update verfügbar, Fehler im Portal/Wächter. Die Meldungen kommen vom Wächter.</p>
+<h3>5.7 System</h3>
+<p>Ein Reiter mit drei Abschnitten untereinander:</p>
+<ul>
+<li><strong>Konto:</strong> Passwort ändern, Recovery-Codes, API-Zugang (Abschnitt 8).</li>
+<li><strong>Version:</strong> Versionsstand, Update, Voll-Backup (Abschnitte 9 und 10).</li>
+<li><strong>Protokoll:</strong> die letzten Aktionen im Portal (neueste zuerst), auch geblockte Schreibversuche und das Umlegen der Schalter. Mit Suche, Filter nach Art und Stufe und Log-Download.</li>
+</ul>
+<hr>
+<h2>6. Notfall-Mappe drucken</h2>
+<p>Eine Seite zum Ausdrucken oder als PDF-Speichern, falls du oder jemand anderes im Notfall an die Dokumentenverwaltung kommen muss.</p>
+<ol>
+<li>Im Browser <code>http://&lt;Portal-Adresse&gt;:8080/notfall</code> öffnen (angemeldet). <strong>(unsicher)</strong>: Ich habe in der Verwaltung keinen Knopf dafür gefunden, nur einen Link in der Unter-Navigation einzelner Seiten. Das Lesezeichen auf die Adresse ist der sichere Weg.</li>
+<li>Auf <strong>Drucken / als PDF speichern</strong> klicken. Beim Drucken verschwinden Navigation und Knöpfe, die Seite wird schwarz auf weiß.</li>
+</ol>
+<p><strong>Was draufsteht:</strong> Stand und Portal-Version, Datum des letzten Portal-Backups, Anzahl übriger Recovery-Codes, je Instanz die Adresse, Speicherpfade, überwachte Fristen, Dokumenttypen und wichtige Korrespondenten (aus den im Portal gespeicherten Angaben, es wird nichts bei Paperless abgefragt).</p>
+<p><strong>Was nicht draufsteht:</strong> Passwörter, Tokens, Recovery-Codes, Dokumentinhalte. Leere Linien zum <strong>Handschriftlich-Ausfüllen</strong> sind vorgesehen für: Passwort-Manager/Tresor, wer helfen kann (Name, Telefon), wo der Admin-Login liegt, Versicherungen, Bank, Steuerberater/Anwalt, Sonstiges.</p>
+<p>Tipp: nach größeren Änderungen am Profil neu drucken und die alte Mappe wegwerfen.</p>
+<hr>
+<h2>7. Benachrichtigungen, n8n-Webhook und Fristen-Kalender</h2>
+<h3>7.1 Webhook an n8n einrichten</h3>
+<p>Der Wächter kann bei Ereignissen ein JSON per POST an eine Adresse schicken, zum Beispiel an einen n8n-Webhook-Knoten.</p>
+<p><strong>In n8n:</strong></p>
+<ol>
+<li>Neuen Workflow mit einem <strong>Webhook-Knoten</strong> anlegen, <strong>HTTP Method = POST</strong>. (Bei GET antwortet n8n mit 404 „not registered for POST requests“.)</li>
+<li>Die <strong>Test-URL</strong> (<code>/webhook-test/…</code>) lauscht nur, solange der Workflow im Editor offen ist und du „Listen for Test Event“ geklickt hast. Für den Dauerbetrieb den Workflow <strong>aktivieren</strong> und die <strong>Production-URL</strong> (<code>/webhook/…</code>) verwenden.</li>
+</ol>
+<p><strong>Im Portal:</strong> Verwaltung → Wächter → ⚙ Einstellungen → <strong>Webhook / n8n</strong>:</p>
+<ol>
+<li>„Webhook aktiv“ anhaken.</li>
+<li>Webhook-URL eintragen.</li>
+<li>Auswählen, was rausgehen soll: Alarm, Erinnerung, Entwarnung, Täglicher Digest, Wochen-/Monatsreport. (Vorgabe: Alarm und Entwarnung an.)</li>
+<li>Speichern, dann <strong>Webhook testen</strong>. Darunter steht die <strong>letzte Zustellung</strong> (Zeit, Art, ✓ oder ✗ mit Detail).</li>
+</ol>
+<p><strong>Aufbau der Nachricht</strong> (bei jeder Art gleich):</p>
+<pre>{
+  "source": "paperless-generator-portal",
+  "portal_version": "…",
+  "kind": "alarm",
+  "event": "downtime",
+  "profile": "Name des Profils",
+  "status": "bad",
+  "detail": "Text mit Einzelheiten",
+  "ts": "2026-07-15T14:03:11"
+}</pre>
+<ul>
+<li><code>kind</code>: alarm, reminder, recovery, digest, report oder test. In n8n darauf verzweigen (<code>{{ $json.kind }}</code>), denn Alarm und Erinnerung haben beide <code>status: "bad"</code>.</li>
+<li><code>event</code>: welcher Check betroffen ist (downtime, drift, task_fail, asn_gap, duplicate; bei Digest/Report/Test entsprechend).</li>
+<li><code>status</code>: bad, ok, info oder test.</li>
+</ul>
+<p>Der Alarm kommt erst nach der eingestellten Zahl schlechter Läufe (Eskalation). Erinnerungen kommen nur, wenn ein Erinnerungsabstand gesetzt ist.</p>
+<h3>7.2 Fristen-Kalender abonnieren</h3>
+<p>Der Kalender zeigt Fristen als <strong>Ganztagstermine</strong> in Handy- oder Desktop-Kalender. Quelle sind die Datumsfelder der Frist-Erinnerungen im <strong>aktiven</strong> Profil. Er liest nur, in Paperless wird nichts geändert. Jeder Termin enthält Feldname, Dokumenttitel und einen Link. Der Feed ist 15 Minuten zwischengespeichert, Termine reichen etwa 30 Tage zurück und etwa 400 Tage voraus.</p>
+<p><strong>Einschalten:</strong> Verwaltung → Wächter → ⚙ Einstellungen → <strong>Fristen-Kalender</strong> → „Kalender-Abo aktiv“ anhaken → <strong>Speichern</strong>. Danach steht die <strong>Abo-URL</strong> da (mit geheimem Token).</p>
+<p><strong>Im Kalender eintragen:</strong></p>
+<ul>
+<li>Google Kalender: „Per URL hinzufügen“.</li>
+<li>iPhone: „Abonnierter Kalender“ (Einstellungen → Kalender → Accounts → Account hinzufügen → Andere).</li>
+<li>Anderer Kalender: eine Funktion wie „Kalender per Internetadresse abonnieren“.</li>
+</ul>
+<p><strong>Wichtig:</strong></p>
+<ul>
+<li>Die URL hängt <strong>nicht</strong> am Portal-Login. Wer sie kennt, sieht die Dokumenttitel deiner Fristen. Nicht weitergeben.</li>
+<li>Mit <strong>Token neu erzeugen</strong> wird die alte URL ungültig; dann die Abo-URL im Kalender ersetzen.</li>
+<li>Mit <code>&amp;profil=…</code> am Ende der URL lässt sich ein anderes Profil wählen (das Token gilt für alle Profile).</li>
+<li>Bei <code>http://</code> läuft sie unverschlüsselt durch dein Netz. Im Heimnetz vertretbar.</li>
+<li>Ist der Kalender aus oder das Token falsch, antwortet die Adresse mit „Not Found“ (404).</li>
+<li><strong>Hinweis (allgemein, nicht aus dem Code):</strong> Manche Kalender-Dienste rufen Abos von ihren eigenen Servern ab. Eine Heimnetz-Adresse kann dann nicht funktionieren. Das iPhone im WLAN oder ein Desktop-Kalender im Heimnetz holt sie direkt.</li>
+</ul>
+<hr>
+<h2>8. Sicherheit: Konto, Token, Recovery-Codes</h2>
+<p>Alles unter <strong>Verwaltung → System → Konto</strong>.</p>
+<ul>
+<li><strong>Passwort ändern:</strong> aktuelles Passwort, neues Passwort, Wiederholung.</li>
+<li><strong>Recovery-Codes:</strong> Passwort zur Bestätigung eingeben, dann „10 Recovery-Codes erzeugen“. Die Codes werden <strong>nur ein einziges Mal</strong> angezeigt. Sofort kopieren oder als .txt speichern und sicher aufbewahren (Passwort-Manager oder ausgedruckt). Jeder Code gilt einmal. Neue Codes erzeugen macht alle alten ungültig. Das Konto zeigt, wie viele Codes noch gültig sind.</li>
+<li><strong>API-Zugang (Portal-Token):</strong> Passwort bestätigen, „Token erzeugen“. Auch dieses Token wird <strong>nur einmal</strong> angezeigt. Danach siehst du nur die letzten Zeichen, Erzeugungsdatum und „zuletzt genutzt“. <strong>Token widerrufen</strong> sperrt es sofort. Das Token gilt nur fürs Portal, nie für Paperless direkt (siehe Abschnitt 4 für die Grenzen).</li>
+<li><strong>Paperless-Tokens</strong> der Profile werden im Portal verschlüsselt gespeichert. Wichtig: Beim Voll-Backup stecken die Schlüssel mit im ZIP, deshalb das ZIP vertraulich behandeln.</li>
+<li>Das Portal ist für das <strong>Heimnetz</strong> gedacht. Es gehört nicht ohne Weiteres ins offene Internet.</li>
+</ul>
+<h3>Löschen in Paperless ist immer gesperrt</h3>
+<p>Das Portal blockt über seinen Paperless-Zugang jede Aktion, die Dokumente löschen würde, auch wenn Konnektor und Paperless-Schalter an sind. Gesperrt sind:</p>
+<ul>
+<li>das Löschen eines einzelnen Dokuments,</li>
+<li>Massen-Löschen,</li>
+<li>Zusammenführen, Teilen und PDF-Bearbeiten, wenn dabei die Originale gelöscht würden (oder die Einstellung nicht eindeutig lesbar ist),</li>
+<li>das endgültige Leeren des Papierkorbs (nur „Wiederherstellen“ aus dem Papierkorb bleibt möglich).</li>
+</ul>
+<p>Die Antwort des Portals lautet dann „Gesperrt: Dokument-Loeschung ist im Portal nicht erlaubt“ (HTTP 403). Löschen musst du direkt in Paperless selbst, mit deinem eigenen Zugang.</p>
+<p>Ist ein Profil auf <strong>Nur lesen</strong> gestellt, sind außerdem <strong>alle</strong> Schreibzugriffe auf diese Instanz gesperrt.</p>
+<hr>
+<h2>9. Sicherung und Wiederherstellung</h2>
+<p>Es gibt zwei Arten, und beide sind wichtig:</p>
+<table><thead><tr><th>Was</th><th>Wo</th><th>Inhalt</th></tr></thead><tbody><tr><td><strong>Voll-Backup (ZIP)</strong></td><td>Verwaltung → System → Version → <em>Portal-Sicherung (komplett)</em> → „Voll-Backup herunterladen“</td><td>Alles aus <code>/config</code>: Profile, Benachrichtigungen, Wächter-Einstellungen, Historie, Protokoll, <strong>und den Zugang</strong> (Passwort-Hash, Schlüssel, verschlüsselte Tokens).</td></tr><tr><td><strong>Profile (JSON)</strong></td><td>Verwaltung → Profile → „⬇ Alle Profile sichern“</td><td>Nur die Profile mit Token (entschlüsselt, also auf anderem Host einspielbar).</td></tr></tbody></table>
+<p><strong>Wann:</strong> vor jedem Update und vor einem Umzug. Die Überblick-Seite zeigt, wie alt die letzte Sicherung ist (grün unter 7 Tage).</p>
+<p><strong>Einspielen:</strong></p>
+<ul>
+<li><strong>Voll-Backup:</strong> Verwaltung → System → Version → „Backup wiederherstellen (ZIP)“ → „Einspielen“. Das überschreibt die aktuelle Konfiguration, auch das Passwort. Danach mit dem Passwort <strong>von damals</strong> neu anmelden. Ein Neustart kann nötig sein.</li>
+<li><strong>Nur Profile:</strong> Verwaltung → Profile → „⬆ Wiederherstellen“. Ersetzt alle Profile (der aktuelle Stand wird vorher gesichert).</li>
+<li>Auf einem <strong>frischen Container</strong> ohne Einrichtung geht beides direkt auf der Seite des Einrichtungs-Assistenten („Schon ein Backup?“).</li>
+</ul>
+<p>Das Portal legt außerdem selbst vor jedem Schreiben der Profile ein rotierendes Backup an und hält die Versionshistorie je Profil. Das ersetzt aber keine Sicherung, die du außerhalb des Containers aufbewahrst.</p>
+<p>Das ZIP und die Profil-JSON enthalten Geheimnisse. Nicht per E-Mail verschicken und nicht in eine öffentliche Ablage legen.</p>
+<hr>
+<h2>10. Update einspielen</h2>
+<p>Unter <strong>Verwaltung → System → Version</strong> (Link „Auf Updates prüfen“ auch im Überblick). Dort steht die installierte Version, der Abgleich mit GitHub („Update verfügbar“ oder „Aktuell“) und der neueste Commit. In der Generator-Kopfleiste erscheint ein Hinweis, sobald eine neuere Version vorliegt.</p>
+<p><strong>Vorher:</strong> Voll-Backup herunterladen (Abschnitt 9).</p>
+<h3>Weg A: 1-Klick-Update (wenn eingerichtet)</h3>
+<p>Voraussetzung ist der <strong>Host-Helper</strong>, ein kleines Cron-Skript auf dem Container, das einmalig eingerichtet wird (Anleitung in <code>host-helper/README.md</code>). Ist er aktiv, steht im Abschnitt „1-Klick-Update“ <strong>„Helper aktiv“</strong> und es gibt zwei Knöpfe:</p>
+<ol>
+<li><strong>⟳ Jetzt aktualisieren</strong> (Rückfrage bestätigen). Das Portal legt eine Anforderung ab, der Helper führt sie innerhalb von etwa einer Minute aus und baut den Container neu.</li>
+<li><strong>↩ Rollback:</strong> zurück auf den vorherigen Stand, falls nach dem Update etwas nicht stimmt.</li>
+</ol>
+<p>Darunter steht das Ergebnis der letzten Aktion mit Commit und Zeit. „Anforderung liegt vor“ heißt: der Helper hat sie noch nicht abgeholt.</p>
+<p>Das ist bewusst so gebaut: Das Portal selbst bekommt keine Docker-Rechte auf dem Server.</p>
+<h3>Weg B: Befehl auf dem Proxmox-Server</h3>
+<p>Ohne Helper zeigt der Abschnitt „Aktualisieren“ einen <strong>fertigen Befehl</strong> zum Kopieren:</p>
+<ol>
+<li>Im Abschnitt „Container“ die Container-ID (nur die Nummer, sichtbar mit <code>pct list</code> auf dem Proxmox-Server) eintragen und <strong>Speichern</strong>. Sie wird in den Befehl eingesetzt.</li>
+<li><strong>Befehl kopieren</strong> und in der <strong>Proxmox-Host-Shell</strong> ausführen. Er holt den neuesten Stand von GitHub und baut den Container neu.</li>
+</ol>
+<p>Profile und Einstellungen im <code>/config</code>-Volume überstehen das Update.</p>
+<h3>Nach dem Update</h3>
+<p>Seite neu laden. Unter Version prüfen, ob die neue Versionsnummer steht und „Aktuell“ angezeigt wird. Der Konnektor kann den Update-Stand auch abfragen und (bei Helper) ein Update anfordern.</p>
+<hr>
+<h2>11. Typische Probleme</h2>
+<table><thead><tr><th>Problem</th><th>Ursache und Lösung</th></tr></thead><tbody><tr><td><strong>Roter Status / HTTP 401</strong> beim Profil</td><td>Token falsch, abgelaufen oder eine Adresse statt eines Tokens eingetragen. Neues Token in Paperless holen und bei Verwaltung → Profile → <em>Verbindung</em> eintragen. Im Generator-Abschnitt 01 hilft nichts.</td></tr><tr><td>Generator-Schalter oder Token-Feld in Abschnitt 01 „tut nichts“</td><td>Gewollt: Im Portal zählt nur das Token aus dem Profil.</td></tr><tr><td><strong>„Zu viele Fehlversuche“</strong> bei der Anmeldung</td><td>Einige Minuten warten, dann erneut versuchen.</td></tr><tr><td><strong>Passwort vergessen</strong></td><td>Recovery-Code auf der Anmeldeseite. Keine Codes mehr: nur noch ein Voll-Backup einspielen. Deshalb die Codes vorab erzeugen und sichern.</td></tr><tr><td><strong>Lampe grau, „kein Token“</strong></td><td>Noch kein Portal-Token erzeugt (System → Konto → API-Zugang).</td></tr><tr><td><strong>Lampe grau, „gesperrt“</strong></td><td>Schalter „Konnektor“ steht auf AUS. Anklicken zum Zulassen.</td></tr><tr><td><strong>Lampe rot, „getrennt“</strong></td><td>Claude Code läuft nicht oder erreicht das Portal nicht. Claude Code starten bzw. neu starten, Adresse und Token-Datei prüfen (siehe <code>tools/portal-mcp/README.md</code>).</td></tr><tr><td><strong>Paperless-Schalter lässt sich nicht klicken</strong></td><td>Er geht nur bei Konnektor AN und vorhandenem Token.</td></tr><tr><td><strong>Statuswand und Trends bleiben grau/leer</strong></td><td>Der Wächter ist aus oder hat noch nicht gelaufen. Wächter einschalten, „Jetzt prüfen“ oder bei Trends „Jetzt erfassen“.</td></tr><tr><td>Keine Meldungen aufs Handy</td><td>Kanal unter Benachrichtigungen aktiv? Test-Knopf probiert? Beachten: Der Alarm kommt erst nach mehreren schlechten Läufen (Standard 2, bei 60 Minuten Intervall also frühestens nach etwa einer Stunde). Auf 1 stellen, wenn es sofort sein soll.</td></tr><tr><td><strong>Digest/Report kommt nicht</strong></td><td>Wächter aus (die Zeitpläne hängen an ihm).</td></tr><tr><td><strong>n8n: „webhook is not registered for POST“</strong></td><td>Im n8n-Knoten HTTP Method auf POST stellen. Test-URL nur bei offenem Editor mit „Listen for Test Event“, sonst Workflow aktivieren und Production-URL nehmen.</td></tr><tr><td><strong>Kalender-Abo liefert „Not Found“</strong></td><td>Kalender-Abo ausgeschaltet oder Token falsch/erneuert. Abo-URL im Wächter-Reiter neu kopieren. „Paperless nicht erreichbar“ (502): Instanz prüfen.</td></tr><tr><td><strong>Löschen geht nicht („Gesperrt“, 403)</strong></td><td>Gewollt, siehe Abschnitt 8. In Paperless direkt löschen.</td></tr><tr><td><strong>Schreiben geht nicht („nur lesen“, 403)</strong></td><td>Das Profil ist auf „nur lesen“ gestellt. Verwaltung → Profile → Sicherheits-Einstellungen.</td></tr><tr><td><strong>Ungespeicherte Änderungen</strong></td><td>„● ungespeichert“ in der Kopfleiste: <strong>💾 Profil speichern</strong> klicken, bevor du das Profil wechselst oder den Tab schließt.</td></tr><tr><td><strong>1-Klick-Update: „meldet sich nicht mehr“</strong></td><td>Der Helper läuft nicht. Auf dem Container prüfen (Skript ausführbar, Cron-Eintrag mit <code>bash</code> davor), Details in <code>host-helper/README.md</code>. Eine liegengebliebene Anforderung wird danach nachgeholt.</td></tr><tr><td><strong>Nach Voll-Restore Anmeldung klappt nicht</strong></td><td>Es gilt wieder das Passwort aus dem Backup. Mit dem damaligen Passwort anmelden.</td></tr></tbody></table>
+<hr>
+<h2>Kurz-Übersicht: wo finde ich was?</h2>
+<table><thead><tr><th>Ich will …</th><th>Dann …</th></tr></thead><tbody><tr><td>Instanz wechseln</td><td>Generator-Kopfleiste → Profil-Auswahl</td></tr><tr><td>Token einer Instanz ändern</td><td>Verwaltung → Profile → <em>Verbindung · Umbenennen · Löschen</em></td></tr><tr><td>Claude Zugriff auf Paperless geben</td><td>Generator-Kopfleiste → Konnektor AN, dann Paperless AN (danach wieder AUS)</td></tr><tr><td>Handy-Meldungen einrichten</td><td>Verwaltung → Benachrichtigungen</td></tr><tr><td>n8n anbinden / Fristen-Kalender</td><td>Verwaltung → Wächter → ⚙ Einstellungen</td></tr><tr><td>Papier-Notfallplan</td><td><code>/notfall</code> im Browser, Drucken</td></tr><tr><td>Backup ziehen</td><td>Verwaltung → System → Version → Portal-Sicherung</td></tr><tr><td>Update</td><td>Verwaltung → System → Version</td></tr><tr><td>Passwort / Recovery-Codes / Portal-Token</td><td>Verwaltung → System → Konto</td></tr><tr><td>Nachsehen, was passiert ist</td><td>Verwaltung → System → Protokoll</td></tr></tbody></table>
+</body></html>
