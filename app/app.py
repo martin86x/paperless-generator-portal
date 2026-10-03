@@ -4769,6 +4769,7 @@ def portal_profiles_list():
         "active_productive": bool(act.get("productive")),
         "active_readonly": bool(act.get("readonly")),
         "active_blank": bool(act.get("blank")),
+        "active_has_connection": bool(act.get("paperless_url") and act.get("paperless_token")),
         "active_color": act.get("color") or "",
         "profiles": [{"id": pid, "name": p.get("name") or "(ohne Name)"}
                      for pid, p in profs.items()],

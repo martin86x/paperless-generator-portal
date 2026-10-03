@@ -137,12 +137,41 @@
     if (head && !document.getElementById('plx-blank-banner')) {
       var b = document.createElement('div');
       b.id = 'plx-blank-banner';
-      b.style.cssText = 'background:#1e3a5f;color:#dbe9ff;text-align:center;padding:5px 12px;font-size:12px;font-family:system-ui,sans-serif';
-      b.textContent = 'Blanko-Profil: leerer Generator mit je einem „Beispiel“-Eintrag (ersetzen oder löschen). Nichts davon wird in eine Instanz geschrieben. Löschen in Paperless bleibt gesperrt.';
+      b.style.cssText = 'background:#1e3a5f;color:#dbe9ff;text-align:center;padding:5px 12px;font-size:12px;font-family:system-ui,sans-serif;display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap';
+      var bt = document.createElement('span');
+      bt.textContent = 'Blanko-Profil: leerer Generator mit je einem „Beispiel“-Eintrag (ersetzen oder löschen). Nichts davon wird in eine Instanz geschrieben. Löschen in Paperless bleibt gesperrt.';
+      b.appendChild(bt);
+      var ib = document.createElement('button');
+      ib.id = 'plx-blank-import';
+      ib.textContent = '📥 Eigene Instanz importieren';
+      ib.title = 'Liest Tags, Typen, Korrespondenten, Felder, Pfade und Workflows aus der angebundenen Instanz (nur lesend) und ersetzt die Beispiele';
+      ib.style.cssText = 'background:#2563eb;color:#fff;border:1px solid #60a5fa;border-radius:6px;padding:4px 10px;font-size:12px;font-weight:600;cursor:pointer';
+      ib.addEventListener('click', importOwnInstance);
+      b.appendChild(ib);
       head.insertBefore(b, head.firstChild);
       syncHeadPadding();
     }
     try { if (typeof switchToolsTab === 'function') switchToolsTab('online'); } catch (e) {}
+  }
+
+  // Button im Blanko-Hinweis: startet den vorhandenen Instanz-Import (nur lesende GET-Abfragen
+  // ueber den Proxy). Ohne Adresse/Token im Profil gibt es nur einen Hinweis, keinen Abruf.
+  function importOwnInstance() {
+    fetch('/portal/profiles.json').then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (d && d.active_has_connection === false) {
+          if (confirm(['Für dieses Profil sind noch keine Adresse und kein API-Token hinterlegt.', '',
+              'Trage sie unter Verwaltung → Profile → „Verbindung“ ein und komm dann zurück.', '',
+              'Jetzt zu den Profilen wechseln?'].join(String.fromCharCode(10)))) {
+            _navigating = true; location.href = '/verwaltung?tab=profiles';
+          }
+          return;
+        }
+        if (typeof runInstanzImport !== 'function') return;
+        try { switchToolsTab('online'); goTo('s-instanz-import'); } catch (e) {}
+        var p = runInstanzImport();
+        if (p && p.then) p.then(function () { setDirty(true); }); // „Profil speichern“ hervorheben
+      }).catch(function () {});
   }
 
   function emptyGeneratorLists() {
