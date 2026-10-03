@@ -1,0 +1,77 @@
+{% extends layout %}
+{% block title %}Notfall-Mappe — Paperless Generator Portal{% endblock %}
+{% block content %}
+<style>
+  .nf h2{margin:18px 0 6px;font-size:16px}
+  .nf table{width:100%;border-collapse:collapse;font-size:13px}
+  .nf th,.nf td{text-align:left;padding:5px 8px;border-bottom:1px solid var(--border);vertical-align:top}
+  .nf .blank{display:inline-block;min-width:240px;border-bottom:1px solid var(--text-dim)}
+  .nf .tags span{display:inline-block;margin:2px 6px 2px 0;padding:1px 8px;border:1px solid var(--border);border-radius:10px;font-size:12px}
+  @media print{
+    body{background:#fff !important;color:#000 !important}
+    .nf-noprint,nav,header,.subnav{display:none !important}
+    .nf .card{box-shadow:none !important;border:none !important;background:#fff !important}
+    .nf th,.nf td{border-color:#999 !important}
+    .nf *{color:#000 !important}
+  }
+</style>
+<div class="nf" style="width:100%;max-width:920px">
+  <div class="card">
+    <h1>Notfall-Mappe</h1>
+    <p class="sub">Stand {{ today }} · Portal {{ portal_version }}. Zum Ausdrucken oder als PDF speichern. Die Seite enthält <strong>keine Zugangsdaten</strong> und keine Dokumentinhalte; sie stammt aus den Angaben im Portal, es wird nichts bei Paperless abgefragt.</p>
+    <p class="nf-noprint"><button type="button" onclick="window.print()" style="width:auto;padding:8px 14px;font-size:13px">Drucken / als PDF speichern</button></p>
+
+    <h2>Wiederherstellung</h2>
+    <table>
+      <tr><th style="width:34%">Letztes Portal-Backup</th><td>{{ last_backup or "noch nie erstellt (Verwaltung → Konto → Backup)" }}</td></tr>
+      <tr><th>Recovery-Codes übrig</th><td>{{ recovery_left }} (die Codes selbst gehören nicht auf dieses Blatt, sondern an einen sicheren Ort)</td></tr>
+      <tr><th>Passwort-Manager / Tresor</th><td><span class="blank">&nbsp;</span></td></tr>
+      <tr><th>Wer kann helfen (Name, Telefon)</th><td><span class="blank">&nbsp;</span></td></tr>
+    </table>
+
+    {% for p in profiles %}
+    <h2>Instanz: {{ p.name }}{% if p.active %} (aktiv){% endif %}{% if p.productive %} · produktiv{% endif %}</h2>
+    <table>
+      <tr><th style="width:34%">Adresse</th><td>{{ p.url or "nicht hinterlegt" }}</td></tr>
+      <tr><th>Admin-Login / Zugang liegt bei</th><td><span class="blank">&nbsp;</span></td></tr>
+    </table>
+
+    {% if p.paths %}
+    <h3 style="font-size:14px;margin:12px 0 4px">Ablageorte (Speicherpfade)</h3>
+    <table>
+      <tr><th style="width:30%">Name</th><th>Pfad-Schema</th></tr>
+      {% for s in p.paths %}<tr><td>{{ s.name }}</td><td><code>{{ s.path }}</code></td></tr>{% endfor %}
+    </table>
+    {% endif %}
+
+    {% if p.fristen %}
+    <h3 style="font-size:14px;margin:12px 0 4px">Fristen, die überwacht werden</h3>
+    <table>
+      <tr><th style="width:30%">Gruppe</th><th>Dokumenttyp</th><th>Datumsfeld</th></tr>
+      {% for f in p.fristen %}<tr><td>{{ f.label }}</td><td>{{ f.doctype }}</td><td>{{ f.field }}</td></tr>{% endfor %}
+    </table>
+    {% endif %}
+
+    {% if p.types %}
+    <h3 style="font-size:14px;margin:12px 0 4px">Dokumenttypen ({{ p.types|length }})</h3>
+    <div class="tags">{% for t in p.types %}<span>{{ t }}</span>{% endfor %}</div>
+    {% endif %}
+
+    {% if p.corrs %}
+    <h3 style="font-size:14px;margin:12px 0 4px">Wichtige Korrespondenten ({{ p.corrs|length }})</h3>
+    <div class="tags">{% for t in p.corrs %}<span>{{ t }}</span>{% endfor %}</div>
+    {% endif %}
+    {% endfor %}
+
+    {% if not profiles %}<p>Noch kein Profil angelegt.</p>{% endif %}
+
+    <h2>Eigene Notizen</h2>
+    <table>
+      <tr><th style="width:34%">Versicherungen</th><td><span class="blank">&nbsp;</span></td></tr>
+      <tr><th>Bank / Konten</th><td><span class="blank">&nbsp;</span></td></tr>
+      <tr><th>Steuerberater / Anwalt</th><td><span class="blank">&nbsp;</span></td></tr>
+      <tr><th>Sonstiges</th><td><span class="blank">&nbsp;</span></td></tr>
+    </table>
+  </div>
+</div>
+{% endblock %}

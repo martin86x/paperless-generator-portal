@@ -257,6 +257,26 @@
       {% endif %}
     </div>
   </form>
+
+  <!-- Fristen-Kalender -->
+  <form method="post" action="{{ url_for('ics_settings') }}">
+    <div class="card" style="margin-top:14px">
+      <h2 style="margin-top:0">Fristen-Kalender <code>/fristen.ics</code></h2>
+      <label style="display:flex;align-items:center;gap:8px;margin:0;font-size:14px;color:var(--text)">
+        <input type="checkbox" name="ics_enabled" value="1" style="width:auto"{% if ic.enabled %} checked{% endif %}> Kalender-Abo aktiv
+      </label>
+      <div style="font-size:12px;color:var(--text-dim);margin:4px 0 0 26px">Zeigt Fristen als Ganztagstermine im Handy- oder Desktop-Kalender. Quelle sind die Datumsfelder deiner Frist-Erinnerungen im aktiven Profil. <strong>Rein lesend</strong>, nichts in Paperless wird geändert. Der Termin enthält Feldname, Dokumenttitel und einen Link; der Feed wird 15 Minuten zwischengespeichert.</div>
+      {% if ic.enabled and ic.token %}
+      <label style="margin-top:16px">Abo-URL</label>
+      <input type="text" value="{{ request.host_url }}fristen.ics?token={{ ic.token }}" readonly onclick="this.select()" style="font-family:monospace;font-size:12px">
+      <p class="hint">Diese URL im Kalender als Abo eintragen (Google Kalender: „Per URL hinzufügen“, iPhone: „Abonnierter Kalender“). Sie hängt <strong>nicht</strong> am Portal-Login; wer sie kennt, sieht die Dokumenttitel der Fristen. Das Token gilt für alle Profile (mit <code>&amp;profil=</code> wählbar). Bei <code>http://</code> geht sie unverschlüsselt über dein Netz, im LAN vertretbar, sonst nur hinter TLS. Mit „Token neu erzeugen“ wird die alte URL ungültig. Anderes Profil: <code>&amp;profil=&lt;ID&gt;</code> anhängen.</p>
+      <button type="submit" name="action" value="ics_token_new" style="width:auto;padding:8px 14px;font-size:13px;background:var(--bg3);border:1px solid var(--border)">Token neu erzeugen</button>
+      {% else %}
+      <p class="hint" style="margin-top:12px">Beim Aktivieren wird automatisch ein Token erzeugt; die Abo-URL steht danach hier.</p>
+      {% endif %}
+      <div style="margin-top:10px"><button type="submit" style="width:auto;padding:8px 14px;font-size:13px">Speichern</button></div>
+    </div>
+  </form>
   </details>
 
   <!-- Ergebnisse -->

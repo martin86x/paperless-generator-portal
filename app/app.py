@@ -566,7 +566,7 @@ if os.environ.get("TRUST_PROXY") == "1":
 
 # metrics_endpoint gehoert hierher, weil Prometheus keine Session hat: require_login wuerde
 # den Scrape auf /login umleiten. Der Endpunkt schuetzt sich selbst per Bearer-Token.
-PUBLIC_ENDPOINTS = {"login", "login_recovery", "healthz", "static", "metrics_endpoint"}
+PUBLIC_ENDPOINTS = {"login", "login_recovery", "healthz", "static", "metrics_endpoint", "fristen_ics"}
 
 # ── Gemeinsamer Datei-Zustand beider Worker ──────────────────────────────────
 # Rate-Limit und Sitzungsliste muessen beide gunicorn-Worker sehen (sonst zaehlt jeder
@@ -846,7 +846,7 @@ _API_TOKEN_FORBIDDEN = {"settings", "wizard", "recovery_generate", "api_token_ge
                         "connector_enable_toggle",
                         "profiles_export", "config_backup", "profiles_import",
                         "profiles_connection", "profiles_flags", "profiles_activate",
-                        "profiles_delete", "profiles_create"}
+                        "profiles_delete", "profiles_create", "ics_settings"}
 # nur lesen erlaubt (Seite anzeigen ja, speichern nein)
 # (Waechter: Webhook-/Heartbeat-URL und Metrics-Token waeren sonst ein Weg nach aussen)
 _API_TOKEN_READ_ONLY = {"notifications", "waechter"}
@@ -985,7 +985,7 @@ def require_setup():
     """Solange das Onboarding nicht abgeschlossen ist, jeden Seiten-GET auf /wizard leiten.
     Ausgenommen: Wizard selbst, Login/Logout, static, healthz, die Datenrettungs-Endpunkte
     sowie /api + /portal (eigene 401-Behandlung / vom injizierten JS genutzt)."""
-    if request.endpoint in ("wizard", "login", "logout", "healthz", "static", "metrics_endpoint"):
+    if request.endpoint in ("wizard", "login", "logout", "healthz", "static", "metrics_endpoint", "fristen_ics"):
         return None
     if request.endpoint in _RECOVERY_ENDPOINTS:
         return None
@@ -2794,6 +2794,25 @@ def _report_stats(pid, since, now=None):
     return st
 
 
+def _health_lines(now=None):
+    """Zwei Zeilen Selbst-Check des Portals fuer den Report: Backup-Alter und Update-Stand.
+    Nur lokale Dateien (Update aus dem Cache), keine Abfrage nach aussen."""
+    now = now or time.time()
+    bts = _last_backup_ts()
+    if bts:
+        d = int((now - bts) // 86400)
+        warn = " (älter als 30 Tage, neues Backup empfohlen)" if d >= 30 else ""
+        lines = ["Letztes Backup: vor %d Tag(en)%s" % (d, warn)]
+    else:
+        lines = ["Letztes Backup: noch nie erstellt"]
+    upd = _prom_update_cache()
+    if upd and upd.get("latest") and _ver_tuple(upd["latest"]) > _ver_tuple(PORTAL_VERSION):
+        lines.append("Portal-Update verfügbar: %s (läuft: %s)" % (upd["latest"], PORTAL_VERSION))
+    else:
+        lines.append("Portal %s: kein Update bekannt" % PORTAL_VERSION)
+    return lines
+
+
 def _report_text(days, st, now=None):
     """Report als Klartext — geht so an Pushover/ntfy/E-Mail und in die UI-Vorschau."""
     now = now or time.time()
@@ -2831,6 +2850,7 @@ def _report_text(days, st, now=None):
         L.append("Posteingang: %s (%s)" % (_fmt_int(i["last"]), trend))
     if st["lat"]:
         L.append("Antwortzeit: Ø %d ms, max %d ms" % (st["lat"]["med"], st["lat"]["max"]))
+    L += ["", "Portal-Gesundheit"] + _health_lines(now)
     return "\n".join(L)
 
 
@@ -3432,6 +3452,200 @@ def metrics_endpoint():
     return Response(_build_metrics(), mimetype="text/plain; version=0.0.4; charset=utf-8")
 
 
+# Fristen-Kalender (ICS-Feed) -------------------------------------------------------
+# Abo-URL fuer Handy-/Desktop-Kalender. Kalender-Apps schicken keine Header und haben keine
+# Sitzung, deshalb haengt der Feed an einem geheimen Token in der URL (wie /metrics bewusst
+# ohne Login-Gate). STRIKT read-only: nur GET auf custom_fields und documents.
+_ICS_TTL = 900            # 15 min Zwischenspeicher, Kalender-Apps fragen oft nach
+_ICS_PAST_DAYS = 30       # Termine bis so viele Tage in der Vergangenheit
+_ICS_FUTURE_DAYS = 400
+_ICS_MAX_PAGES = 10
+_ics_cache = {}           # pid -> (ts, text)
+_ics_fail = {}            # pid -> ts des letzten Fehlschlags (kurz sperren)
+_ICS_FAIL_TTL = 60
+
+
+def _ics_cfg():
+    try:
+        c = load_config().get("ics") or {}
+    except (OSError, ValueError):
+        c = {}
+    return {"enabled": bool(c.get("enabled", False)), "token": (c.get("token") or "").strip()}
+
+
+def _ics_esc(text):
+    return (str(text or "").replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,")
+            .replace("\r", "").replace("\n", "\\n"))
+
+
+def _ics_fold(line):
+    """Zeilen nach RFC 5545 auf 75 Oktette falten (Fortsetzung mit fuehrendem Leerzeichen)."""
+    if len(line.encode("utf-8")) <= 75:
+        return line
+    out, cur, size = [], "", 0
+    for ch in line:
+        n = len(ch.encode("utf-8"))
+        if size + n > (75 if not out else 74):
+            out.append(cur)
+            cur, size = "", 0
+        cur += ch
+        size += n
+    out.append(cur)
+    return "\r\n ".join(out)
+
+
+def _frist_date_fields(gc):
+    """Namen der Datumsfelder aus den Frist-Erinnerungen des Profils (ohne Doppelte)."""
+    seen, out = set(), []
+    for c in (gc or {}).get("fristConfigs") or []:
+        name = (c.get("dateField") or "").strip() if isinstance(c, dict) else ""
+        if name and name.lower() not in seen:
+            seen.add(name.lower())
+            out.append(name)
+    return out
+
+
+def _ics_same_origin(nxt, base):
+    """Folgeseite nur akzeptieren, wenn sie zum selben Host wie die Profil-URL gehoert (sonst
+    ginge das Paperless-Token an einen fremden Host). Schema wird auf das der Profil-URL gesetzt,
+    weil Paperless hinter einem TLS-Proxy oft http:// als 'next' meldet."""
+    if not nxt:
+        return None
+    n, b = urlparse(nxt), urlparse(base)
+    if n.netloc != b.netloc:
+        return None
+    return n._replace(scheme=b.scheme).geturl()
+
+
+def _ics_events(url, token, gc, today=None):
+    """[(date, doc_id, titel, feldname)] aus allen Frist-Datumsfeldern. Read-only."""
+    hdr = {"Authorization": "Token " + token} if token else {}
+    base = url.rstrip("/")
+    today = today or datetime.now().date()
+    lo, hi = today - timedelta(days=_ICS_PAST_DAYS), today + timedelta(days=_ICS_FUTURE_DAYS)
+    events = []
+    for fname in _frist_date_fields(gc):
+        r = requests.get(base + "/api/custom_fields/", params={"name__iexact": fname, "page_size": 1},
+                         headers=hdr, timeout=10, allow_redirects=False)
+        if r.status_code != 200:
+            raise ValueError("HTTP %d" % r.status_code)
+        res = r.json().get("results") or []
+        if not res:
+            continue
+        fid = res[0]["id"]
+        nexturl = (base + "/api/documents/?custom_fields__id__all=%d&page_size=100"
+                   "&fields=id,title,custom_fields" % fid)
+        pages = 0
+        while nexturl and pages < _ICS_MAX_PAGES:
+            r = requests.get(nexturl, headers=hdr, timeout=10, allow_redirects=False)
+            if r.status_code != 200:
+                raise ValueError("HTTP %d" % r.status_code)
+            j = r.json()
+            for d in j.get("results") or []:
+                for cf in d.get("custom_fields") or []:
+                    if cf.get("field") != fid:
+                        continue
+                    try:
+                        day = datetime.strptime(str(cf.get("value"))[:10], "%Y-%m-%d").date()
+                    except ValueError:
+                        continue
+                    if lo <= day <= hi:
+                        events.append((day, d.get("id"), d.get("title") or "", fname))
+            nexturl = _ics_same_origin(j.get("next"), base)
+            pages += 1
+    events.sort(key=lambda e: (e[0], e[1] or 0))
+    return events
+
+
+def _ics_build(events, base_url, name, now=None):
+    now = now or datetime.utcnow()
+    stamp = now.strftime("%Y%m%dT%H%M%SZ")
+    lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Paperless Generator Portal//Fristen//DE",
+             "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
+             "X-WR-CALNAME:" + _ics_esc("Paperless Fristen" + (" - " + name if name else ""))]
+    for day, did, title, fname in events:
+        end = day + timedelta(days=1)
+        lines += ["BEGIN:VEVENT",
+                  "UID:doc%s-%s@paperless-portal" % (did, hashlib.sha1(fname.encode("utf-8")).hexdigest()[:8]),
+                  "DTSTAMP:" + stamp,
+                  "DTSTART;VALUE=DATE:" + day.strftime("%Y%m%d"),
+                  "DTEND;VALUE=DATE:" + end.strftime("%Y%m%d"),
+                  "SUMMARY:" + _ics_esc("%s: %s" % (fname, title)),
+                  "DESCRIPTION:" + _ics_esc("%s/documents/%s/details" % (base_url.rstrip("/"), did)),
+                  "TRANSP:TRANSPARENT", "END:VEVENT"]
+    lines.append("END:VCALENDAR")
+    return "\r\n".join(_ics_fold(l) for l in lines) + "\r\n"
+
+
+def _ics_view():
+    """Fuer die Seite: dem Konnektor-Token die Abo-URL (Token) nicht zeigen."""
+    ic = _ics_cfg()
+    if g.get("api_token"):
+        ic["token"] = ""
+    return ic
+
+
+@app.route("/fristen.ics")
+def fristen_ics():
+    """Kalender-Abo. Aus oder falsches Token -> 404, damit der Endpunkt seine Existenz nicht verraet."""
+    ic = _ics_cfg()
+    given = request.args.get("token", "")
+    ok = False
+    if ic["enabled"] and ic["token"]:
+        try:
+            ok = secrets.compare_digest(given, ic["token"])
+        except TypeError:
+            ok = False
+    if not ok:
+        return Response("Not Found\n", status=404, mimetype="text/plain; charset=utf-8")
+    profs = load_profiles()
+    want = request.args.get("profil")
+    saved = load_config().get("active_profile")
+    pid = want if want in profs else (saved if saved in profs else next(iter(profs), None))
+    p = profs.get(pid) if pid else None
+    if not p or not p.get("paperless_url"):
+        return Response("Kein Profil mit Paperless-URL.\n", status=404, mimetype="text/plain; charset=utf-8")
+    hit = _ics_cache.get(pid)
+    if hit and time.time() - hit[0] < _ICS_TTL:
+        text = hit[1]
+    else:
+        if not hit and time.time() - _ics_fail.get(pid, 0) < _ICS_FAIL_TTL:
+            return Response("Paperless nicht erreichbar.\n", status=502, mimetype="text/plain; charset=utf-8")
+        try:
+            ev = _ics_events(p["paperless_url"], _dec(p.get("paperless_token")), p.get("generator_config") or {})
+        except (requests.RequestException, ValueError) as exc:
+            _log_activity("kalender", "Fristen-Feed: Paperless nicht erreichbar", level="warn", detail=str(exc))
+            _ics_fail[pid] = time.time()
+            if not hit:
+                return Response("Paperless nicht erreichbar.\n", status=502, mimetype="text/plain; charset=utf-8")
+            text = hit[1]    # lieber alter Stand als leerer Kalender
+        else:
+            text = _ics_build(ev, p["paperless_url"], p.get("name") or "")
+            _ics_cache[pid] = (time.time(), text)
+    return Response(text, mimetype="text/calendar; charset=utf-8",
+                    headers={"Cache-Control": "private, max-age=300"})
+
+
+@app.route("/verwaltung/kalender", methods=["POST"])
+def ics_settings():
+    f = request.form
+    cfg = load_config()
+    cur = _ics_cfg()
+    enabled = bool(f.get("ics_enabled"))
+    tok = cur["token"]
+    new_tok = f.get("action") == "ics_token_new"
+    if new_tok or (enabled and not tok):
+        tok = secrets.token_urlsafe(32)
+    cfg["ics"] = {"enabled": enabled, "token": tok}
+    save_config(cfg)
+    _ics_cache.clear()
+    _log_activity("kalender", "Fristen-Kalender: " + ("neues Token" if new_tok else
+                  ("eingeschaltet" if enabled else "ausgeschaltet")))
+    return redirect(url_for("verwaltung", tab="waechter",
+                            msg="Neues Kalender-Token erzeugt, Abo-URL im Kalender ersetzen." if new_tok
+                            else "Kalender-Einstellung gespeichert."))
+
+
 @app.route("/verwaltung/waechter", methods=["GET", "POST"])
 def waechter():
     if request.method == "POST":
@@ -3529,7 +3743,7 @@ def waechter():
                         "event": lw.get("event"), "kind": lw.get("kind"),
                         "ts": _fmt_rel_ts(lw.get("ts"))}
     return render_template(
-        "waechter.html", w=wc, wh=_webhook_cfg(), mc=_metrics_cfg(), events=_NOTIFY_EVENTS,
+        "waechter.html", w=wc, wh=_webhook_cfg(), mc=_metrics_cfg(), ic=_ics_view(), events=_NOTIFY_EVENTS,
         results=results, status=status, webhook_last=webhook_last,
         board=_alert_board(st, wc), weekdays=_WEEKDAYS, wh_kinds=_WEBHOOK_KINDS,
         portal_version=PORTAL_VERSION,
@@ -3673,6 +3887,42 @@ def _last_backup_ts():
             return int(json.load(fh).get("ts"))
     except (OSError, ValueError, TypeError):
         return None
+
+
+# Notfall-Mappe ---------------------------------------------------------------------
+# Druckbare Uebersicht "Wo liegt was" aus dem, was das Portal ohnehin kennt (Profile und
+# gespeicherte Generator-Konfiguration). Keine Abfrage an Paperless, keine Dokumentinhalte,
+# keine Zugangsdaten (kein Token, kein Passwort).
+def _notfall_data():
+    profs = load_profiles()
+    aid = _active_id()
+    out = []
+    for pid, p in profs.items():
+        gc = p.get("generator_config") or {}
+        paths = [{"name": e.get("name") or "", "path": e.get("path") or ""}
+                 for e in (gc.get("storagePaths") or []) if isinstance(e, dict) and e.get("name")]
+        types = sorted({str(e.get("name")).strip() for e in (gc.get("types") or [])
+                        if isinstance(e, dict) and e.get("name")}, key=str.lower)
+        corrs = sorted({str(e.get("name")).strip() for e in (gc.get("correspondents") or [])
+                        if isinstance(e, dict) and e.get("name")}, key=str.lower)
+        fristen = [{"label": c.get("label") or c.get("group") or "", "doctype": c.get("doctype") or "",
+                    "field": c.get("dateField") or ""}
+                   for c in (gc.get("fristConfigs") or []) if isinstance(c, dict) and c.get("dateField")]
+        out.append({"id": pid, "name": p.get("name") or "(ohne Name)", "active": pid == aid,
+                    "url": p.get("paperless_url") or "", "paths": paths, "types": types,
+                    "corrs": corrs, "fristen": fristen,
+                    "productive": bool(p.get("productive"))})
+    out.sort(key=lambda x: (not x["active"], x["name"].lower()))
+    return out
+
+
+@app.route("/notfall")
+def notfall():
+    bts = _last_backup_ts()
+    return render_template(
+        "notfall.html", profiles=_notfall_data(), portal_version=PORTAL_VERSION,
+        last_backup=(datetime.fromtimestamp(bts).strftime("%d.%m.%Y %H:%M") if bts else None),
+        today=datetime.now().strftime("%d.%m.%Y"), recovery_left=_recovery_remaining())
 
 
 @app.route("/verwaltung/werkzeuge")
