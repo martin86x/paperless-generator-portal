@@ -15,8 +15,12 @@
 
   <form method="post" autocomplete="off">
     <h2>Passwort ändern</h2>
+    {% if pw_reset_ok %}
+    <p class="hint">Mit Recovery-Code angemeldet: das aktuelle Passwort wird für diesen einen Wechsel nicht abgefragt.</p>
+    {% else %}
     <label for="current">Aktuelles Passwort</label>
     <input type="password" id="current" name="current">
+    {% endif %}
     <label for="new">Neues Passwort</label>
     <input type="password" id="new" name="new">
     <label for="repeat">Neues Passwort wiederholen</label>

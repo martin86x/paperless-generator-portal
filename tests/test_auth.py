@@ -66,7 +66,12 @@ def login(c, pw=PW, user="admin", ip="10.0.0.1"):
 
 
 def reset_limit():
-    A._login_fails.clear()
+    A._login_fails_reset()
+
+
+def set_fails(ip, ts):
+    with A._locked_json(A.LOGIN_FAILS_PATH) as f:
+        f[ip] = ts
 
 
 # ── 1. Login-Rate-Limit ──────────────────────────────────────────────────────
@@ -96,15 +101,15 @@ for _ in range(A.LOGIN_MAX - 1):
     login(c, pw="falsch")
 r = login(c)
 eq("ein Erfolg VOR der Sperre klappt", r.status_code, 302)
-eq("und setzt den Zähler zurück", len(A._login_fails.get("10.0.0.1", [])), 0)
+eq("und setzt den Zähler zurück", len(A._login_fails_load().get("10.0.0.1", [])), 0)
 
 print("Rate-Limit: Zeitfenster")
 reset_limit()
-A._login_fails["10.0.0.9"] = [A.time.time() - A.LOGIN_WINDOW - 1] * 10
+set_fails("10.0.0.9", [A.time.time() - A.LOGIN_WINDOW - 1] * 10)
 check("Fehlversuche älter als das Fenster zählen nicht mehr",
       not A._login_blocked("10.0.0.9"))
-eq("und werden dabei aufgeräumt", A._login_fails["10.0.0.9"], [])
-A._login_fails["10.0.0.8"] = [A.time.time()] * A.LOGIN_MAX
+eq("und werden dabei aufgeräumt", A._login_fails_load().get("10.0.0.9"), None)
+set_fails("10.0.0.8", [A.time.time()] * A.LOGIN_MAX)
 check("frische Fehlversuche sperren", A._login_blocked("10.0.0.8"))
 
 # ── 2. Anmeldung ─────────────────────────────────────────────────────────────
@@ -124,6 +129,82 @@ login(c)
 eq("eingeloggt: Cockpit erreichbar", c.get("/verwaltung/overview").status_code, 200)
 c.get("/logout")
 eq("nach dem Abmelden wieder gesperrt", c.get("/verwaltung/overview").status_code, 302)
+
+print("Sitzungen widerrufen")
+H0 = {"Origin": "http://localhost"}
+
+
+def cookie_of(c):
+    return c.get_cookie("session").value
+
+
+def with_cookie(val):
+    c = client()
+    c.set_cookie("session", val)
+    return c
+
+
+reset_limit()
+c = client()
+login(c)
+stolen = cookie_of(c)
+eq("kopiertes Cookie funktioniert, solange die Sitzung läuft",
+   with_cookie(stolen).get("/verwaltung/overview").status_code, 200)
+c.get("/logout")
+eq("nach dem Logout ist auch das kopierte Cookie ungültig",
+   with_cookie(stolen).get("/verwaltung/overview").status_code, 302)
+
+forged = client()
+with forged.session_transaction() as s:
+    s["logged_in"] = True          # Cookie ohne gültige Sitzungs-ID (z. B. vor dem Update)
+eq("Cookie ohne Sitzungs-ID reicht nicht", forged.get("/verwaltung/overview").status_code, 302)
+
+reset_limit()
+a, b = client(), client()
+login(a)
+login(b)
+other = cookie_of(b)
+r = a.post("/settings", data={"current": PW, "new": "zwischen1", "repeat": "zwischen1"},
+           headers=H0)
+check("Passwortwechsel klappt", "msg=" in (r.headers.get("Location") or ""))
+eq("die eigene Sitzung bleibt", a.get("/verwaltung/overview").status_code, 200)
+eq("andere Sitzungen sind beendet",
+   with_cookie(other).get("/verwaltung/overview").status_code, 302)
+a.post("/settings", data={"current": "zwischen1", "new": PW, "repeat": PW}, headers=H0)
+
+print("Sitzungen: abgelaufene IDs")
+with A._locked_json(A.SESSIONS_PATH) as ss:
+    ss["uralt"] = A.time.time() - A.SESSION_MAX_AGE - 1
+old = client()
+with old.session_transaction() as s:
+    s["logged_in"] = True
+    s["sid"] = "uralt"
+eq("Sitzung über der Höchstdauer gilt nicht", old.get("/verwaltung/overview").status_code, 302)
+A._sessions_add()
+check("und wird beim nächsten Anmelden aufgeräumt", "uralt" not in A._read_json_dict(A.SESSIONS_PATH))
+
+print("Wizard: Passwort nur mit aktuellem Passwort")
+reset_limit()
+c = client()
+login(c)
+_real_test = A._test_paperless
+A._test_paperless = lambda url, tok: 200
+page = c.get("/wizard").data.decode("utf-8")
+check("Wizard fragt das aktuelle Passwort ab", 'name="current"' in page)
+r = c.post("/wizard", data={"new": "uebernahme", "repeat": "uebernahme"}, headers=H0)
+eq("ohne aktuelles Passwort -> abgelehnt", r.status_code, 200)
+check("und das Passwort ist unverändert",
+      A.check_password_hash(A.load_config()["admin_pw_hash"], PW))
+r = c.post("/wizard", data={"current": "falsch", "new": "uebernahme", "repeat": "uebernahme"},
+           headers=H0)
+check("mit falschem aktuellem Passwort ebenso",
+      A.check_password_hash(A.load_config()["admin_pw_hash"], PW))
+r = c.post("/wizard", data={"current": PW, "new": "zwischen2", "repeat": "zwischen2"},
+           headers=H0)
+eq("mit richtigem aktuellem Passwort -> durch", r.status_code, 302)
+check("Passwort geändert", A.check_password_hash(A.load_config()["admin_pw_hash"], "zwischen2"))
+c.post("/settings", data={"current": "zwischen2", "new": PW, "repeat": PW}, headers=H0)
+A._test_paperless = _real_test
 
 # ── 3. Recovery-Codes ────────────────────────────────────────────────────────
 print("Recovery-Codes")
@@ -152,6 +233,19 @@ eq("gültiger Code meldet an", r.status_code, 302)
 eq("und der Code ist verbraucht", A._recovery_remaining(A.load_config()),
    A.RECOVERY_CODE_COUNT - 1)
 eq("die Sitzung greift", c.get("/verwaltung/overview").status_code, 200)
+check("Konto-Seite fragt nach Recovery-Login nicht nach dem alten Passwort",
+      'name="current" required' not in c.get("/settings").data.decode("utf-8")
+      and "Recovery-Code angemeldet" in c.get("/settings").data.decode("utf-8"))
+r = c.post("/settings", data={"new": "nachrecovery", "repeat": "nachrecovery"},
+           headers={"Origin": "http://localhost"})
+check("neues Passwort ohne das vergessene alte setzbar",
+      A.check_password_hash(A.load_config()["admin_pw_hash"], "nachrecovery"))
+r = c.post("/settings", data={"new": "nochmal1", "repeat": "nochmal1"},
+           headers={"Origin": "http://localhost"})
+check("aber nur EINMAL — danach wieder mit aktuellem Passwort",
+      A.check_password_hash(A.load_config()["admin_pw_hash"], "nachrecovery"))
+c.post("/settings", data={"current": "nachrecovery", "new": PW, "repeat": PW},
+       headers={"Origin": "http://localhost"})
 reset_limit()
 r = client().post("/login/recovery", data={"username": "admin", "code": codes[0]},
                   environ_base={"REMOTE_ADDR": "10.0.0.1"})
@@ -269,7 +363,7 @@ eq("X-Forwarded-For wird NICHT geglaubt — der Angreifer kann sich keine frisch
    c.post("/login", data={"username": "admin", "password": "falsch"},
           headers={"X-Forwarded-For": "10.1.1.1"},
           environ_base={"REMOTE_ADDR": "203.0.113.5"}).status_code, 429)
-eq("gezählt wird der echte Peer", sorted(A._login_fails), ["203.0.113.5"])
+eq("gezählt wird der echte Peer", sorted(A._login_fails_load()), ["203.0.113.5"])
 check("ohne TRUST_PROXY hängt kein ProxyFix in der Kette",
       A.app.wsgi_app.__class__.__name__ != "ProxyFix")
 
@@ -294,7 +388,7 @@ for _ in range(A.LOGIN_MAX):
 r = c.post("/login", data={"username": "admin", "password": "pw"},
            headers={"X-Forwarded-For": "192.168.10.23"},
            environ_base={"REMOTE_ADDR": "172.17.0.1"})
-print(r.status_code, sorted(A._login_fails), A.app.wsgi_app.__class__.__name__)
+print(r.status_code, sorted(A._login_fails_load()), A.app.wsgi_app.__class__.__name__)
 '''
 out = subprocess.run([sys.executable, "-c", _PROBE, os.environ["SITE_DIR"],
                       os.path.join(os.path.dirname(_HERE), "app")],

@@ -185,6 +185,7 @@ with CLIENT as c:
 with CLIENT as c:
     with c.session_transaction() as s:
         s["logged_in"] = True
+        s["sid"] = A._sessions_add()
     eq("eingeloggt ohne Token -> 200", c.get("/metrics").status_code, 200)
 
 write_cfg(enabled=False)

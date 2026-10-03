@@ -158,6 +158,7 @@ def client(logged_in=True):
     if logged_in:
         with c.session_transaction() as s:
             s["logged_in"] = True
+            s["sid"] = A._sessions_add()
             s["active_profile"] = PID
     return c
 

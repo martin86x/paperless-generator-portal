@@ -9,7 +9,13 @@
   {% if err %}<div class="msg err">✗ {{ err }}</div>{% endif %}
 
   <h2>1 · Neues Passwort</h2>
+  {% if need_current %}
+  <p class="hint">Das Standard-Passwort ist bereits ersetzt. Zum Ändern bitte das aktuelle Passwort angeben.</p>
+  <label for="current">Aktuelles Passwort</label>
+  <input type="password" id="current" name="current" required>
+  {% else %}
   <p class="hint">Ersetzt den Standard-Zugang <code>admin</code>/<code>admin</code>.</p>
+  {% endif %}
   <label for="new">Neues Passwort</label>
   <input type="password" id="new" name="new" required>
   <label for="repeat">Passwort wiederholen</label>
