@@ -6,6 +6,7 @@
  *     Benachrichtigungs-E-Mail als Pflichtfeld)
  *   - Config des aktiven Profils laden (_applyLoadedConfig), danach same-origin erzwingen
  *   - Profil wechseln / speichern; ungespeicherte Aenderungen anzeigen
+ *   - Konnektor-Lampe + Schalter "Paperless-Zugriff" fuer das API-Token
  * Der synchrone localStorage-Patch (plx_conn_preset + paperless_gen_cfg_v2 -> origin) passiert
  * separat inline im <head>, BEVOR die Generator-Skripte laufen.
  */
@@ -206,6 +207,22 @@
       } catch (e) {}
     });
     n.appendChild(sweep);
+
+    // Konnektor: Lampe (verbunden?) + Schalter "Paperless-Zugriff" fuer das API-Token.
+    // Zustand kommt aus /portal/connector.json (refreshConnector), Text per textContent.
+    var conn = document.createElement('span');
+    conn.id = 'plx-connector';
+    conn.style.cssText = 'display:none;align-items:center;gap:6px;background:#1f232c;border:1px solid #2b303b;border-radius:6px;padding:4px 8px;font-size:12px;color:#9aa4b2;white-space:nowrap';
+    var lamp = document.createElement('span');
+    lamp.id = 'plx-conn-lamp';
+    lamp.style.cssText = 'display:inline-block;width:9px;height:9px;border-radius:50%;background:#6b7280';
+    var ltxt = document.createElement('span'); ltxt.id = 'plx-conn-text'; ltxt.textContent = 'Konnektor';
+    var tgl = document.createElement('button');
+    tgl.id = 'plx-conn-toggle';
+    tgl.style.cssText = 'border:1px solid #2b303b;border-radius:5px;padding:2px 8px;font-size:12px;cursor:pointer;background:#2b303b;color:#e6e9ef';
+    tgl.addEventListener('click', toggleConnector);
+    conn.appendChild(lamp); conn.appendChild(ltxt); conn.appendChild(tgl);
+    n.appendChild(conn);
 
     var spacer = document.createElement('span');
     spacer.style.cssText = 'flex:1 1 auto'; n.appendChild(spacer); // drueckt Verwaltung/Logout nach rechts
@@ -408,6 +425,57 @@
     }).catch(function () {});
   }
 
+  // Konnektor-Anzeige: Lampe gruen = Konnektor hat sich in den letzten Minuten gemeldet.
+  // Schalter: gibt dem API-Token den Paperless-Zugriff (Loeschen von Dokumenten bleibt gesperrt).
+  var _conn = null;
+  function renderConnector(d) {
+    var box = document.getElementById('plx-connector');
+    if (!box || !d) return;
+    _conn = d;
+    box.style.display = 'inline-flex';
+    var lamp = document.getElementById('plx-conn-lamp');
+    var txt = document.getElementById('plx-conn-text');
+    var tgl = document.getElementById('plx-conn-toggle');
+    if (!d.token) {
+      lamp.style.background = '#6b7280';
+      txt.textContent = 'Konnektor: kein Token';
+      box.title = 'Kein API-Token angelegt (Verwaltung → Konto → API-Zugang)';
+    } else if (d.online) {
+      lamp.style.background = '#22c55e';
+      txt.textContent = 'Konnektor verbunden';
+      box.title = 'Zuletzt gemeldet ' + (d.last_seen || '');
+    } else {
+      lamp.style.background = '#ef4444';
+      txt.textContent = 'Konnektor getrennt';
+      box.title = 'Zuletzt gemeldet: ' + (d.last_seen || 'noch nie');
+    }
+    tgl.disabled = !d.token;
+    tgl.textContent = 'Paperless: ' + (d.paperless ? 'AN' : 'AUS');
+    tgl.style.background = d.paperless ? '#b45309' : '#2b303b';
+    tgl.title = d.paperless
+      ? 'Konnektor darf Paperless lesen und ändern (Dokumente löschen bleibt gesperrt). Klicken zum Ausschalten.'
+      : 'Konnektor hat keinen Zugriff auf Paperless. Klicken zum Einschalten.';
+    syncHeadPadding();
+  }
+  function refreshConnector() {
+    fetch('/portal/connector.json').then(function (r) {
+      return r.ok ? r.json() : null;
+    }).then(renderConnector).catch(function () {});
+  }
+  function toggleConnector() {
+    if (!_conn || !_conn.token) return;
+    var on = !_conn.paperless;
+    if (on && !confirm('Paperless-Zugriff für den Konnektor einschalten?\n\n' +
+        'Er darf dann Paperless lesen und ändern. Dokumente löschen bleibt gesperrt.')) return;
+    fetch('/portal/connector/paperless', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ on: on })
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      if (d && d.ok) { renderConnector(d); toast('Paperless-Zugriff ' + (d.paperless ? 'AN' : 'AUS'), 2500); }
+      else toast('Umschalten fehlgeschlagen' + (d && d.error ? ': ' + d.error : ''), 3500);
+    }).catch(function () { toast('Umschalten fehlgeschlagen', 3500); });
+  }
+
   window.addEventListener('load', function () {
     try { buildNav(); } catch (e) {}
     loadProfilesIntoDropdown();
@@ -427,6 +495,8 @@
     // Update-Hinweis: einmal kurz nach dem Laden, danach alle 6 h (falls der Tab offen bleibt).
     setTimeout(checkForUpdate, 2500);
     setInterval(checkForUpdate, 6 * 3600 * 1000);
+    setTimeout(refreshConnector, 800);
+    setInterval(refreshConnector, 30 * 1000);
   });
 
   window.addEventListener('beforeunload', function (e) {

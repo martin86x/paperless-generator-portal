@@ -20,6 +20,7 @@ Generator-Portal/
 ├── site/index.html       ← Generator-Build (Artefakt aus ../Generator-Build/dist, NIE von Hand bearbeiten)
 ├── tests/                ← eigenständige Testskripte (kein pytest)
 ├── host-helper/          ← Cron-Skript auf dem LXC für 1-Klick-Update/Rollback
+├── tools/portal-mcp/     ← Konnektor: lokaler MCP-Server für Claude Code (läuft auf dem PC)
 ├── Dockerfile, docker-compose.yml
 ├── proxmox-install.sh    ← legt LXC an, installiert Docker, startet den Container
 └── update.ps1            ← holt ../Generator-Build/dist/index.html nach site/
@@ -45,7 +46,7 @@ Dann jedes Skript einzeln starten, kein Netzwerk nötig (`CONFIG_DIR` zeigt auf 
 ```powershell
 .venv\Scripts\python tests\test_auth.py
 .venv\Scripts\python tests\test_proxy.py
-# ebenso: test_apitoken, test_apply, test_backup, test_escalation, test_metrics, test_report, test_restart, test_webhook
+# ebenso: test_apitoken, test_connector, test_apply, test_backup, test_escalation, test_metrics, test_report, test_restart, test_webhook
 ```
 
 Nach jeder Änderung an `app/app.py` die betroffenen Tests laufen lassen, vor einem Release alle.
