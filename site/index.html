@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Paperless-ngx Setup Generator v3.99</title>
+<title>Paperless-ngx Setup Generator v4.00</title>
 <!-- Schriften inline (offline, kein Google-Fonts-CDN mehr; v3.78) -->
 <style>/* Google Fonts inline (v3.78) - Sora + JetBrains Mono (400/600/700), latin-Subset, base64. Ersetzt den @import; voll offline. */
 /* latin */
@@ -380,14 +380,14 @@ input.valid{border-color:var(--accent2)!important;}
   <button id="hamburger-btn" onclick="toggleSidebar()" aria-label="Navigation">
     <span></span><span></span><span></span>
   </button>
-  <span id="topbar-title">Setup Generator v3.99</span>
+  <span id="topbar-title">Setup Generator v4.00</span>
   <span id="topbar-conn-dot" class="sticky-conn-dot" title="Verbindungsstatus"></span>
-  <span id="topbar-badge">v3.99</span>
+  <span id="topbar-badge">v4.00</span>
 </div>
 <aside id="sidebar">
   <div class="sb-header">
     <div class="sb-logo">Paperless-ngx</div>
-    <div class="sb-title">Setup Generator v3.99</div>
+    <div class="sb-title">Setup Generator v4.00</div>
   </div>
   <nav class="sb-nav">
     <span class="sb-label">Konfiguration</span>
@@ -415,7 +415,7 @@ input.valid{border-color:var(--accent2)!important;}
 <main id="content">
 
   <div class="hero">
-    <div class="badge" id="hdr-badge">v3.99 &middot; Bash + Direkt &middot; REST API &middot; Stand: <span id="badge-date">03.10.2026</span></div>
+    <div class="badge" id="hdr-badge">v4.00 &middot; Bash + Direkt &middot; REST API &middot; Stand: <span id="badge-date">03.10.2026</span></div>
     <h1>Paperless-ngx<br>Setup Generator</h1>
     <p>Richtet eine frische Paperless-ngx-Instanz vollautomatisch ein &ndash; Tags, Dokumenttypen, Felder, Korrespondenten, Speicherpfade und Arbeitsabl&auml;ufe &ndash; per Bash-Skript oder direkt aus dem Browser via REST API.</p>
     <div style="margin-top:.6rem">
@@ -801,7 +801,7 @@ input.valid{border-color:var(--accent2)!important;}
         <!-- Webhook-Option -->
         <div style="margin-top:.6rem;padding-top:.6rem;border-top:1px solid var(--border)">
           <div style="font-size:.75rem;font-weight:700;color:#fff;margin-bottom:.4rem">🔗 Webhook (optional)</div>
-          <div style="font-size:.72rem;color:var(--text-muted);margin-bottom:.4rem">Webhook-URL wird zusätzlich zur E-Mail-Aktion in alle Frist-Workflows eingetragen. Erfordert externen Empfänger (z.B. n8n, Home Assistant).</div>
+          <div style="font-size:.72rem;color:var(--text-muted);margin-bottom:.4rem">Webhook-URL wird zusätzlich zur E-Mail-Aktion in alle Frist-Workflows eingetragen. Erfordert externen Empfänger (z.B. n8n, Home Assistant). Gesendet wird ein JSON mit id, title, correspondent, document_type, created, added, doc_url und frist (Name des Workflows). Das Fälligkeitsdatum selbst liefert Paperless nicht mit, der Empfänger holt es über die id aus der API. Fertige n8n-Vorlage: Ordner <code>n8n/</code> im Repository.</div>
           <div style="display:grid;grid-template-columns:1fr auto;gap:.5rem;align-items:flex-end">
             <div>
               <span class="flabel" style="font-size:.64rem">Webhook-URL</span>
@@ -4160,7 +4160,7 @@ const AN_HINTS=[
   "Unscharfe Suche – toleriert Tippfehler",
   "Automatisch trainiert aus manuell beschrifteten Dokumenten"
 ];
-const GENERATOR_VERSION = "3.99";
+const GENERATOR_VERSION = "4.00";
 
 function updateVersionWarnings(){
   const v=document.getElementById("inp-plx-version");
@@ -7493,7 +7493,8 @@ function generateFristWorkflowScript(p, dcPath) {
   p("ac=[]");
   p("if em: ac.append({'type':3,'email':{'subject':su,'body':bo,'to':em,'include_document':False}})");
   p("wh=os.environ.get('FRIST_WEBHOOK','')");
-  p("if wh: ac.append({'type':4,'webhook':{'url':wh,'body_template':'{{ doc_id }}','http_method':'POST'}})");
+  p("wp={'id':'{{ doc_id }}','title':'{{ doc_title }}','correspondent':'{{ correspondent }}','document_type':'{{ document_type }}','created':'{{ created }}','added':'{{ added }}','doc_url':'{{ doc_url }}','frist':n}");
+  p("if wh: ac.append({'type':4,'webhook':{'url':wh,'use_params':True,'as_json':True,'params':wp,'include_document':False}})");
   p("if rec:");
   p("  tag_assign={'type':1,'assign_tags':[]}");
   p("  frist_tag_id=os.environ.get('FRIST_TAG_ID','0') or '0'");
@@ -8804,7 +8805,10 @@ async function _directWorkflows({url, token, dryRun, totalItems, st}) {
           }];
           // Webhook-Aktion (wie im Bash-Skript) wenn Webhook-URL gesetzt
           if(cfg.webhookUrl && cfg.webhookUrl.trim()) {
-            actions.push({type: 4, webhook: {url: cfg.webhookUrl.trim(), body_template: '{{ doc_id }}', http_method: 'POST'}});
+            actions.push({type: 4, webhook: {url: cfg.webhookUrl.trim(), use_params: true, as_json: true, include_document: false, params: {
+              id: '{{ doc_id }}', title: '{{ doc_title }}', correspondent: '{{ correspondent }}', document_type: '{{ document_type }}',
+              created: '{{ created }}', added: '{{ added }}', doc_url: '{{ doc_url }}', frist: wfName
+            }}});
           }
           // Bei Wiederholung: Tag zuweisen (Marker gegen Doppel-Mails) – analog Bash-Skript
           if(recurring) {
