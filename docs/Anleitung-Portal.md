@@ -1,6 +1,6 @@
 # Anleitung: Paperless Generator Portal
 
-Stand: Portal v1.14.7 · für Anwender (kein Entwickler-Wissen nötig)
+Stand: Portal v1.14.8 · für Anwender (kein Entwickler-Wissen nötig)
 
 Diese Anleitung beschreibt nur, was es im Portal wirklich gibt. Stellen, bei denen ich mir nach dem Lesen des Codes nicht sicher bin, sind mit **(unsicher)** oder **Hinweis** gekennzeichnet. Zugangsdaten, Tokens und IP-Adressen stehen hier bewusst nicht drin; wo sie gebraucht werden, steht ein Platzhalter wie `<Portal-Adresse>`.
 
@@ -102,7 +102,7 @@ Weitere Regeln:
 - Jede Änderung steht im **Protokoll** (Verwaltung → System).
 - Ein neu erzeugtes oder widerrufenes Token setzt „Paperless“ auf AUS.
 - **Dokumente löschen bleibt immer gesperrt**, auch bei Paperless: AN (Abschnitt 8).
-- Mit dem Token sind außerdem gesperrt: Passwort ändern, Recovery-Codes, Token erzeugen/widerrufen, Voll-Backup und Wiederherstellen, Profile exportieren/importieren/anlegen/wechseln/löschen, Paperless-Adresse und „nur lesen“ ändern, „Anwenden/Rückgängig“, Kalender-Einstellungen. Benachrichtigungen und Wächter darf es **nur ansehen**, nicht speichern.
+- Mit dem Token sind außerdem gesperrt: Passwort ändern, Recovery-Codes, Token erzeugen/widerrufen, Voll-Backup und Wiederherstellen, Profile exportieren/importieren/anlegen/duplizieren/wechseln/löschen, Paperless-Adresse und „nur lesen“ ändern, „Anwenden/Rückgängig“, Kalender-Einstellungen. Benachrichtigungen und Wächter darf es **nur ansehen**, nicht speichern.
 
 Die Einrichtung des Konnektors auf dem PC (Token-Datei, `claude mcp add`) steht in `tools/portal-mcp/README.md` im Portal-Ordner.
 
@@ -143,7 +143,8 @@ Je Profil:
 - **Sicherheits-Einstellungen:**
   - *Produktivsystem*: dauerhafter Warnbalken (Farbe frei wählbar).
   - *Nur lesen*: das Portal blockt **jeden** Schreibzugriff (POST/PUT/PATCH/DELETE) auf diese Instanz. Das ist der härteste Schutz.
-- **Profil löschen:** entfernt das Profil samt gespeicherter Konfiguration. Dokumente in Paperless bleiben unberührt.
+- **⧉ Duplizieren** (direkt auf der Karte): kopiert Generator-Konfiguration, Schutz-Schalter und Farbe unter neuem Namen (leer = „Name (Kopie)“). Die Kopie startet **inaktiv** und immer auf **„nur lesen“**. Adresse und Token nimmt sie nur mit, wenn du den Haken **„Adresse & Token mitnehmen“** setzt; der Token bleibt dabei verschlüsselt und wird nie angezeigt. Benachrichtigungs-Kanäle und Wächter-Einstellungen werden nicht mitkopiert, sonst kämen Meldungen doppelt.
+- **🗑 Profil löschen** (direkt auf der Karte): fragt mit dem Profilnamen nach und entfernt dann das Profil samt gespeicherter Konfiguration. Das letzte Profil lässt sich nicht löschen (der Knopf ist dann grau). Dokumente und Daten in Paperless bleiben unberührt, die vorige Fassung bleibt in der automatischen Profil-Sicherung (`profiles.json.bak.1`) erhalten.
 - **Überwachung (Wächter):** Instanz überwachen ja/nein und welche Checks laufen (Erreichbarkeit/Token, Konfig-Drift, ASN-Lücken, Duplikate). Überschreibt die globale Vorgabe.
 - **Versionshistorie:** der jeweils vorige Stand bei „Profil speichern“. „Vergleichen“ zeigt, was ein Wiederherstellen ändern würde; einzelne Kategorien sind wählbar. Der aktuelle Stand wird vorher automatisch gesichert.
 - **Instanz-Snapshots:** Belege, die beim „Anwenden“ entstehen (zum Nachschlagen).

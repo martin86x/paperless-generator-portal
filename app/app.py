@@ -12,6 +12,7 @@ Der Generator selbst wird nicht veraendert: die Zeile wird nur zur Laufzeit in d
 HTTP-Response eingefuegt (die Datei auf der Platte bleibt Byte-fuer-Byte identisch).
 """
 import base64
+import copy
 import hashlib
 import io
 import json
@@ -847,7 +848,7 @@ _API_TOKEN_FORBIDDEN = {"settings", "wizard", "recovery_generate", "api_token_ge
                         "connector_enable_toggle",
                         "profiles_export", "config_backup", "profiles_import",
                         "profiles_connection", "profiles_flags", "profiles_activate",
-                        "profiles_delete", "profiles_create", "ics_settings"}
+                        "profiles_delete", "profiles_create", "profiles_duplicate", "ics_settings"}
 # nur lesen erlaubt (Seite anzeigen ja, speichern nein)
 # (Waechter: Webhook-/Heartbeat-URL und Metrics-Token waeren sonst ein Weg nach aussen)
 _API_TOKEN_READ_ONLY = {"notifications", "waechter"}
@@ -4607,11 +4608,50 @@ def profiles_delete(pid):
         return redirect(url_for("verwaltung", tab="profiles", err="Profil nicht gefunden."))
     if len(profs) <= 1:
         return redirect(url_for("verwaltung", tab="profiles", err="Das letzte Profil kann nicht gelöscht werden."))
+    name = profs[pid].get("name") or pid
     del profs[pid]
-    save_profiles(profs)
+    save_profiles(profs)  # sichert die vorige Fassung (mit diesem Profil) als profiles.json.bak.1
     if _active_id() not in profs:            # war es aktiv -> auf ein anderes umschalten
         set_active_profile(next(iter(profs)))
-    return redirect(url_for("verwaltung", tab="profiles", msg="Profil gelöscht."))
+    _log_activity("profile", "Profil gelöscht: %s" % name,
+                  detail="Nur das Portal-Profil; Dokumente und Daten in Paperless bleiben unberührt. "
+                         "Die vorige Fassung steht in der automatischen Sicherung profiles.json.bak.1.")
+    return redirect(url_for("verwaltung", tab="profiles",
+                            msg="Profil „%s“ gelöscht. Paperless blieb unberührt, die Sicherung steht in der "
+                                "automatischen Profil-Sicherung." % name))
+
+
+@app.route("/profiles/<pid>/duplicate", methods=["POST"])
+def profiles_duplicate(pid):
+    """Kopie eines Profils: Generator-Config, Schutz-Schalter und Farbe. Die Kopie startet
+    NICHT aktiv und immer auf „nur lesen“. Adresse + Token nur auf ausdruecklichen Wunsch
+    (Haken); Benachrichtigungs-Kanaele und Waechter-Einstellungen werden nie mitkopiert
+    (sonst kaeme jede Meldung doppelt). Betrifft nur das Portal, nie Paperless."""
+    profs = load_profiles()
+    if pid not in profs:
+        return redirect(url_for("verwaltung", tab="profiles", err="Profil nicht gefunden."))
+    src = profs[pid]
+    name = request.form.get("name", "").strip()[:80] or ("%s (Kopie)" % (src.get("name") or "Profil"))
+    with_conn = bool(request.form.get("with_conn"))
+    new = _new_profile_id()
+    profs[new] = {
+        "name": name,
+        "paperless_url": (src.get("paperless_url") or "") if with_conn else "",
+        # Token bleibt so verschluesselt, wie er liegt — nie im Klartext in der Oberflaeche
+        "paperless_token": (src.get("paperless_token") or "") if with_conn else "",
+        "generator_config": copy.deepcopy(src.get("generator_config")),
+        "productive": bool(src.get("productive")),
+        "readonly": True,
+        "blank": bool(src.get("blank")),
+        "color": src.get("color") or "",
+    }
+    save_profiles(profs)
+    _log_activity("profile", "Profil dupliziert: %s → %s" % (src.get("name") or pid, name),
+                  detail="Kopie startet inaktiv und „nur lesen“; Adresse/Token %s."
+                         % ("mitkopiert" if with_conn else "nicht mitkopiert"))
+    return redirect(url_for("verwaltung", tab="profiles",
+                            msg="Kopie „%s“ angelegt (inaktiv, nur lesen%s)."
+                                % (name, "" if with_conn else ", ohne Adresse und Token")))
 
 
 @app.route("/profiles/export")

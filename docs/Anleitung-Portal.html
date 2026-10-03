@@ -7,7 +7,7 @@ code{background:#222833;color:#c8d6ee;padding:1px 5px;border-radius:3px;font-siz
 blockquote{margin:1em 0;padding:8px 14px;background:#222018;color:#e3d3a8;border-left:4px solid #b7862a}hr{border:none;border-top:1px solid #2d333d;margin:1.5em 0}
 @media print{body{background:#fff;color:#1a1a1a;margin:0;padding:0;max-width:none;font-size:11pt}h1,h2,h3,strong,th{color:#000}h1{border-color:#3b82f6}h2{border-color:#ccc}th,td{border-color:#bbb}th{background:#eef2f8}tr:nth-child(even) td{background:#fff}code,pre{background:#f0f2f5;color:#000;border-color:#ddd}blockquote{background:#fff7e6;color:#1a1a1a;border-color:#f59e0b}hr{border-color:#ddd}a{color:inherit}}</style></head><body>
 <h1>Anleitung: Paperless Generator Portal</h1>
-<p>Stand: Portal v1.14.7 · für Anwender (kein Entwickler-Wissen nötig)</p>
+<p>Stand: Portal v1.14.8 · für Anwender (kein Entwickler-Wissen nötig)</p>
 <p>Diese Anleitung beschreibt nur, was es im Portal wirklich gibt. Stellen, bei denen ich mir nach dem Lesen des Codes nicht sicher bin, sind mit <strong>(unsicher)</strong> oder <strong>Hinweis</strong> gekennzeichnet. Zugangsdaten, Tokens und IP-Adressen stehen hier bewusst nicht drin; wo sie gebraucht werden, steht ein Platzhalter wie <code>&lt;Portal-Adresse&gt;</code>.</p>
 <hr>
 <h2>1. Was ist das Portal?</h2>
@@ -65,7 +65,7 @@ blockquote{margin:1em 0;padding:8px 14px;background:#222018;color:#e3d3a8;border
 <li>Jede Änderung steht im <strong>Protokoll</strong> (Verwaltung → System).</li>
 <li>Ein neu erzeugtes oder widerrufenes Token setzt „Paperless“ auf AUS.</li>
 <li><strong>Dokumente löschen bleibt immer gesperrt</strong>, auch bei Paperless: AN (Abschnitt 8).</li>
-<li>Mit dem Token sind außerdem gesperrt: Passwort ändern, Recovery-Codes, Token erzeugen/widerrufen, Voll-Backup und Wiederherstellen, Profile exportieren/importieren/anlegen/wechseln/löschen, Paperless-Adresse und „nur lesen“ ändern, „Anwenden/Rückgängig“, Kalender-Einstellungen. Benachrichtigungen und Wächter darf es <strong>nur ansehen</strong>, nicht speichern.</li>
+<li>Mit dem Token sind außerdem gesperrt: Passwort ändern, Recovery-Codes, Token erzeugen/widerrufen, Voll-Backup und Wiederherstellen, Profile exportieren/importieren/anlegen/duplizieren/wechseln/löschen, Paperless-Adresse und „nur lesen“ ändern, „Anwenden/Rückgängig“, Kalender-Einstellungen. Benachrichtigungen und Wächter darf es <strong>nur ansehen</strong>, nicht speichern.</li>
 </ul>
 <p>Die Einrichtung des Konnektors auf dem PC (Token-Datei, <code>claude mcp add</code>) steht in <code>tools/portal-mcp/README.md</code> im Portal-Ordner.</p>
 <hr>
@@ -97,7 +97,8 @@ blockquote{margin:1em 0;padding:8px 14px;background:#222018;color:#e3d3a8;border
 <li><strong>Sicherheits-Einstellungen:</strong></li>
 <li style="margin-left:1.2em"><em>Produktivsystem</em>: dauerhafter Warnbalken (Farbe frei wählbar).</li>
 <li style="margin-left:1.2em"><em>Nur lesen</em>: das Portal blockt <strong>jeden</strong> Schreibzugriff (POST/PUT/PATCH/DELETE) auf diese Instanz. Das ist der härteste Schutz.</li>
-<li><strong>Profil löschen:</strong> entfernt das Profil samt gespeicherter Konfiguration. Dokumente in Paperless bleiben unberührt.</li>
+<li><strong>⧉ Duplizieren</strong> (direkt auf der Karte): kopiert Generator-Konfiguration, Schutz-Schalter und Farbe unter neuem Namen (leer = „Name (Kopie)“). Die Kopie startet <strong>inaktiv</strong> und immer auf <strong>„nur lesen“</strong>. Adresse und Token nimmt sie nur mit, wenn du den Haken <strong>„Adresse &amp; Token mitnehmen“</strong> setzt; der Token bleibt dabei verschlüsselt und wird nie angezeigt. Benachrichtigungs-Kanäle und Wächter-Einstellungen werden nicht mitkopiert, sonst kämen Meldungen doppelt.</li>
+<li><strong>🗑 Profil löschen</strong> (direkt auf der Karte): fragt mit dem Profilnamen nach und entfernt dann das Profil samt gespeicherter Konfiguration. Das letzte Profil lässt sich nicht löschen (der Knopf ist dann grau). Dokumente und Daten in Paperless bleiben unberührt, die vorige Fassung bleibt in der automatischen Profil-Sicherung (<code>profiles.json.bak.1</code>) erhalten.</li>
 <li><strong>Überwachung (Wächter):</strong> Instanz überwachen ja/nein und welche Checks laufen (Erreichbarkeit/Token, Konfig-Drift, ASN-Lücken, Duplikate). Überschreibt die globale Vorgabe.</li>
 <li><strong>Versionshistorie:</strong> der jeweils vorige Stand bei „Profil speichern“. „Vergleichen“ zeigt, was ein Wiederherstellen ändern würde; einzelne Kategorien sind wählbar. Der aktuelle Stand wird vorher automatisch gesichert.</li>
 <li><strong>Instanz-Snapshots:</strong> Belege, die beim „Anwenden“ entstehen (zum Nachschlagen).</li>

@@ -127,6 +127,71 @@ r = post(c, "/profiles/nichtda/delete")
 check("unbekanntes Profil: Fehlermeldung statt Absturz", msg_of(r)[2])
 check("Löschen von Profilen berührt Paperless nicht", NET == [])
 
+
+print("Profil duplizieren und Löschen sichtbar")
+reset()
+c = client()
+page = c.get("/verwaltung/profiles?embed=1") if False else c.get("/profiles?embed=1")
+html = page.data.decode("utf-8")
+check("Profilkarte zeigt 'Duplizieren' und 'Profil löschen' direkt (nicht im Aufklapper)",
+      html.count("Duplizieren</button>") >= 2 and html.count("Profil löschen</button>") >= 2)
+check("Löschen-Rückfrage nennt den Profilnamen", "Profil \u201eEins\u201c wirklich" in html or "Eins" in html.split("onsubmit='return confirm(", 1)[1][:200])
+src_enc = A.load_profiles()[P1]["paperless_token"]
+src_hist = len(A._list_history(P1))
+NET.clear()
+r = post(c, "/profiles/%s/duplicate" % P1, name="Kopie 1")
+profs = A.load_profiles()
+new_ids = [k for k in profs if k not in (P1, P2)]
+eq("genau eine neue Kopie", len(new_ids), 1)
+cp = profs[new_ids[0]]
+eq("Name der Kopie", cp["name"], "Kopie 1")
+check("Kopie hat die Generator-Konfiguration", cp["generator_config"] == {"types": [{"name": "A"}]})
+check("Kopie ist eine echte Kopie (nicht dasselbe Objekt)", cp["generator_config"] is not profs[P1]["generator_config"])
+check("Kopie startet nur lesen", cp["readonly"] is True)
+eq("Kopie ohne Haken: keine Adresse", cp["paperless_url"], "")
+eq("Kopie ohne Haken: kein Token", cp["paperless_token"], "")
+eq("Original bleibt aktiv", c.get("/portal/profiles.json").get_json()["active"], P1)
+check("Rückmeldung msg", msg_of(r)[1])
+r = post(c, "/profiles/%s/duplicate" % P1, with_conn="1")
+check("Duplizieren berührt Paperless nicht", NET == [])
+profs = A.load_profiles()
+second = [k for k in profs if k not in (P1, P2, new_ids[0])]
+cp2 = profs[second[0]]
+eq("Standardname", cp2["name"], "Eins (Kopie)")
+eq("mit Haken: Adresse kopiert", cp2["paperless_url"], "http://stub.invalid:8000")
+check("mit Haken: Token bleibt verschlüsselt und gleich", cp2["paperless_token"] == src_enc and src_enc.startswith(A._ENC_PREFIX))
+check("auch mit Haken: nur lesen", cp2["readonly"] is True)
+check("Token steht nirgends im Klartext auf der Seite", "tok" not in c.get("/profiles?embed=1").data.decode("utf-8").replace("Token", "").replace("token", ""))
+check("Notification-Kanäle werden nicht kopiert", "notifications" not in cp2)
+r = post(c, "/profiles/nichtda/duplicate")
+check("unbekanntes Profil beim Duplizieren: Fehlermeldung", msg_of(r)[2])
+# Löschen mit Name in der Rückmeldung + Sicherung
+r = post(c, "/profiles/%s/delete" % second[0])
+check("Löschen meldet den Namen", "Eins" in __import__("urllib.parse").parse.unquote_plus(r.headers["Location"]))
+check("Sicherung der vorigen Fassung vorhanden", os.path.exists(A.PROFILES_PATH + ".bak.1"))
+bak = json.load(open(A.PROFILES_PATH + ".bak.1", encoding="utf-8"))
+check("Sicherung enthält das gelöschte Profil noch", second[0] in bak)
+# nur ein Profil: Löschen-Knopf gesperrt
+reset()
+A.save_profiles({P1: A.load_profiles()[P1]})
+html = client().get("/profiles?embed=1").data.decode("utf-8")
+check("letztes Profil: Löschen-Knopf deaktiviert", "disabled title=\"Das letzte Profil" in html)
+
+
+print("Konnektor-Token darf Profile weder duplizieren noch löschen")
+reset()
+cfg = A.load_config()
+cfg["api_token"] = {"hash": A._api_token_hash("konnektor-test-token"), "hint": "oken", "created": "2026-01-01T00:00:00"}
+A.save_config(cfg)
+A._cfg0.clear()
+A._cfg0.update(A.load_config())
+before = set(A.load_profiles())
+anon = A.app.test_client()
+for path in ("/profiles/%s/duplicate" % P1, "/profiles/%s/delete" % P2, "/profiles"):
+    r = anon.post(path, data={"name": "x"}, headers=dict(H, Authorization="Bearer konnektor-test-token"), base_url="http://localhost")
+    eq("Konnektor POST %s gesperrt" % path, r.status_code, 403)
+eq("Profile blieben unverändert", set(A.load_profiles()), before)
+
 print("Konfigurations-Verlauf: speichern, Diff, Wiederherstellen")
 reset()
 c = client()

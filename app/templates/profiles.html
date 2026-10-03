@@ -41,13 +41,14 @@
           Der Generator hat eine eigene <em>Sektion 01 „Verbindung"</em>. Im Portal-Betrieb ist die <strong>wirkungslos</strong>: der Proxy verwirft einen dort eingetippten Token und spritzt den aus dem Profil ein. Den API-Token also <strong>immer hier</strong> beim Profil unter „Verbindung" eintragen. (Steht im Token-Feld eine URL statt eines Tokens → roter Status / HTTP 401.)
         </div>
 
-        <p style="margin:0 0 4px"><strong style="color:var(--text)">Die Aktionen je Profil</strong> (unter „Verbindung · Umbenennen · Löschen"):</p>
+        <p style="margin:0 0 4px"><strong style="color:var(--text)">Die Aktionen je Profil</strong> („Duplizieren“ und „Profil löschen“ stehen direkt auf der Karte, der Rest unter „Verbindung · Umbenennen · Schutz-Schalter“):</p>
         <ul style="margin:0 0 10px;padding-left:18px">
           <li><strong>Verbindung</strong> — URL + API-Token setzen. Leeres Token-Feld = bestehendes behalten. Der Status oben zeigt live grün/rot.</li>
           <li><strong>Umbenennen</strong> — nur die Anzeige, ändert nichts an den Daten.</li>
           <li><strong>Produktivsystem</strong> — blendet überall einen auffälligen Warnbalken ein, damit du nie versehentlich die Live-Instanz bearbeitest.</li>
           <li><strong>Nur lesen</strong> — der Proxy blockt <em>jeden</em> Schreibzugriff (POST/PUT/PATCH/DELETE) auf diese Instanz. Härtester Schutz.</li>
-          <li><strong>Löschen</strong> — entfernt das Profil samt gespeicherter Config (Dokumente in Paperless bleiben unberührt).</li>
+          <li><strong>Duplizieren</strong> — kopiert Konfiguration, Schutz-Schalter und Farbe unter neuem Namen. Die Kopie startet <em>inaktiv</em> und auf „nur lesen“; Adresse und Token nimmt sie nur mit, wenn du den Haken setzt. Benachrichtigungen und Wächter-Einstellungen werden nicht mitkopiert.</li>
+          <li><strong>Löschen</strong> — entfernt das Profil samt gespeicherter Config (mit Rückfrage; das letzte Profil bleibt). Dokumente in Paperless bleiben unberührt, die vorige Fassung bleibt in der automatischen Profil-Sicherung.</li>
         </ul>
 
         <p style="margin:0 0 10px"><strong style="color:var(--text)">Speichern &amp; Historie.</strong> Im Generator speicherst du Änderungen mit „💾 Profil speichern". Der vorige Stand landet automatisch in der <strong>Versionshistorie</strong> — jederzeit per „↩ Wiederherstellen" zurückholbar. Ein neues, leeres Profil hat noch keine Config → der Generator startet mit seinen Standard-Daten.</p>
@@ -83,8 +84,24 @@
     </form>
     {% endif %}
 
+
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+      <form method="post" action="{{ url_for('profiles_duplicate', pid=p.id) }}" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0">
+        <input type="text" name="name" maxlength="80" placeholder="Name der Kopie (leer: „{{ p.name }} (Kopie)“)" style="width:240px;margin:0">
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-dim);margin:0" title="Der Token wird verschlüsselt kopiert und nie angezeigt. Ohne Haken startet die Kopie ohne Adresse und Token.">
+          <input type="checkbox" name="with_conn" value="1" style="width:auto;margin:0"> Adresse &amp; Token mitnehmen
+        </label>
+        <button type="submit" style="width:auto;margin:0;padding:8px 12px;font-size:13px" title="Kopiert Konfiguration und Schutz-Schalter. Die Kopie startet inaktiv und auf „nur lesen“.">⧉ Duplizieren</button>
+      </form>
+      <form method="post" action="{{ url_for('profiles_delete', pid=p.id) }}" style="margin:0 0 0 auto"
+            onsubmit='return confirm({{ ("Profil „" ~ p.name ~ "“ wirklich löschen?\n\nEntfernt nur das Portal-Profil samt gespeicherter Konfiguration. Dokumente und Daten in Paperless bleiben unberührt. Die vorige Fassung bleibt in der automatischen Profil-Sicherung erhalten.")|tojson }});'>
+        <button type="submit" {% if profiles|length <= 1 %}disabled title="Das letzte Profil kann nicht gelöscht werden."{% else %}title="Profil „{{ p.name }}“ löschen"{% endif %}
+                style="width:auto;margin:0;padding:8px 12px;font-size:13px;background:var(--err);{% if profiles|length <= 1 %}opacity:.45;cursor:not-allowed{% endif %}">🗑 Profil löschen</button>
+      </form>
+    </div>
+
     <details style="margin-top:12px">
-      <summary style="cursor:pointer;color:var(--text-dim);font-size:13px">Verbindung · Umbenennen · Löschen</summary>
+      <summary style="cursor:pointer;color:var(--text-dim);font-size:13px">Verbindung · Umbenennen · Schutz-Schalter</summary>
 
       <form method="post" action="{{ url_for('profiles_connection', pid=p.id) }}">
         <label>Paperless-URL</label>
@@ -120,10 +137,6 @@
         <button type="submit">Sicherheits-Einstellungen speichern</button>
       </form>
 
-      <form method="post" action="{{ url_for('profiles_delete', pid=p.id) }}" style="margin-top:10px"
-            onsubmit="return confirm('Profil „{{ p.name }}“ wirklich löschen? Die gespeicherte Konfiguration geht verloren.');">
-        <button type="submit" style="background:var(--err)">Profil löschen</button>
-      </form>
     </details>
 
     <details style="margin-top:8px">
