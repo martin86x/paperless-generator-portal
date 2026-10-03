@@ -8,7 +8,7 @@
 # eine Anforderungsdatei in sein /config-Volume; dieses Skript fuehrt sie aus.
 #
 # Einrichtung (auf dem LXC, einmalig) — siehe host-helper/README.md:
-#   */1 * * * * /opt/paperless-generator-portal/host-helper/paperless-portal-updater.sh >/dev/null 2>&1
+#   */1 * * * * bash /opt/paperless-generator-portal/host-helper/paperless-portal-updater.sh >/dev/null 2>&1
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 

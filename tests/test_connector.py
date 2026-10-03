@@ -161,12 +161,14 @@ for meth, path in [("POST", "/settings"), ("POST", "/wizard"),
                    ("POST", "/profiles/import"), ("POST", "/profiles/p1/connection"),
                    ("POST", "/profiles/p1/flags"), ("POST", "/profiles/p1/activate"),
                    ("POST", "/profiles/p1/delete"),
-                   ("POST", "/verwaltung/benachrichtigungen")]:
+                   ("POST", "/verwaltung/benachrichtigungen"), ("POST", "/profiles"),
+                   ("POST", "/verwaltung/waechter")]:
     r = c.open(path, method=meth, data={"current": PW, "paperless_url": "http://fremd:1"},
                headers=bearer(TOK))
     eq("%s %s -> 403" % (meth, path), r.status_code, 403)
     check("  kein Paperless-Token in der Antwort", b"platzhalter" not in r.data)
 eq("Profile unverändert", json.dumps(A.load_profiles(), sort_keys=True), _before)
+check("Wächter-Einstellungen unverändert", "webhook_url" not in json.dumps(A.load_config().get("watcher") or {}))
 eq("Benachrichtigungen lesen geht", c.get("/verwaltung/benachrichtigungen",
                                           headers=bearer(TOK)).status_code, 200)
 
@@ -203,6 +205,63 @@ eq("Widerruf setzt Schalter AUS", A.load_config().get("api_token_paperless"), Fa
 r = b.post("/verwaltung/api-token/generate", data={"current": PW}, headers=H)
 TOK = re.search(r'(pgp_[A-Za-z0-9_-]+)<', r.data.decode("utf-8")).group(1)
 
+print("Schalter Konnektor")
+
+
+def enable(c, on, headers=H):
+    return c.post("/portal/connector/enabled", json={"on": on}, headers=headers)
+
+
+check("Standard: Konnektor AN (auch ohne Schlüssel in config.json)",
+      "api_token_enabled" not in A.load_config() and b.get("/portal/connector.json").get_json()["enabled"])
+eq("Token darf den Konnektor-Schalter nicht umlegen", enable(c, False, bearer(TOK)).status_code, 403)
+eq("fremder Origin -> 403", enable(b, False, {"Origin": "http://boese.example"}).status_code, 403)
+eq("kaputter Rumpf -> 400", b.post("/portal/connector/enabled", json={}, headers=H).status_code, 400)
+toggle(b, True)
+del LOG[:]
+r = enable(b, False)
+eq("Sitzung sperrt den Konnektor (ohne Passwort)", r.status_code, 200)
+eq("  Antwort zeigt AUS", r.get_json()["enabled"], False)
+eq("  Paperless ist mit aus", A.load_config().get("api_token_paperless"), False)
+check("  steht im Protokoll", any(m == "Konnektor AUS" for _, m in LOG))
+del FWD[:]
+for meth, path in [("GET", "/portal/status.json"), ("GET", "/portal/connector.json"),
+                   ("GET", "/verwaltung/overview"), ("POST", "/verwaltung/update/trigger"),
+                   ("GET", "/api/documents/")]:
+    eq("gesperrt: %s %s -> 403" % (meth, path),
+       c.open(path, method=meth, data={"action": "update"}, headers=bearer(TOK)).status_code, 403)
+check("  keine Update-Anforderung", not os.path.exists(A.UPDATE_REQUEST))
+check("  nichts ging an Paperless", not FWD)
+eq("falsches Token weiter 401", c.get("/portal/status.json", headers=bearer("pgp_falsch")).status_code, 401)
+A._login_fails_reset()
+eq("Paperless einschalten bei Konnektor AUS -> 409", toggle(b, True).status_code, 409)
+eq("im Browser geht alles weiter", b.get("/portal/connector.json").status_code, 200)
+r = enable(b, True)
+check("wieder AN, Paperless bleibt AUS", r.get_json()["enabled"] and not r.get_json()["paperless"])
+eq("Token wieder zugelassen", c.get("/portal/status.json", headers=bearer(TOK)).status_code, 200)
+eq("Paperless weiter 403 bis zum Einschalten", c.get("/api/documents/", headers=bearer(TOK)).status_code, 403)
+
+print("Host-Helper")
+st = c.get("/portal/status.json", headers=bearer(TOK)).get_json()["update_helper"]
+check("ohne Lebenszeichen nicht aktiv", not st["alive"] and st["last_seen"] is None)
+open(A.UPDATE_HELPER_ALIVE, "w").close()
+eq("frisches Lebenszeichen -> aktiv", c.get("/portal/status.json", headers=bearer(TOK)).get_json()
+   ["update_helper"]["alive"], True)
+old = time.time() - 80 * 86400
+os.utime(A.UPDATE_HELPER_ALIVE, (old, old))
+st = c.get("/portal/status.json", headers=bearer(TOK)).get_json()["update_helper"]
+check("altes Lebenszeichen -> nicht aktiv, mit Datum", not st["alive"] and st["last_seen"])
+
+
+def _no_net(*a, **k):
+    raise A.requests.RequestException("kein Netz im Test")
+
+
+A.requests.get = _no_net
+page = b.get("/update").data.decode("utf-8")
+check("Version-Seite meldet stehenden Helper", "meldet sich nicht mehr" in page)
+os.remove(A.UPDATE_HELPER_ALIVE)
+
 print("Lampe")
 used = A._read_json_dict(A.API_TOKEN_USED_PATH)
 with open(A.API_TOKEN_USED_PATH, "w", encoding="utf-8") as fh:
@@ -211,7 +270,8 @@ eq("alte Meldung -> Lampe aus", b.get("/portal/connector.json").get_json()["onli
 
 print("inject.js")
 js = b.get("/portal/inject.js").data.decode("utf-8")
-check("Schalter + Lampe im Generator", "plx-conn-toggle" in js and "plx-conn-lamp" in js)
+check("beide Schalter + Lampe im Generator",
+      "plx-conn-toggle" in js and "plx-conn-enable" in js and "plx-conn-lamp" in js)
 check("Text nur per textContent", "innerHTML = d." not in js)
 
 # ── 7. MCP-Server ────────────────────────────────────────────────────────────

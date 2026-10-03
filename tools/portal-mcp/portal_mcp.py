@@ -120,7 +120,8 @@ _OBJ = {"type": "object"}
 TOOLS = [
     {"name": "portal_status",
      "description": "Zustand des Generator-Portals: Version, verfuegbares Update, Host-Helper, "
-                    "Waechter, aktives Profil, Konnektor-Lampe und Paperless-Schalter.",
+                    "Waechter, aktives Profil, Konnektor-Lampe und beide Schalter. Antwortet das Portal "
+                    "mit 403 'Konnektor ist im Portal ausgeschaltet', hat der Besitzer ihn gesperrt.",
      "inputSchema": {"type": "object", "properties": {}},
      "fn": tool_status},
     {"name": "portal_update",
@@ -133,7 +134,8 @@ TOOLS = [
     {"name": "portal_request",
      "description": "Beliebiger Aufruf im Portal (nicht /api). Gesperrt mit dem Token: Passwort, "
                     "Recovery-Codes, Token, Backup/Restore, Profil-Export/-Import, Paperless-URL, "
-                    "'nur lesen', Profilwechsel, Anwenden, Paperless-Schalter. "
+                    "'nur lesen', Profil anlegen/wechseln, Waechter/Benachrichtigungen speichern, "
+                    "Anwenden, beide Schalter. "
                     "Redirects werden nicht verfolgt, sondern mit Location gemeldet.",
      "inputSchema": {"type": "object", "properties": {
          "method": {"type": "string", "enum": ["GET", "POST"]},
@@ -144,7 +146,7 @@ TOOLS = [
      "fn": tool_portal_request},
     {"name": "paperless_request",
      "description": "Aufruf der Paperless-API ueber den Portal-Proxy. Geht nur, wenn im Generator "
-                    "der Schalter 'Paperless' auf AN steht. Dokumente loeschen ist immer gesperrt; "
+                    "die Schalter 'Konnektor' und 'Paperless' auf AN stehen. Dokumente loeschen ist immer gesperrt; "
                     "ein Profil auf 'nur lesen' sperrt alle Schreibzugriffe.",
      "inputSchema": {"type": "object", "properties": {
          "method": {"type": "string", "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"]},

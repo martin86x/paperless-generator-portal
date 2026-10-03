@@ -11,7 +11,7 @@ Lokaler MCP-Server, mit dem Claude Code das Generator-Portal steuert. Läuft auf
 | `portal_request` | beliebiger Portal-Aufruf außer `/api` |
 | `paperless_request` | Paperless-API über den Portal-Proxy, nur wenn der Schalter auf AN steht |
 
-Mit dem Token immer gesperrt: Passwort, Recovery-Codes, Token selbst, Voll-Restore, Config-Backup, Profil-Export/-Import, Paperless-URL und „nur lesen“ ändern, Profil wechseln oder löschen, Benachrichtigungen speichern, Anwenden/Rückgängig, der Paperless-Schalter. Dokumente löschen ist auch bei Schalter AN gesperrt; ein Profil auf „nur lesen“ sperrt alle Schreibzugriffe.
+Mit dem Token immer gesperrt: Passwort, Recovery-Codes, Token selbst, Voll-Restore, Config-Backup, Profil-Export/-Import, Paperless-URL und „nur lesen“ ändern, Profil anlegen, wechseln oder löschen, Benachrichtigungen und Wächter speichern, Anwenden/Rückgängig, beide Schalter. Dokumente löschen ist auch bei Schalter AN gesperrt; ein Profil auf „nur lesen“ sperrt alle Schreibzugriffe.
 
 ## Einrichtung (Windows)
 
@@ -38,5 +38,8 @@ Optional: `PORTAL_TOKEN_FILE` zeigt auf eine andere Token-Datei.
 
 In der Kopfzeile des Generators:
 
-- **Lampe**: grün = der Konnektor hat sich in den letzten 3 Minuten gemeldet (er meldet sich alle 45 s, solange Claude Code läuft), rot = getrennt, grau = kein Token angelegt.
-- **Paperless: AN/AUS**: gibt dem Token den Zugriff auf Paperless. Umschalten nur im eingeloggten Browser, ohne Passwort, jede Änderung steht im Protokoll. Ein neues oder widerrufenes Token setzt den Schalter auf AUS.
+- **Lampe**: grün = der Konnektor hat sich in den letzten 3 Minuten gemeldet (er meldet sich alle 45 s, solange Claude Code läuft), rot = getrennt, grau = gesperrt oder kein Token angelegt.
+- **Konnektor: AN/AUS**: lässt das Token überhaupt zu. Bei AUS wird jeder Aufruf mit dem Token abgewiesen (403). Ausschalten nimmt auch den Paperless-Zugriff weg.
+- **Paperless: AN/AUS**: gibt dem Token den Zugriff auf Paperless, nur bei Konnektor AN.
+
+Beide Schalter lassen sich nur im eingeloggten Browser umlegen, ohne Passwort, und jede Änderung steht im Protokoll. Das Token selbst kann keinen der beiden umlegen. Ein neues oder widerrufenes Token setzt Paperless auf AUS.

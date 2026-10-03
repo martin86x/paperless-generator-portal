@@ -59,6 +59,24 @@ LAST_BACKUP_PATH = os.path.join(CONFIG_DIR, "last-backup.json")  # Zeitstempel d
 UPDATE_REQUEST = os.path.join(CONFIG_DIR, "update-request.json")
 UPDATE_STATUS = os.path.join(CONFIG_DIR, "update-status.json")
 UPDATE_HELPER_ALIVE = os.path.join(CONFIG_DIR, "update-helper.alive")
+HELPER_ALIVE_SECS = 300  # Cron laeuft jede Minute; aelteres Lebenszeichen = Helper steht
+
+
+def _helper_alive():
+    """Host-Helper aktiv = Lebenszeichen juenger als 5 Minuten. Nur die Existenz der Datei
+    zu pruefen meldete einen Helper als aktiv, der seit Wochen nicht mehr laeuft."""
+    try:
+        return time.time() - os.path.getmtime(UPDATE_HELPER_ALIVE) < HELPER_ALIVE_SECS
+    except OSError:
+        return False
+
+
+def _helper_last_seen():
+    """'vor 3 Wochen' o. ae. fuer die Anzeige, None wenn es nie ein Lebenszeichen gab."""
+    try:
+        return _fmt_rel_ts(int(os.path.getmtime(UPDATE_HELPER_ALIVE)))
+    except OSError:
+        return None
 SITE_DIR = os.environ.get("SITE_DIR", os.path.join(os.path.dirname(__file__), "site"))
 
 DEFAULT_ADMIN_USER = "admin"
@@ -819,17 +837,19 @@ def _inject_layout():
 #     Config-Backup mit secret, Paperless-URL/SMTP-Server aendern) — sonst kaeme man am
 #     Schalter und an der Loesch-Sperre vorbei direkt an Paperless
 #   * alles, womit sich das Token selbst Rechte gaebe: "nur lesen" abschalten, Profil
-#     wechseln/importieren/loeschen, den Paperless-Schalter umlegen
+#     anlegen/wechseln/importieren/loeschen, Konnektor- oder Paperless-Schalter umlegen
 API_TOKEN_PREFIX = "pgp_"
 API_TOKEN_USED_PATH = os.path.join(CONFIG_DIR, "api-token-used.json")
 _API_TOKEN_FORBIDDEN = {"settings", "wizard", "recovery_generate", "api_token_generate",
                         "api_token_revoke", "config_restore", "anwenden_post",
                         "anwenden_undo", "logout", "connector_paperless_toggle",
+                        "connector_enable_toggle",
                         "profiles_export", "config_backup", "profiles_import",
                         "profiles_connection", "profiles_flags", "profiles_activate",
-                        "profiles_delete"}
+                        "profiles_delete", "profiles_create"}
 # nur lesen erlaubt (Seite anzeigen ja, speichern nein)
-_API_TOKEN_READ_ONLY = {"notifications"}
+# (Waechter: Webhook-/Heartbeat-URL und Metrics-Token waeren sonst ein Weg nach aussen)
+_API_TOKEN_READ_ONLY = {"notifications", "waechter"}
 # Lampe "Konnektor verbunden": der Konnektor meldet sich alle 45 s (GET), das Token
 # schreibt den Zeitpunkt hoechstens einmal pro Minute -> 180 s Luft.
 CONNECTOR_ONLINE_SECS = 180
@@ -879,9 +899,17 @@ def _api_token_info(cfg=None):
             "last_used": _fmt_rel_ts(used.get("ts")) if used.get("ts") else "noch nie"}
 
 
+def _connector_on(cfg=None):
+    """Schalter "Konnektor": Token ueberhaupt zulassen (Standard: an, fehlt der Schluessel
+    in einer aelteren config.json, bleibt eine bestehende Verbindung also bestehen)."""
+    return bool((cfg or load_config()).get("api_token_enabled", True))
+
+
 def _paperless_access_on(cfg=None):
-    """Schalter "Paperless-Zugriff fuer den Konnektor" (Standard: aus)."""
-    return bool((cfg or load_config()).get("api_token_paperless"))
+    """Schalter "Paperless-Zugriff fuer den Konnektor" (Standard: aus). Wirkt nur, wenn
+    auch der Konnektor-Schalter an ist."""
+    cfg = cfg or load_config()
+    return _connector_on(cfg) and bool(cfg.get("api_token_paperless"))
 
 
 def _connector_info(cfg=None):
@@ -889,7 +917,8 @@ def _connector_info(cfg=None):
     has_token = bool((cfg.get("api_token") or {}).get("hash"))
     ts = _read_json_dict(API_TOKEN_USED_PATH).get("ts") if has_token else None
     online = bool(ts) and time.time() - ts < CONNECTOR_ONLINE_SECS
-    return {"token": has_token, "paperless": _paperless_access_on(cfg), "online": online,
+    return {"token": has_token, "enabled": _connector_on(cfg),
+            "paperless": _paperless_access_on(cfg), "online": online,
             "last_seen": _fmt_rel_ts(ts) if ts else None}
 
 
@@ -908,6 +937,8 @@ def require_login():
                           detail="IP %s, %s %s" % (ip, request.method, request.path))
             return Response("Unauthorized", status=401,
                             headers={"WWW-Authenticate": 'Bearer realm="portal"'})
+        if not _connector_on():
+            return Response("Konnektor ist im Portal ausgeschaltet.", status=403)
         _api_token_touch()  # gueltiges Token = Konnektor da (Lampe), auch wenn gleich 403 folgt
         if request.path.startswith("/api"):
             if not _paperless_access_on():
@@ -1419,7 +1450,8 @@ def update_page():
     except (OSError, ValueError):
         pass
     oneclick = {
-        "helper": os.path.exists(UPDATE_HELPER_ALIVE),
+        "helper": _helper_alive(),
+        "helper_seen": _helper_last_seen(),
         "pending": os.path.exists(UPDATE_REQUEST),
         "status": upd_status,
     }
@@ -1458,7 +1490,7 @@ def update_trigger():
     _log_activity("update", "1-Klick-%s angefordert" % ("Rollback" if action == "rollback" else "Update"))
     if g.get("api_token"):  # Konnektor bekommt JSON statt Redirect
         return jsonify({"ok": True, "action": action,
-                        "helper": os.path.exists(UPDATE_HELPER_ALIVE)})
+                        "helper": _helper_alive()})
     return redirect(url_for("verwaltung", tab="version",
                             msg="%s angefordert — der Host-Helper führt es in Kürze aus."
                                 % ("Rollback" if action == "rollback" else "Update")))
@@ -1480,6 +1512,8 @@ def connector_paperless_toggle():
     cfg = load_config()
     if data["on"] and not (cfg.get("api_token") or {}).get("hash"):
         return jsonify({"ok": False, "error": "Kein API-Token vorhanden."}), 409
+    if data["on"] and not _connector_on(cfg):
+        return jsonify({"ok": False, "error": "Erst den Konnektor einschalten."}), 409
     if bool(cfg.get("api_token_paperless")) != data["on"]:
         cfg["api_token_paperless"] = data["on"]
         save_config(cfg)
@@ -1487,6 +1521,30 @@ def connector_paperless_toggle():
                       level="warn" if data["on"] else "info",
                       detail="Geschaltet im Generator (IP %s). Dokumente löschen bleibt gesperrt."
                              % (request.remote_addr or "?"))
+    return jsonify(dict(_connector_info(cfg), ok=True))
+
+
+@app.route("/portal/connector/enabled", methods=["POST"])
+def connector_enable_toggle():
+    """Konnektor (Portal-API-Token) ganz zulassen oder sperren. Nur mit Login-Sitzung, ohne
+    Passwort, wird protokolliert. Ausschalten nimmt auch den Paperless-Zugriff weg, damit er
+    beim Wiedereinschalten nicht unbemerkt mit zurueckkommt."""
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or not isinstance(data.get("on"), bool):
+        return jsonify({"ok": False, "error": "erwartet {\"on\": true|false}"}), 400
+    cfg = load_config()
+    if data["on"] and not (cfg.get("api_token") or {}).get("hash"):
+        return jsonify({"ok": False, "error": "Kein API-Token vorhanden."}), 409
+    if _connector_on(cfg) != data["on"]:
+        cfg["api_token_enabled"] = data["on"]
+        if not data["on"]:
+            cfg["api_token_paperless"] = False
+        save_config(cfg)
+        _log_activity("api", "Konnektor %s" % ("EIN" if data["on"] else "AUS"),
+                      level="warn" if data["on"] else "info",
+                      detail="Geschaltet im Generator (IP %s).%s"
+                             % (request.remote_addr or "?",
+                                "" if data["on"] else " Paperless-Zugriff ebenfalls AUS."))
     return jsonify(dict(_connector_info(cfg), ok=True))
 
 
@@ -1505,7 +1563,7 @@ def portal_status():
         "version": PORTAL_VERSION,
         "build": _build_stamp(),
         "update": check_for_update(),
-        "update_helper": {"alive": os.path.exists(UPDATE_HELPER_ALIVE),
+        "update_helper": {"alive": _helper_alive(), "last_seen": _helper_last_seen(),
                           "pending": os.path.exists(UPDATE_REQUEST), "status": upd_status},
         "watcher": {"enabled": wc["enabled"], "last_run": st.get("last_run"),
                     "alerts": len(st.get("alerts_active") or ())},

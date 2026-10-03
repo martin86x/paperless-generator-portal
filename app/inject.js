@@ -6,7 +6,7 @@
  *     Benachrichtigungs-E-Mail als Pflichtfeld)
  *   - Config des aktiven Profils laden (_applyLoadedConfig), danach same-origin erzwingen
  *   - Profil wechseln / speichern; ungespeicherte Aenderungen anzeigen
- *   - Konnektor-Lampe + Schalter "Paperless-Zugriff" fuer das API-Token
+ *   - Konnektor-Lampe + Schalter "Konnektor" und "Paperless" fuer das API-Token
  * Der synchrone localStorage-Patch (plx_conn_preset + paperless_gen_cfg_v2 -> origin) passiert
  * separat inline im <head>, BEVOR die Generator-Skripte laufen.
  */
@@ -208,7 +208,8 @@
     });
     n.appendChild(sweep);
 
-    // Konnektor: Lampe (verbunden?) + Schalter "Paperless-Zugriff" fuer das API-Token.
+    // Konnektor: Lampe (verbunden?) + Schalter "Konnektor" (Token ueberhaupt zulassen) und
+    // "Paperless" (Token darf an Paperless, nur wenn der Konnektor an ist).
     // Zustand kommt aus /portal/connector.json (refreshConnector), Text per textContent.
     var conn = document.createElement('span');
     conn.id = 'plx-connector';
@@ -217,11 +218,16 @@
     lamp.id = 'plx-conn-lamp';
     lamp.style.cssText = 'display:inline-block;width:9px;height:9px;border-radius:50%;background:#6b7280';
     var ltxt = document.createElement('span'); ltxt.id = 'plx-conn-text'; ltxt.textContent = 'Konnektor';
-    var tgl = document.createElement('button');
-    tgl.id = 'plx-conn-toggle';
-    tgl.style.cssText = 'border:1px solid #2b303b;border-radius:5px;padding:2px 8px;font-size:12px;cursor:pointer;background:#2b303b;color:#e6e9ef';
-    tgl.addEventListener('click', toggleConnector);
-    conn.appendChild(lamp); conn.appendChild(ltxt); conn.appendChild(tgl);
+    var mkTgl = function (id, fn) {
+      var b = document.createElement('button');
+      b.id = id;
+      b.style.cssText = 'border:1px solid #2b303b;border-radius:5px;padding:2px 8px;font-size:12px;cursor:pointer;background:#2b303b;color:#e6e9ef';
+      b.addEventListener('click', fn);
+      return b;
+    };
+    conn.appendChild(lamp); conn.appendChild(ltxt);
+    conn.appendChild(mkTgl('plx-conn-enable', toggleConnectorEnabled));
+    conn.appendChild(mkTgl('plx-conn-toggle', toggleConnector));
     n.appendChild(conn);
 
     var spacer = document.createElement('span');
@@ -426,7 +432,8 @@
   }
 
   // Konnektor-Anzeige: Lampe gruen = Konnektor hat sich in den letzten Minuten gemeldet.
-  // Schalter: gibt dem API-Token den Paperless-Zugriff (Loeschen von Dokumenten bleibt gesperrt).
+  // Schalter 1 "Konnektor": Token ueberhaupt zulassen. Schalter 2 "Paperless": Token darf an
+  // Paperless (nur bei Konnektor AN; Loeschen von Dokumenten bleibt immer gesperrt).
   var _conn = null;
   function renderConnector(d) {
     var box = document.getElementById('plx-connector');
@@ -436,10 +443,15 @@
     var lamp = document.getElementById('plx-conn-lamp');
     var txt = document.getElementById('plx-conn-text');
     var tgl = document.getElementById('plx-conn-toggle');
+    var en = document.getElementById('plx-conn-enable');
     if (!d.token) {
       lamp.style.background = '#6b7280';
       txt.textContent = 'Konnektor: kein Token';
       box.title = 'Kein API-Token angelegt (Verwaltung → Konto → API-Zugang)';
+    } else if (!d.enabled) {
+      lamp.style.background = '#6b7280';
+      txt.textContent = 'Konnektor gesperrt';
+      box.title = 'Der Konnektor wird abgewiesen, bis du ihn wieder einschaltest.';
     } else if (d.online) {
       lamp.style.background = '#22c55e';
       txt.textContent = 'Konnektor verbunden';
@@ -449,7 +461,14 @@
       txt.textContent = 'Konnektor getrennt';
       box.title = 'Zuletzt gemeldet: ' + (d.last_seen || 'noch nie');
     }
-    tgl.disabled = !d.token;
+    en.disabled = !d.token;
+    en.textContent = 'Konnektor: ' + (d.enabled ? 'AN' : 'AUS');
+    en.style.background = d.enabled ? '#1a7a4a' : '#2b303b';
+    en.title = d.enabled
+      ? 'Konnektor darf aufs Portal zugreifen. Klicken zum Sperren (nimmt auch den Paperless-Zugriff weg).'
+      : 'Konnektor ist gesperrt. Klicken zum Zulassen.';
+    tgl.disabled = !d.token || !d.enabled;
+    tgl.style.opacity = tgl.disabled ? '.5' : '1';
     tgl.textContent = 'Paperless: ' + (d.paperless ? 'AN' : 'AUS');
     tgl.style.background = d.paperless ? '#b45309' : '#2b303b';
     tgl.title = d.paperless
@@ -462,18 +481,25 @@
       return r.ok ? r.json() : null;
     }).then(renderConnector).catch(function () {});
   }
-  function toggleConnector() {
-    if (!_conn || !_conn.token) return;
-    var on = !_conn.paperless;
-    if (on && !confirm('Paperless-Zugriff für den Konnektor einschalten?\n\n' +
-        'Er darf dann Paperless lesen und ändern. Dokumente löschen bleibt gesperrt.')) return;
-    fetch('/portal/connector/paperless', {
+  function postSwitch(url, on, label, key) {
+    fetch(url, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ on: on })
     }).then(function (r) { return r.json(); }).then(function (d) {
-      if (d && d.ok) { renderConnector(d); toast('Paperless-Zugriff ' + (d.paperless ? 'AN' : 'AUS'), 2500); }
+      if (d && d.ok) { renderConnector(d); toast(label + ' ' + (d[key] ? 'AN' : 'AUS'), 2500); }
       else toast('Umschalten fehlgeschlagen' + (d && d.error ? ': ' + d.error : ''), 3500);
     }).catch(function () { toast('Umschalten fehlgeschlagen', 3500); });
+  }
+  function toggleConnectorEnabled() {
+    if (!_conn || !_conn.token) return;
+    postSwitch('/portal/connector/enabled', !_conn.enabled, 'Konnektor', 'enabled');
+  }
+  function toggleConnector() {
+    if (!_conn || !_conn.token || !_conn.enabled) return;
+    var on = !_conn.paperless;
+    if (on && !confirm('Paperless-Zugriff für den Konnektor einschalten?\n\n' +
+        'Er darf dann Paperless lesen und ändern. Dokumente löschen bleibt gesperrt.')) return;
+    postSwitch('/portal/connector/paperless', on, 'Paperless-Zugriff', 'paperless');
   }
 
   window.addEventListener('load', function () {
