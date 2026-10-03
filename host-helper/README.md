@@ -26,14 +26,14 @@ chmod +x /opt/paperless-generator-portal/host-helper/paperless-portal-updater.sh
 
 # 2) Als Minuten-Cron eintragen (root-Crontab auf dem LXC)
 ( crontab -l 2>/dev/null; \
-  echo '* * * * * /opt/paperless-generator-portal/host-helper/paperless-portal-updater.sh >/dev/null 2>&1' ) \
+  echo '* * * * * bash /opt/paperless-generator-portal/host-helper/paperless-portal-updater.sh >/dev/null 2>&1' ) \
   | crontab -
 ```
 
 Vom **Proxmox-Host** aus in einem Rutsch:
 
 ```bash
-pct exec 230 -- bash -c 'chmod +x /opt/paperless-generator-portal/host-helper/paperless-portal-updater.sh; ( crontab -l 2>/dev/null; echo "* * * * * /opt/paperless-generator-portal/host-helper/paperless-portal-updater.sh >/dev/null 2>&1" ) | crontab -'
+pct exec 230 -- bash -c 'chmod +x /opt/paperless-generator-portal/host-helper/paperless-portal-updater.sh; ( crontab -l 2>/dev/null; echo "* * * * * bash /opt/paperless-generator-portal/host-helper/paperless-portal-updater.sh >/dev/null 2>&1" ) | crontab -'
 ```
 
 Nach spätestens einer Minute schreibt das Skript `config/update-helper.alive`; das Portal
@@ -49,3 +49,15 @@ rm -f /opt/paperless-generator-portal/config/update-helper.alive
 ## Variablen
 
 - `PORTAL_REPO` — Repo-Pfad, falls abweichend (Standard `/opt/paperless-generator-portal`).
+
+## Helper meldet sich nicht mehr
+
+Zeigt das Portal „meldet sich nicht mehr“ und bleibt eine Anforderung liegen, läuft der Cron nicht. Bis Portal v1.11.8 lag das Skript im Repo ohne Ausführungsrecht; `git reset --hard` beim Update kann ein vorher gesetztes `chmod +x` wieder entfernen, ein Cron-Eintrag ohne `bash` davor scheitert danach still. Abhilfe auf dem LXC:
+
+```bash
+chmod +x /opt/paperless-generator-portal/host-helper/paperless-portal-updater.sh
+crontab -l | sed 's#\* \* \* \* \* /opt/#* * * * * bash /opt/#' | crontab -
+```
+
+Eine liegengebliebene Anforderung (`config/update-request.json`) führt der Helper danach beim nächsten Lauf aus.
+

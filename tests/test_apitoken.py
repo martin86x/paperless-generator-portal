@@ -93,12 +93,13 @@ check("es entsteht KEIN Anmelde-Cookie", c.get_cookie("session") is None)
 eq("ohne Token -> Login", A.app.test_client().get("/verwaltung/overview").status_code, 302)
 eq("Token per URL zählt nicht", A.app.test_client().get(
     "/verwaltung/overview?token=" + TOK).status_code, 302)
-r = c.post("/profiles", data={"name": "Neu per Token"}, headers=bearer(TOK))
-eq("Schreiben im Portal erlaubt (Profil anlegen)", r.status_code, 302)
-check("Profil wurde angelegt", any(p.get("name") == "Neu per Token" for p in A.load_profiles().values()))
-check("auch nach dem Profilwechsel kein Cookie", c.get_cookie("session") is None)
-_cfg = A.load_config(); _cfg["active_profile"] = "p1"; A.save_config(_cfg)  # Setup-Gate
-check("und es steht im Protokoll", any(k == "api" and "POST /profiles" in m_ for k, m_ in LOG))
+r = c.post("/profiles/p1/rename", data={"name": "Alpha neu"}, headers=bearer(TOK))
+eq("Schreiben im Portal erlaubt (Profil umbenennen)", r.status_code, 302)
+check("Profil wurde umbenannt", A.load_profiles()["p1"].get("name") == "Alpha neu")
+check("auch nach dem Schreiben kein Cookie", c.get_cookie("session") is None)
+check("und es steht im Protokoll", any(k == "api" and "POST /profiles/p1/rename" in m_ for k, m_ in LOG))
+eq("Profil anlegen (wechselt das aktive Profil) -> 403",
+   c.post("/profiles", data={"name": "x"}, headers=bearer(TOK)).status_code, 403)
 check("zuletzt genutzt wird mitgeschrieben", A._read_json_dict(A.API_TOKEN_USED_PATH).get("ts"))
 
 print("Gesperrt mit Token")
