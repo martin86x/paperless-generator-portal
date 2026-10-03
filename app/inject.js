@@ -43,7 +43,8 @@
     // naechsten Laden fehlte sie und der Health-Check meldete "E-Mail fehlt".
     var emEl = document.getElementById('inp-notify-email');
     var emVal = emEl ? emEl.value.trim() : '';
-    if (!emVal || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emVal)) {
+    // Blanko-Profil hat keine Frist-Workflows: die Mail ist dort optional, aber wenn gesetzt, muss sie stimmen
+    if ((_blank ? emVal : true) && (!emVal || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emVal))) {
       toast(emVal ? 'E-Mail-Format ungültig – Profil nicht gespeichert' :
                     'Benachrichtigungs-E-Mail fehlt (Pflichtfeld) – Profil nicht gespeichert', 4000);
       if (emEl) {
@@ -159,6 +160,16 @@
       syncHeadPadding();
     }
     try { if (typeof switchToolsTab === 'function') switchToolsTab('online'); } catch (e) {}
+    // Sprungmarken auf ausgeblendete Bereiche (Skript, Direkt-Ausfuehrung, Anleitung) landen
+    // sonst im Leeren: dorthin geht es stattdessen zu den Werkzeugen (dort liegt auch der Health-Check).
+    if (typeof window.goTo === 'function' && !window.goTo._plxBlank) {
+      var origGoTo = window.goTo;
+      window.goTo = function (id) {
+        if (_BLANK_HIDE.indexOf(id) >= 0) id = 's-tools';
+        return origGoTo.call(this, id);
+      };
+      window.goTo._plxBlank = true;
+    }
   }
 
   // Button im Blanko-Hinweis: startet den vorhandenen Instanz-Import (nur lesende GET-Abfragen

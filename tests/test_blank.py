@@ -160,6 +160,8 @@ hide = js.split("var _BLANK_HIDE = [", 1)[1].split("]", 1)[0]
 check("Skript-Erzeugung und Direkt-Ausführung bleiben im Blanko-Modus ausgeblendet", "s-gen" in hide and "s-direct" in hide)
 check("Editoren sichtbar (nicht in der Ausblendliste)", "s-edit-tags" not in hide and "s-sel" not in hide)
 check("im Blanko-Profil gespeicherte Config wird erkannt", "plxBlank" in js)
+check("Sprungmarken auf ausgeblendete Bereiche führen zu den Werkzeugen", "_plxBlank" in js and "id = 's-tools'" in js)
+check("Blanko: E-Mail beim Speichern optional", "_blank ? emVal : true" in js)
 check("Import-Button vorhanden und ruft den Instanz-Import", "Eigene Instanz importieren" in js and "runInstanzImport()" in js)
 check("Import-Button prüft die Verbindung zuerst", "active_has_connection" in js)
 

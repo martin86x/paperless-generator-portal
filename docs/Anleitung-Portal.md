@@ -1,6 +1,6 @@
 # Anleitung: Paperless Generator Portal
 
-Stand: Portal v1.14.6 · für Anwender (kein Entwickler-Wissen nötig)
+Stand: Portal v1.14.7 · für Anwender (kein Entwickler-Wissen nötig)
 
 Diese Anleitung beschreibt nur, was es im Portal wirklich gibt. Stellen, bei denen ich mir nach dem Lesen des Codes nicht sicher bin, sind mit **(unsicher)** oder **Hinweis** gekennzeichnet. Zugangsdaten, Tokens und IP-Adressen stehen hier bewusst nicht drin; wo sie gebraucht werden, steht ein Platzhalter wie `<Portal-Adresse>`.
 
