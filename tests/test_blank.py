@@ -152,6 +152,11 @@ eq("Dokument-Löschung bleibt gesperrt", r.status_code, 403)
 print("inject.js")
 js = open(os.path.join(os.path.dirname(_HERE), "app", "inject.js"), encoding="utf-8").read()
 check("Blanko-Modus im Generator vorhanden", "applyBlankMode" in js and "emptyGeneratorLists" in js)
+check("je ein Beispiel-Eintrag", all(x in js for x in ("Beispiel-Tag", "Beispiel-Dokumenttyp", "Beispiel-Korrespondent", "Beispiel-Feld", "Beispiel-Speicherpfad", "Beispiel-Arbeitsablauf")))
+hide = js.split("var _BLANK_HIDE = [", 1)[1].split("]", 1)[0]
+check("Skript-Erzeugung und Direkt-Ausführung bleiben im Blanko-Modus ausgeblendet", "s-gen" in hide and "s-direct" in hide)
+check("Editoren sichtbar (nicht in der Ausblendliste)", "s-edit-tags" not in hide and "s-sel" not in hide)
+check("im Blanko-Profil gespeicherte Config wird erkannt", "plxBlank" in js)
 
 print("\n%d Prüfungen, %d Fehler" % (_count[0], len(_fails)))
 for f in _fails:

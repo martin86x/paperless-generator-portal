@@ -19,6 +19,7 @@
   var _dirty = false;      // ungespeicherte Aenderungen im Generator
   var _navigating = false; // absichtlicher Wechsel/Reload -> keine beforeunload-Warnung
   var _dropdown = null;
+  var _blank = false;      // aktives Profil ist ein Blanko-Profil
 
   function applyOrigin(cfg) {
     if (cfg && typeof cfg === 'object') { cfg.url = o; cfg.token = ''; }
@@ -55,6 +56,7 @@
       return;
     }
     var snap = getConfigSnapshot();
+    if (_blank) snap.plxBlank = true;
     fetch('/portal/config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -117,16 +119,16 @@
   // ── Blanko-Profil ─────────────────────────────────────────────────────────────
   // Bestehende (fremde) Instanz: nur Verwaltung/Auswertung, keine Generator-Vorschlaege.
   // Reine Anzeige-Anpassung per Injektion — der Generator selbst bleibt unveraendert.
-  var _BLANK_HIDE = ['s-quick', 's-sel', 's-edit-tags', 's-edit-types', 's-prev-fields',
-    's-edit-workflows', 's-edit-paths', 's-edit-corr', 's-gen', 's-direct', 's-out', 's-howto'];
+  // Editoren bleiben sichtbar (je ein Beispiel-Eintrag), Skript-Erzeugung und Direkt-Ausfuehrung
+  // sind aus: die Beispiele koennen so nie in eine Instanz geschrieben werden.
+  var _BLANK_HIDE = ['s-quick', 's-gen', 's-direct', 's-out', 's-howto'];
 
   function applyBlankMode() {
     if (!document.getElementById('plx-blank-css')) {
       var css = _BLANK_HIDE.map(function (id) {
         return '#' + id + ',.sb-link[data-sid="' + id + '"],.sb-link[onclick*=' + JSON.stringify("'" + id + "'") + ']';
       }).join(',') + '{display:none!important}' +
-        '#plx-health-badge{display:none!important}' +
-        '.sb-label:nth-of-type(2),.sb-label:nth-of-type(4){display:none!important}';
+        '#plx-health-badge{display:none!important}';
       var st = document.createElement('style');
       st.id = 'plx-blank-css'; st.textContent = css;
       document.head.appendChild(st);
@@ -136,7 +138,7 @@
       var b = document.createElement('div');
       b.id = 'plx-blank-banner';
       b.style.cssText = 'background:#1e3a5f;color:#dbe9ff;text-align:center;padding:5px 12px;font-size:12px;font-family:system-ui,sans-serif';
-      b.textContent = 'Blanko-Profil: nur Verwaltung und Auswertung, keine Generator-Vorschläge. Löschen bleibt gesperrt.';
+      b.textContent = 'Blanko-Profil: leerer Generator mit je einem „Beispiel“-Eintrag (ersetzen oder löschen). Nichts davon wird in eine Instanz geschrieben. Löschen in Paperless bleibt gesperrt.';
       head.insertBefore(b, head.firstChild);
       syncHeadPadding();
     }
@@ -151,6 +153,20 @@
     lists.forEach(function (g) {
       try { var a = g(); if (Array.isArray(a)) a.length = 0; } catch (e) {}
     });
+    // Je ein klar gekennzeichneter Beispiel-Eintrag, damit man sieht, was zu tun ist.
+    try {
+      TAGS.push({ name: 'Beispiel-Tag', color: '#6b7280',
+        children: [{ name: 'Beispiel-Kind-Tag', color: '#6b7280', algo: 1, match: 'beispiel' }] });
+      TAG_MATCH.push({ name: 'Beispiel-Kind-Tag', algo: 1, match: 'beispiel' });
+      TYPES.push({ name: 'Beispiel-Dokumenttyp', algo: 1, match: 'beispiel' });
+      CORRESPONDENTS.push({ name: 'Beispiel-Korrespondent', algo: 0, match: '' });
+      FIELDS.push(['Beispiel-Feld', 'string', 'rechnung']);
+      STORAGE_PATHS.push({ name: 'Beispiel-Speicherpfad',
+        path: '{correspondent}/{document_type}/{created_year}/{title}', algo: 0, match: '' });
+      WORKFLOWS.push({ enabled: true, name: 'Beispiel-Arbeitsablauf', order: 10,
+        trigger_added: true, trigger_updated: false, doctype: 'Beispiel-Dokumenttyp',
+        fields: ['Beispiel-Feld'] });
+    } catch (e) {}
     ['renderTagEditor', 'renderTypeEditor', 'renderCorrespondentEditor', 'renderFieldsEditor',
      'renderPathsEditor', 'renderWorkflowEditor', 'renderFristWorkflows', 'buildEditorTypes',
      'buildEditorTags', 'updateStats', 'updateHowto', 'updatePaths'].forEach(function (fn) {
@@ -186,7 +202,8 @@
             _dropdown.appendChild(op);
           });
         }
-        if (d.active_blank) applyBlankMode();
+        _blank = !!d.active_blank;
+        if (_blank) applyBlankMode();
         if (d.active_productive) showProductiveBanner(d.active_name, d.active_color, d.active_readonly);
         else removeProductiveBanner();
       }).catch(function () {});
@@ -434,9 +451,11 @@
     }).then(function (cfg) {
       return blankP.then(function (isBlank) {
         // Blanko-Profil: Generator-Vorschlaege leeren
-        // (auch mit gespeicherter Config: Blanko heisst immer ohne Vorschlaege — Bestand per
-        // Werkzeug „Instanz-Import“ laden)
-        if (isBlank) { _loading = true; emptyGeneratorLists(); _loading = false; return null; }
+        // (eine noch vom normalen Profil stammende Config wird ignoriert; nur was im Blanko-Profil
+        // selbst gespeichert wurde (plxBlank), kommt zurueck)
+        if (isBlank && !(cfg && cfg.plxBlank === true)) {
+          _loading = true; emptyGeneratorLists(); _loading = false; return null;
+        }
         return cfg;
       });
     }).then(function (cfg) {

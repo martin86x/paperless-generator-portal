@@ -1,6 +1,6 @@
 # Anleitung: Paperless Generator Portal
 
-Stand: Portal v1.14.3 · für Anwender (kein Entwickler-Wissen nötig)
+Stand: Portal v1.14.4 · für Anwender (kein Entwickler-Wissen nötig)
 
 Diese Anleitung beschreibt nur, was es im Portal wirklich gibt. Stellen, bei denen ich mir nach dem Lesen des Codes nicht sicher bin, sind mit **(unsicher)** oder **Hinweis** gekennzeichnet. Zugangsdaten, Tokens und IP-Adressen stehen hier bewusst nicht drin; wo sie gebraucht werden, steht ein Platzhalter wie `<Portal-Adresse>`.
 
@@ -140,7 +140,7 @@ Je Profil:
 
 Oben: **⬇ Alle Profile sichern** (JSON mit allen Profilen und entschlüsselten Tokens, also vertraulich behandeln) und **⬆ Wiederherstellen** (ersetzt alle Profile, vorher wird automatisch gesichert). Unten: **Neues Profil** anlegen.
 
-**Blanko-Profil (bestehende Instanz ohne Generator-Vorschläge):** Beim Anlegen oder unter „Sicherheits-Einstellungen“ lässt sich ein Profil als **Blanko-Profil** markieren. Es ist für eine vorhandene (auch fremde) Paperless-Instanz gedacht, die nur verwaltet und ausgewertet werden soll. Der Generator zeigt dann keine Vorschläge und blendet Auswahl, Editoren, Skript-Erzeugung und Direkt-Ausführung aus; übrig bleiben Verbindung und Werkzeuge (Tab „Online“, dort auch der Instanz-Import). Drift-Abgleich und „Konfiguration anwenden“ sind aus. Beim Einschalten wird **„Nur lesen“** automatisch gesetzt; Schreiben schaltest du bewusst selbst frei. Ein Blanko-Profil lässt sich auch ohne Adresse und Token anlegen, zum Ausprobieren; die Adresse trägst du später unter „Verbindung“ nach. Dokumente löschen bleibt immer gesperrt.
+**Blanko-Profil (bestehende Instanz ohne Generator-Vorschläge):** Beim Anlegen oder unter „Sicherheits-Einstellungen“ lässt sich ein Profil als **Blanko-Profil** markieren. Es ist für eine vorhandene (auch fremde) Paperless-Instanz gedacht, die nur verwaltet und ausgewertet werden soll. Der Generator startet dann leer, in jeder Liste steht nur ein „Beispiel“-Eintrag (ersetzen oder löschen), damit man sieht, was zu tun ist. Skript-Erzeugung und Direkt-Ausführung sind ausgeblendet, die Beispiele werden also nie in eine Instanz geschrieben. Die Werkzeuge (Tab „Online“, dort auch der Instanz-Import) bleiben nutzbar. Was du im Blanko-Profil mit „Profil speichern“ sicherst, kommt beim nächsten Öffnen wieder. Drift-Abgleich und „Konfiguration anwenden“ sind aus. Beim Einschalten wird **„Nur lesen“** automatisch gesetzt; Schreiben schaltest du bewusst selbst frei. Ein Blanko-Profil lässt sich auch ohne Adresse und Token anlegen, zum Ausprobieren; die Adresse trägst du später unter „Verbindung“ nach. Dokumente löschen bleibt immer gesperrt.
 
 ### 5.3 Auswertung
 
