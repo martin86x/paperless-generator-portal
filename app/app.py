@@ -969,6 +969,8 @@ def _setup_complete():
         if load_config().get("is_default_pw"):
             return False
         p = active_profile()
+        if p.get("blank"):
+            return True  # Blanko-/Testprofil darf ohne Verbindung geoeffnet werden (URL spaeter in Profile)
         return bool(p.get("paperless_url") and p.get("paperless_token"))
     except (OSError, ValueError):
         return False
