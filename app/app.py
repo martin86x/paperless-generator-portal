@@ -31,7 +31,7 @@ except ImportError:  # pragma: no cover - nur relevant im lokalen Windows-Test
 
 import requests
 from cryptography.fernet import Fernet, InvalidToken
-from flask import (Flask, Response, jsonify, redirect, render_template, request,
+from flask import (Flask, Response, g, jsonify, redirect, render_template, request,
                    session, url_for)
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -683,7 +683,10 @@ def _sessions_revoke_others():
 
 
 def _logged_in():
-    """Angemeldet = Cookie sagt logged_in UND die Sitzungs-ID ist noch gueltig."""
+    """Angemeldet = gueltiges API-Token in diesem Request ODER Cookie sagt logged_in UND
+    die Sitzungs-ID ist noch gueltig."""
+    if g.get("api_token"):
+        return True
     if not session.get("logged_in"):
         return False
     t = _sessions_load().get(session.get("sid") or "")
@@ -801,9 +804,89 @@ def _inject_layout():
     return {"embed": embed, "layout": "_embed.html" if embed else "base.html"}
 
 
+# ── Portal-API-Token (Zugriff ohne Login, z. B. fuer Automatisierung) ────────
+# Ein Token, im Portal erzeugt und nur EINMAL angezeigt; config.json haelt nur den
+# SHA-256-Hash (das Token hat 256 Bit Zufall, ein langsamer Hash bringt hier nichts).
+# Nur per Header "Authorization: Bearer <token>", nie per URL.
+# Bewusst NICHT erlaubt:
+#   * /api/*  — der Proxy setzt den Paperless-Token ein; das Portal-Token soll nichts mit
+#     Paperless zu tun haben (Vorgabe: ueber das Token nichts in Paperless aendern)
+#   * Schreibwege nach Paperless am Proxy vorbei (Anwenden/Rueckgaengig)
+#   * alles, womit sich der Besitzer aussperren liesse: Passwort, Recovery-Codes,
+#     API-Token selbst, Voll-Restore (bringt fremden Passwort-Hash/Token mit)
+API_TOKEN_PREFIX = "pgp_"
+API_TOKEN_USED_PATH = os.path.join(CONFIG_DIR, "api-token-used.json")
+_API_TOKEN_FORBIDDEN = {"settings", "wizard", "recovery_generate", "api_token_generate",
+                        "api_token_revoke", "config_restore", "anwenden_post",
+                        "anwenden_undo", "logout"}
+
+
+def _api_token_hash(tok):
+    return hashlib.sha256(tok.encode("utf-8")).hexdigest()
+
+
+def _bearer():
+    """Token aus dem Authorization-Header (oder None, wenn keiner da ist)."""
+    hdr = request.headers.get("Authorization") or ""
+    if hdr[:7].lower() != "bearer ":
+        return None
+    return hdr[7:].strip()
+
+
+def _api_token_ok(tok):
+    want = (load_config().get("api_token") or {}).get("hash")
+    if not want or not tok:
+        return False
+    try:
+        return secrets.compare_digest(_api_token_hash(tok), want)
+    except TypeError:
+        return False
+
+
+def _api_token_touch():
+    """Zuletzt-genutzt mitschreiben — hoechstens einmal pro Minute (kein Schreiben je Request)."""
+    now = time.time()
+    if now - (_read_json_dict(API_TOKEN_USED_PATH).get("ts") or 0) < 60:
+        return
+    try:
+        with open(API_TOKEN_USED_PATH, "w", encoding="utf-8") as fh:
+            json.dump({"ts": int(now), "ip": request.remote_addr or "?"}, fh)
+    except OSError:
+        pass
+
+
+def _api_token_info(cfg=None):
+    t = (cfg or load_config()).get("api_token") or {}
+    if not t.get("hash"):
+        return None
+    used = _read_json_dict(API_TOKEN_USED_PATH)
+    return {"created": (t.get("created") or "").replace("T", " "),
+            "hint": t.get("hint") or "",
+            "last_used": _fmt_rel_ts(used.get("ts")) if used.get("ts") else "noch nie"}
+
+
 @app.before_request
 def require_login():
     if request.endpoint in PUBLIC_ENDPOINTS:
+        return None
+    tok = _bearer()
+    if tok is not None and not session.get("logged_in"):
+        ip = request.remote_addr or "?"
+        if _login_blocked(ip):
+            return Response("Zu viele Fehlversuche.", status=429)
+        if not _api_token_ok(tok):
+            _login_note_fail(ip)
+            _log_activity("api", "API-Token abgelehnt", level="warn",
+                          detail="IP %s, %s %s" % (ip, request.method, request.path))
+            return Response("Unauthorized", status=401,
+                            headers={"WWW-Authenticate": 'Bearer realm="portal"'})
+        if request.path.startswith("/api") or request.endpoint in _API_TOKEN_FORBIDDEN:
+            return Response("Mit dem API-Token nicht erlaubt.", status=403)
+        g.api_token = True
+        _api_token_touch()
+        if request.method not in ("GET", "HEAD", "OPTIONS"):
+            _log_activity("api", "API-Token: %s %s" % (request.method, request.path),
+                          detail="IP %s" % ip)
         return None
     if not _logged_in():
         # Fetch-Endpunkte (Proxy + portal-interne API) -> 401 statt Redirect,
@@ -1120,11 +1203,16 @@ def settings():
         _log_activity("login", "Passwort geändert", level="ok",
                       detail="Alle anderen Sitzungen wurden beendet.")
         return _back(msg="Passwort geändert. Andere angemeldete Geräte wurden abgemeldet.")
-    return render_template("settings.html", is_default_pw=cfg.get("is_default_pw", False),
-                           recovery_remaining=_recovery_remaining(cfg),
-                           recovery_at=cfg.get("recovery_generated_at"),
-                           pw_reset_ok=bool(session.get("pw_reset_ok")),
+    return render_template("settings.html", **_settings_ctx(cfg),
                            msg=request.args.get("msg"), err=request.args.get("err"))
+
+
+def _settings_ctx(cfg):
+    return {"is_default_pw": cfg.get("is_default_pw", False),
+            "recovery_remaining": _recovery_remaining(cfg),
+            "recovery_at": cfg.get("recovery_generated_at"),
+            "pw_reset_ok": bool(session.get("pw_reset_ok")),
+            "api_token": _api_token_info(cfg)}
 
 
 @app.route("/verwaltung/recovery/generate", methods=["POST"])
@@ -1141,12 +1229,51 @@ def recovery_generate():
     _log_activity("recovery", "Recovery-Codes neu erzeugt (%d)" % len(codes), level="warn",
                   detail="Alle vorher erzeugten Codes sind jetzt ungültig.")
     # Klartext nur dieses eine Mal — Seite direkt rendern (kein Redirect, sonst weg).
-    return render_template("settings.html", is_default_pw=cfg.get("is_default_pw", False),
-                           recovery_remaining=len(codes),
-                           recovery_at=cfg.get("recovery_generated_at"),
+    return render_template("settings.html", **_settings_ctx(cfg),
                            new_codes=codes,
                            msg="10 Recovery-Codes erzeugt — jetzt sichern! Sie werden nur "
                                "dieses eine Mal angezeigt.", err=None)
+
+
+@app.after_request
+def _api_token_no_cookie(resp):
+    """Token-Requests sind zustandslos: keine Session schreiben (sonst bekaeme der
+    Aufrufer ein Cookie, z. B. mit dem aktiven Profil eines Profilwechsels)."""
+    if g.get("api_token"):
+        session.modified = False
+    return resp
+
+
+@app.route("/verwaltung/api-token/generate", methods=["POST"])
+def api_token_generate():
+    """Neues Portal-API-Token erzeugen (Re-Auth mit Passwort). Klartext nur dieses eine Mal;
+    ein vorhandenes Token wird dadurch ungueltig."""
+    cfg = load_config()
+    if not check_password_hash(cfg["admin_pw_hash"], request.form.get("current", "")):
+        return redirect(url_for("verwaltung", tab="konto",
+                                err="Aktuelles Passwort ist falsch — kein Token erzeugt."))
+    tok = API_TOKEN_PREFIX + secrets.token_urlsafe(32)
+    cfg["api_token"] = {"hash": _api_token_hash(tok), "hint": tok[-4:],
+                        "created": datetime.now().isoformat(timespec="seconds")}
+    save_config(cfg)
+    try:
+        os.remove(API_TOKEN_USED_PATH)
+    except OSError:
+        pass
+    _log_activity("api", "API-Token erzeugt", level="warn",
+                  detail="Ein vorher vorhandenes Token ist jetzt ungültig.")
+    return render_template("settings.html", **_settings_ctx(cfg), new_api_token=tok,
+                           msg="API-Token erzeugt — jetzt sichern! Es wird nur dieses eine "
+                               "Mal angezeigt.", err=None)
+
+
+@app.route("/verwaltung/api-token/revoke", methods=["POST"])
+def api_token_revoke():
+    cfg = load_config()
+    if cfg.pop("api_token", None):
+        save_config(cfg)
+        _log_activity("api", "API-Token widerrufen", level="warn")
+    return redirect(url_for("verwaltung", tab="konto", msg="API-Token widerrufen."))
 
 
 @app.route("/")
@@ -1299,7 +1426,7 @@ def update_trigger():
 
 # transiente Dateien nicht mitsichern; Sitzungen/Fehlversuche gehoeren zur laufenden
 # Instanz und duerfen beim Restore nicht aus einem alten Stand zurueckkommen
-_BACKUP_SKIP = {"watcher.lock", "sessions.json", "login-fails.json"}
+_BACKUP_SKIP = {"watcher.lock", "sessions.json", "login-fails.json", "api-token-used.json"}
 
 
 def _recovery_redirect(tab, msg=None, err=None):
