@@ -63,6 +63,8 @@ Mit Docker: `docker compose up -d --build` → `http://localhost:8080`.
 - Commit-Texte: `Portal v1.11.5: <Kurzbeschreibung>` für Portal-Code, `site: Generator v3.98 - <Kurzbeschreibung>` für einen neuen Generator-Build.
 - Sicherheit nicht aufweichen: kein Docker-Socket im Container, CSRF-Origin-Check, Login-Rate-Limit und Token-Verschlüsselung at-rest bleiben erhalten.
 - Abhängigkeiten in `app/requirements.txt` bleiben gepinnt; ein Update ist eine eigene, getestete Änderung.
+- Bereichsregeln für `app/`, `tests/` und Deployment stehen in `.claude/rules/` und laden automatisch, sobald passende Dateien bearbeitet werden.
+- Vor einem Portal-Release den Subagenten `portal-pruefer` (`.claude/agents/`) die Änderungen prüfen lassen; er liest nur.
 
 ## Arbeitsweise
 

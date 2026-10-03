@@ -13,3 +13,4 @@ __pycache__/
 # Claude Code: gemeinsame Einrichtung versionieren, lokale Dateien nicht
 .claude/settings.local.json
 .claude/worktrees/
+.claude/agent-memory-local/
