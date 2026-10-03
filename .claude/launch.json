@@ -1,0 +1,16 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "portal-dev",
+      "runtimeExecutable": "powershell",
+      "runtimeArgs": [
+        "-NoProfile",
+        "-Command",
+        "$env:CONFIG_DIR='.dev-config'; $env:SITE_DIR='site'; $env:PORTAL_WATCHER='0'; & .venv\\Scripts\\python -m flask --app app/app.py run --port 8090"
+      ],
+      "port": 8090,
+      "autoPort": false
+    }
+  ]
+}

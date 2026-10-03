@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(.venv/Scripts/python tests/*)",
+      "PowerShell(.venv\\Scripts\\python tests\\*)",
+      "PowerShell(.venv/Scripts/python tests/*)",
+      "Bash(docker compose ps*)",
+      "Bash(docker compose logs*)",
+      "Bash(docker compose up -d --build*)",
+      "PowerShell(docker compose ps*)",
+      "PowerShell(docker compose logs*)",
+      "PowerShell(docker compose up -d --build*)",
+      "PowerShell(Get-ChildItem *)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)"
+    ],
+    "deny": [
+      "Read(./config/**)",
+      "Read(./.dev-config/**)"
+    ]
+  }
+}

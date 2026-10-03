@@ -6,3 +6,10 @@ __pycache__/
 
 # Test-venv
 .venv/
+
+# Lokale Dev-Konfiguration (Preview "portal-dev")
+.dev-config/
+
+# Claude Code: gemeinsame Einrichtung versionieren, lokale Dateien nicht
+.claude/settings.local.json
+.claude/worktrees/
