@@ -398,6 +398,20 @@ eq("kein Zeitstempel", A._fmt_rel_ts(None), "—")
 eq("0 gilt als 'kein Zeitstempel'", A._fmt_rel_ts(0), "—")
 
 
+
+print("Drift-Check zählt nur aktive Einträge")
+_real_count = A._api_count
+A._api_count = lambda url, tok, q, timeout=5: 1   # Instanz hat je Kategorie 1 Eintrag
+gc = {"tags": [{"name": "a"}, {"name": "b", "enabled": False}],
+      "types": [{"name": "t"}]}
+d = A._chk_drift("http://x", "tok", gc)
+eq("deaktivierter Tag erzeugt keine Drift (wie im Dashboard)", d["status"], "ok")
+gc["tags"].append({"name": "c"})
+d = A._chk_drift("http://x", "tok", gc)
+eq("ein zweiter aktiver Tag fehlt wirklich", d["status"], "bad")
+eq("und genau einer wird gemeldet", d["detail"], "Tags: 1 fehlen")
+A._api_count = _real_count
+
 # ── Ergebnis ─────────────────────────────────────────────────────────────────
 print("")
 if _fails:

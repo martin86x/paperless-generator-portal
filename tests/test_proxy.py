@@ -75,6 +75,7 @@ A.app.config["TESTING"] = True
 C = A.app.test_client()
 with C.session_transaction() as s:
     s["logged_in"] = True
+    s["sid"] = A._sessions_add()
     s["active_profile"] = PID
 
 
@@ -205,6 +206,46 @@ for evil, label in [
     escaped = bool(url) and not url.startswith(BASE + "/api")
     check("%s bricht nicht aus (%s)" % (label, url[:60] or "gar nicht weitergereicht"),
           not escaped)
+
+# ── 4b. Lösch-Riegel: indirektes Löschen ─────────────────────────────────────
+# Nicht nur 'delete' entfernt Dokumente: merge/split/edit_pdf können die Ausgangs-
+# Dokumente löschen, delete_pages schneidet Seiten weg, und der Papierkorb lässt sich
+# endgültig leeren.
+print("Lösch-Riegel: indirektes Löschen")
+eq("delete_pages -> 403", bulk({"documents": [1], "method": "delete_pages",
+                                 "parameters": {"pages": [1]}})[0], 403)
+for meth, par in (("merge", "delete_originals"), ("split", "delete_originals"),
+                  ("edit_pdf", "delete_original")):
+    eq("%s mit %s=true -> 403" % (meth, par),
+       bulk({"documents": [1, 2], "method": meth, "parameters": {par: True}})[0], 403)
+    eq("%s mit %s='true' (Text) -> 403" % (meth, par),
+       bulk({"documents": [1, 2], "method": meth, "parameters": {par: "true"}})[0], 403)
+    code, fwd = bulk({"documents": [1, 2], "method": meth, "parameters": {par: False}})
+    eq("%s mit %s=false ist erlaubt" % (meth, par), code, 200)
+    check("  und geht durch", fwd is not None)
+    eq("%s ohne Parameter ist erlaubt" % meth,
+       bulk({"documents": [1, 2], "method": meth})[0], 200)
+    eq("%s mit unlesbaren Parametern -> 403" % meth,
+       bulk({"documents": [1, 2], "method": meth, "parameters": "x"})[0], 403)
+eq("merge formular-kodiert (Parameter nicht prüfbar) -> 403",
+   call("POST", BULK, data="documents=1&method=merge&parameters=x",
+        content_type="application/x-www-form-urlencoded")[0], 403)
+
+code, fwd = call("POST", "/api/trash/", data=json.dumps({"documents": [1], "action": "empty"}),
+                 content_type="application/json")
+eq("Papierkorb leeren -> 403", code, 403)
+check("und NICHTS wurde weitergereicht", fwd is None)
+eq("Papierkorb leeren ohne Schrägstrich -> 403",
+   call("POST", "/api/trash", data=json.dumps({"action": "empty"}),
+        content_type="application/json")[0], 403)
+eq("Papierkorb mit unlesbarem Rumpf -> 403",
+   call("POST", "/api/trash/", data="kaputt", content_type="text/plain")[0], 403)
+eq("DELETE auf den Papierkorb -> 403", call("DELETE", "/api/trash/")[0], 403)
+code, fwd = call("POST", "/api/trash/", data=json.dumps({"documents": [1], "action": "restore"}),
+                 content_type="application/json")
+eq("Wiederherstellen aus dem Papierkorb bleibt erlaubt", code, 200)
+check("und geht durch", fwd is not None)
+eq("Papierkorb ansehen (GET) bleibt erlaubt", call("GET", "/api/trash/")[0], 200)
 
 # ── 5. readonly-Profil ───────────────────────────────────────────────────────
 print("readonly-Profil")

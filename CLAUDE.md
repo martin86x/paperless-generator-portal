@@ -45,7 +45,7 @@ Dann jedes Skript einzeln starten, kein Netzwerk nötig (`CONFIG_DIR` zeigt auf 
 ```powershell
 .venv\Scripts\python tests\test_auth.py
 .venv\Scripts\python tests\test_proxy.py
-# ebenso: test_apply, test_backup, test_escalation, test_metrics, test_report, test_restart, test_webhook
+# ebenso: test_apitoken, test_apply, test_backup, test_escalation, test_metrics, test_report, test_restart, test_webhook
 ```
 
 Nach jeder Änderung an `app/app.py` die betroffenen Tests laufen lassen, vor einem Release alle.

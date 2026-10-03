@@ -87,6 +87,7 @@ def client():
     c = A.app.test_client()
     with c.session_transaction() as s:
         s["logged_in"] = True
+        s["sid"] = A._sessions_add()
         s["active_profile"] = PID
     return c
 
@@ -190,6 +191,9 @@ check("config.json ist enthalten", "config.json" in names)
 check("profiles.json ist enthalten", "profiles.json" in names)
 check("das Protokoll ist enthalten", "activity.log" in names)
 check("watcher.lock ist NICHT enthalten (transient)", "watcher.lock" not in names)
+check("Sitzungen und Fehlversuche sind NICHT enthalten",
+      not names & {"sessions.json", "login-fails.json"})
+check("auch keine Sperrdateien", not any(n.endswith(".lock") for n in names))
 check("das ZIP enthält den Token nicht im Klartext",
       TOKEN.encode() not in zf.read("profiles.json"))
 check("aber config.json enthält das secret (vertraulich!)",
@@ -209,6 +213,25 @@ check("ohne Fehler", "err=" not in r.headers.get("Location", ""))
 eq("die Profile sind zurück", A.load_profiles().get(PID, {}).get("name"), "TESTINStanz")
 eq("und der Token ist wieder lesbar (gleiches secret)",
    A._dec(A.load_profiles()[PID]["paperless_token"]), TOKEN)
+
+
+print("Voll-Restore: Sitzungsdateien bleiben aussen vor")
+_c = client()
+with _c.session_transaction() as s:
+    _own_sid = s["sid"]
+_before = A._read_json_dict(A.SESSIONS_PATH)
+buf = io.BytesIO()
+with zipfile.ZipFile(buf, "w") as z:
+    z.writestr("./sessions.json", json.dumps({"untergeschoben": 9e12}))
+    z.writestr("sub/../login-fails.json", json.dumps({"1.2.3.4": [9e12] * 9}))
+    z.writestr("sessions.json.lock", "")
+r = _c.post("/verwaltung/config-restore", data={
+    "file": (io.BytesIO(buf.getvalue()), "x.zip")}, content_type="multipart/form-data")
+eq("Restore läuft durch", r.status_code, 302)
+after = A._read_json_dict(A.SESSIONS_PATH)
+check("'./sessions.json' aus dem ZIP wurde NICHT eingespielt", "untergeschoben" not in after)
+check("'sub/../login-fails.json' ebenso", "1.2.3.4" not in A._login_fails_load())
+eq("nach dem Restore bleibt nur die eigene Sitzung", sorted(after), [_own_sid])
 
 
 # ── 7. Voll-Restore eines FREMDEN Backups (anderer secret) ───────────────────

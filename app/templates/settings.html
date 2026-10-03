@@ -15,8 +15,12 @@
 
   <form method="post" autocomplete="off">
     <h2>Passwort ändern</h2>
+    {% if pw_reset_ok %}
+    <p class="hint">Mit Recovery-Code angemeldet: das aktuelle Passwort wird für diesen einen Wechsel nicht abgefragt.</p>
+    {% else %}
     <label for="current">Aktuelles Passwort</label>
     <input type="password" id="current" name="current">
+    {% endif %}
     <label for="new">Neues Passwort</label>
     <input type="password" id="new" name="new">
     <label for="repeat">Neues Passwort wiederholen</label>
@@ -60,5 +64,32 @@
     <input type="password" id="rc-current" name="current">
     <button type="submit" style="background:var(--bg3);border:1px solid var(--border)">{{ '10 neue Codes erzeugen (alte ungültig)' if recovery_remaining else '10 Recovery-Codes erzeugen' }}</button>
   </form>
+
+  <hr class="divider">
+  <h2>API-Zugang</h2>
+  <p class="hint">Ein Token für den Zugriff ohne Login, z. B. für Automatisierung. Es gilt nur für das Portal: <strong>kein Zugriff auf Paperless</strong> (<code>/api/…</code> ist gesperrt), außerdem nicht für Passwort, Recovery-Codes, API-Token, Voll-Restore und Anwenden/Rückgängig. Senden als Header <code>Authorization: Bearer &lt;token&gt;</code>.</p>
+  {% if new_api_token %}
+  <div class="msg ok" style="margin:0 0 8px">Token jetzt sichern — es wird <strong>nur dieses eine Mal</strong> angezeigt:</div>
+  <div id="api-token" style="font-family:monospace;font-size:14px;word-break:break-all;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:12px 14px">{{ new_api_token }}</div>
+  <div style="display:flex;gap:8px;margin-top:8px">
+    <button type="button" onclick="navigator.clipboard.writeText(document.getElementById('api-token').textContent);this.textContent='✓ kopiert'" style="width:auto;margin:0;padding:7px 13px;font-size:13px">Kopieren</button>
+  </div>
+  {% elif api_token %}
+  <p class="hint" style="margin-top:0"><strong style="color:var(--accent2)">Aktiv</strong> (endet auf …{{ api_token.hint }}) · erzeugt am {{ api_token.created }} · zuletzt genutzt: {{ api_token.last_used }}</p>
+  {% else %}
+  <p class="hint" style="margin-top:0">Kein Token aktiv.</p>
+  {% endif %}
+  <form method="post" action="{{ url_for('api_token_generate') }}" autocomplete="off" style="margin-top:10px"
+        {% if api_token %}onsubmit="return confirm('Neues Token erzeugen? Das bisherige wird dadurch ungültig.');"{% endif %}>
+    <label for="at-current">Aktuelles Passwort (zur Bestätigung)</label>
+    <input type="password" id="at-current" name="current">
+    <button type="submit" style="background:var(--bg3);border:1px solid var(--border)">{{ 'Neues Token erzeugen (altes ungültig)' if api_token else 'Token erzeugen' }}</button>
+  </form>
+  {% if api_token %}
+  <form method="post" action="{{ url_for('api_token_revoke') }}" style="margin-top:8px"
+        onsubmit="return confirm('Token widerrufen? Zugriffe damit sind danach sofort gesperrt.');">
+    <button type="submit" style="background:#b91c1c;border:1px solid var(--border)">Token widerrufen</button>
+  </form>
+  {% endif %}
 </div>
 {% endblock %}

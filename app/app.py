@@ -31,7 +31,7 @@ except ImportError:  # pragma: no cover - nur relevant im lokalen Windows-Test
 
 import requests
 from cryptography.fernet import Fernet, InvalidToken
-from flask import (Flask, Response, jsonify, redirect, render_template, request,
+from flask import (Flask, Response, g, jsonify, redirect, render_template, request,
                    session, url_for)
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -550,10 +550,147 @@ if os.environ.get("TRUST_PROXY") == "1":
 # den Scrape auf /login umleiten. Der Endpunkt schuetzt sich selbst per Bearer-Token.
 PUBLIC_ENDPOINTS = {"login", "login_recovery", "healthz", "static", "metrics_endpoint"}
 
-# ── Login-Rate-Limit (in-memory, pro IP) ──────────────────────────────────────
-_login_fails = {}
+# ── Gemeinsamer Datei-Zustand beider Worker ──────────────────────────────────
+# Rate-Limit und Sitzungsliste muessen beide gunicorn-Worker sehen (sonst zaehlt jeder
+# Worker fuer sich: 2 x 5 Fehlversuche). Lesen-Aendern-Schreiben laeuft unter einer
+# Dateisperre; ohne fcntl (Windows/Tests) gibt es nur einen Prozess, also keine Sperre.
+LOGIN_FAILS_PATH = os.path.join(CONFIG_DIR, "login-fails.json")
+SESSIONS_PATH = os.path.join(CONFIG_DIR, "sessions.json")
+
+
+def _read_json_dict(path):
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+_state_thread_lock = threading.Lock()  # Threads im selben Prozess (Dev-Server, Windows)
+
+
+class _locked_json:
+    """with _locked_json(path) as d: … — d wird nach dem Block atomar zurueckgeschrieben."""
+
+    def __init__(self, path):
+        self.path = path
+        self._lock = None
+
+    def __enter__(self):
+        os.makedirs(CONFIG_DIR, exist_ok=True)
+        _state_thread_lock.acquire()
+        if fcntl is not None:
+            self._lock = open(self.path + ".lock", "w")
+            fcntl.flock(self._lock.fileno(), fcntl.LOCK_EX)
+        self.data = _read_json_dict(self.path)
+        return self.data
+
+    def __exit__(self, exc_type, *_):
+        try:
+            if exc_type is None:
+                tmp = self.path + ".tmp"
+                with open(tmp, "w", encoding="utf-8") as fh:
+                    json.dump(self.data, fh)
+                os.replace(tmp, self.path)
+        finally:
+            if self._lock is not None:
+                self._lock.close()  # gibt die Sperre frei
+            _state_thread_lock.release()
+        return False
+
+
+# ── Login-Rate-Limit (pro IP, in $CONFIG_DIR/login-fails.json) ───────────────
 LOGIN_MAX = 5
 LOGIN_WINDOW = 300  # Sekunden
+
+
+def _login_fails_load():
+    """Fehlversuche je IP (nur lesen) — fuer Anzeige und Tests."""
+    return _read_json_dict(LOGIN_FAILS_PATH)
+
+
+def _login_fails_reset(ip=None):
+    """Zaehler einer IP (oder aller) loeschen."""
+    with _locked_json(LOGIN_FAILS_PATH) as fails:
+        if ip is None:
+            fails.clear()
+        else:
+            fails.pop(ip, None)
+
+
+# ── Sitzungen (serverseitig widerrufbar) ─────────────────────────────────────
+# Das Flask-Cookie allein laesst sich nicht zuruecknehmen: Logout loeschte es nur im
+# eigenen Browser, ein kopiertes Cookie blieb gueltig — auch nach einem Passwortwechsel.
+# Jetzt traegt jede Sitzung eine zufaellige ID, die in sessions.json stehen muss.
+# Logout streicht die eigene ID, ein Passwortwechsel alle anderen.
+SESSION_MAX_AGE = 30 * 86400  # harte Obergrenze, auch bei dauernder Nutzung
+_sessions_cache = {"key": None, "data": {}}
+
+
+def _sessions_load():
+    try:
+        st = os.stat(SESSIONS_PATH)
+        # st_ino: os.replace legt bei jedem Schreiben eine neue Datei an — gleiche Groesse
+        # und gleicher Zeitstempel-Takt reichen sonst nicht, um eine Aenderung zu erkennen
+        key = (st.st_ino, st.st_mtime_ns, st.st_size)
+    except OSError:
+        return {}
+    if _sessions_cache["key"] != key:
+        _sessions_cache["data"] = _read_json_dict(SESSIONS_PATH)
+        _sessions_cache["key"] = key
+    return _sessions_cache["data"]
+
+
+def _sessions_add():
+    """Neue Sitzungs-ID eintragen (abgelaufene dabei aufraeumen). Rueckgabe: die ID."""
+    sid = secrets.token_urlsafe(24)
+    now = time.time()
+    with _locked_json(SESSIONS_PATH) as ss:
+        for k in [k for k, t in ss.items()
+                  if not isinstance(t, (int, float)) or now - t > SESSION_MAX_AGE]:
+            ss.pop(k, None)
+        ss[sid] = now
+    return sid
+
+
+def _session_start():
+    """Neue Sitzung anlegen und in die Session schreiben (nach erfolgreicher Anmeldung)."""
+    sid = _sessions_add()
+    session.clear()
+    session.permanent = True
+    session["logged_in"] = True
+    session["sid"] = sid
+    return sid
+
+
+def _session_end():
+    """Eigene Sitzung beenden (Logout)."""
+    sid = session.get("sid")
+    if sid:
+        with _locked_json(SESSIONS_PATH) as ss:
+            ss.pop(sid, None)
+    session.clear()
+
+
+def _sessions_revoke_others():
+    """Alle Sitzungen ausser der eigenen beenden (nach Passwortwechsel)."""
+    sid = session.get("sid")
+    with _locked_json(SESSIONS_PATH) as ss:
+        keep = {sid: ss[sid]} if sid in ss else {}
+        ss.clear()
+        ss.update(keep)
+
+
+def _logged_in():
+    """Angemeldet = gueltiges API-Token in diesem Request ODER Cookie sagt logged_in UND
+    die Sitzungs-ID ist noch gueltig."""
+    if g.get("api_token"):
+        return True
+    if not session.get("logged_in"):
+        return False
+    t = _sessions_load().get(session.get("sid") or "")
+    return isinstance(t, (int, float)) and time.time() - t <= SESSION_MAX_AGE
 
 
 # ── Recovery-Codes (Passwort-Rückweg ohne E-Mail) ────────────────────────────
@@ -599,14 +736,23 @@ def _consume_recovery_code(cfg, code):
 
 
 def _login_blocked(ip):
+    """Sperre pruefen und dabei abgelaufene Eintraege ALLER IPs aufraeumen — sonst
+    bliebe jede IP, die nie wiederkommt, fuer immer in der Datei."""
     now = time.time()
-    fails = [t for t in _login_fails.get(ip, []) if now - t < LOGIN_WINDOW]
-    _login_fails[ip] = fails
-    return len(fails) >= LOGIN_MAX
+    with _locked_json(LOGIN_FAILS_PATH) as all_fails:
+        for k in list(all_fails):
+            ts = [t for t in (all_fails[k] if isinstance(all_fails[k], list) else [])
+                  if isinstance(t, (int, float)) and now - t < LOGIN_WINDOW]
+            if ts:
+                all_fails[k] = ts
+            else:
+                all_fails.pop(k, None)
+        return len(all_fails.get(ip, [])) >= LOGIN_MAX
 
 
 def _login_note_fail(ip):
-    _login_fails.setdefault(ip, []).append(time.time())
+    with _locked_json(LOGIN_FAILS_PATH) as all_fails:
+        all_fails.setdefault(ip, []).append(time.time())
 
 
 def _same_host(url_value):
@@ -638,7 +784,7 @@ def csrf_origin_check():
 def _inject_active_profile():
     """Aktives Profil (Name/Produktiv/Farbe) allen Templates bereitstellen — fuer den Warnbalken."""
     try:
-        if not session.get("logged_in"):
+        if not _logged_in():
             return {"active_prof": None}
         p = active_profile()
         return {"active_prof": {
@@ -658,11 +804,91 @@ def _inject_layout():
     return {"embed": embed, "layout": "_embed.html" if embed else "base.html"}
 
 
+# ── Portal-API-Token (Zugriff ohne Login, z. B. fuer Automatisierung) ────────
+# Ein Token, im Portal erzeugt und nur EINMAL angezeigt; config.json haelt nur den
+# SHA-256-Hash (das Token hat 256 Bit Zufall, ein langsamer Hash bringt hier nichts).
+# Nur per Header "Authorization: Bearer <token>", nie per URL.
+# Bewusst NICHT erlaubt:
+#   * /api/*  — der Proxy setzt den Paperless-Token ein; das Portal-Token soll nichts mit
+#     Paperless zu tun haben (Vorgabe: ueber das Token nichts in Paperless aendern)
+#   * Schreibwege nach Paperless am Proxy vorbei (Anwenden/Rueckgaengig)
+#   * alles, womit sich der Besitzer aussperren liesse: Passwort, Recovery-Codes,
+#     API-Token selbst, Voll-Restore (bringt fremden Passwort-Hash/Token mit)
+API_TOKEN_PREFIX = "pgp_"
+API_TOKEN_USED_PATH = os.path.join(CONFIG_DIR, "api-token-used.json")
+_API_TOKEN_FORBIDDEN = {"settings", "wizard", "recovery_generate", "api_token_generate",
+                        "api_token_revoke", "config_restore", "anwenden_post",
+                        "anwenden_undo", "logout"}
+
+
+def _api_token_hash(tok):
+    return hashlib.sha256(tok.encode("utf-8")).hexdigest()
+
+
+def _bearer():
+    """Token aus dem Authorization-Header (oder None, wenn keiner da ist)."""
+    hdr = request.headers.get("Authorization") or ""
+    if hdr[:7].lower() != "bearer ":
+        return None
+    return hdr[7:].strip()
+
+
+def _api_token_ok(tok):
+    want = (load_config().get("api_token") or {}).get("hash")
+    if not want or not tok:
+        return False
+    try:
+        return secrets.compare_digest(_api_token_hash(tok), want)
+    except TypeError:
+        return False
+
+
+def _api_token_touch():
+    """Zuletzt-genutzt mitschreiben — hoechstens einmal pro Minute (kein Schreiben je Request)."""
+    now = time.time()
+    if now - (_read_json_dict(API_TOKEN_USED_PATH).get("ts") or 0) < 60:
+        return
+    try:
+        with open(API_TOKEN_USED_PATH, "w", encoding="utf-8") as fh:
+            json.dump({"ts": int(now), "ip": request.remote_addr or "?"}, fh)
+    except OSError:
+        pass
+
+
+def _api_token_info(cfg=None):
+    t = (cfg or load_config()).get("api_token") or {}
+    if not t.get("hash"):
+        return None
+    used = _read_json_dict(API_TOKEN_USED_PATH)
+    return {"created": (t.get("created") or "").replace("T", " "),
+            "hint": t.get("hint") or "",
+            "last_used": _fmt_rel_ts(used.get("ts")) if used.get("ts") else "noch nie"}
+
+
 @app.before_request
 def require_login():
     if request.endpoint in PUBLIC_ENDPOINTS:
         return None
-    if not session.get("logged_in"):
+    tok = _bearer()
+    if tok is not None and not session.get("logged_in"):
+        ip = request.remote_addr or "?"
+        if _login_blocked(ip):
+            return Response("Zu viele Fehlversuche.", status=429)
+        if not _api_token_ok(tok):
+            _login_note_fail(ip)
+            _log_activity("api", "API-Token abgelehnt", level="warn",
+                          detail="IP %s, %s %s" % (ip, request.method, request.path))
+            return Response("Unauthorized", status=401,
+                            headers={"WWW-Authenticate": 'Bearer realm="portal"'})
+        if request.path.startswith("/api") or request.endpoint in _API_TOKEN_FORBIDDEN:
+            return Response("Mit dem API-Token nicht erlaubt.", status=403)
+        g.api_token = True
+        _api_token_touch()
+        if request.method not in ("GET", "HEAD", "OPTIONS"):
+            _log_activity("api", "API-Token: %s %s" % (request.method, request.path),
+                          detail="IP %s" % ip)
+        return None
+    if not _logged_in():
         # Fetch-Endpunkte (Proxy + portal-interne API) -> 401 statt Redirect,
         # damit das injizierte JS im Generator es sauber behandeln kann.
         if request.path.startswith("/api") or request.path.startswith("/portal"):
@@ -701,7 +927,7 @@ def require_setup():
         return None
     if request.path.startswith("/api") or request.path.startswith("/portal"):
         return None
-    if not session.get("logged_in"):
+    if not _logged_in():
         return None  # require_login kuemmert sich
     if not _setup_complete():
         return redirect(url_for("wizard"))
@@ -725,9 +951,8 @@ def login():
         user = request.form.get("username", "")
         pw = request.form.get("password", "")
         if user == cfg.get("admin_user") and check_password_hash(cfg["admin_pw_hash"], pw):
-            _login_fails.pop(ip, None)
-            session.permanent = True
-            session["logged_in"] = True
+            _login_fails_reset(ip)
+            _session_start()
             _log_activity("login", "Anmeldung erfolgreich", level="ok", detail="IP %s" % ip)
             # Erst-Einrichtung (Default-Passwort aktiv) -> gefuehrter Wizard.
             if cfg.get("is_default_pw"):
@@ -742,7 +967,7 @@ def login():
 
 @app.route("/logout")
 def logout():
-    session.clear()
+    _session_end()
     return redirect(url_for("login"))
 
 
@@ -761,9 +986,10 @@ def login_recovery():
         code = request.form.get("code", "")
         if user == cfg.get("admin_user") and _consume_recovery_code(cfg, code):
             save_config(cfg)
-            _login_fails.pop(ip, None)
-            session.permanent = True
-            session["logged_in"] = True
+            _login_fails_reset(ip)
+            _session_start()
+            # Das Passwort ist vergessen — genau EIN Wechsel ohne aktuelles Passwort ist erlaubt
+            session["pw_reset_ok"] = True
             remaining = _recovery_remaining(cfg)
             _log_activity("recovery", "Anmeldung per Recovery-Code", level="warn",
                           detail="IP %s · verbleibende Codes: %d" % (ip, remaining))
@@ -890,6 +1116,7 @@ def wizard():
     # Kommt die Verbindung schon aus einem eingespielten Backup, darf der Wizard sie nicht
     # noch einmal abfragen — der Token ist ja da. Dann fehlt nur noch das Passwort.
     have_conn = bool(prof.get("paperless_url") and _dec(prof.get("paperless_token") or ""))
+    need_current = not cfg.get("is_default_pw") and not session.get("pw_reset_ok")
     err = None
     if request.method == "POST":
         new = request.form.get("new", "")
@@ -901,7 +1128,13 @@ def wizard():
                or _dec(prof.get("paperless_token") or ""))
         lxc = request.form.get("lxc_id", "").strip()
         notify_email = request.form.get("notify_email", "").strip()
-        if len(new) < 4:
+        # Ist das Standard-Passwort schon ersetzt (z. B. Profil ohne Token, eingespieltes
+        # Backup), darf der Wizard es nur mit dem aktuellen Passwort aendern — sonst waere
+        # er ein Weg am Passwortschutz von /settings vorbei.
+        if need_current and not check_password_hash(cfg["admin_pw_hash"],
+                                                    request.form.get("current", "")):
+            err = "Aktuelles Passwort ist falsch."
+        elif len(new) < 4:
             err = "Neues Passwort muss mindestens 4 Zeichen haben."
         elif new != rep:
             err = "Die Passwörter stimmen nicht überein."
@@ -917,6 +1150,8 @@ def wizard():
                 if lxc.isdigit():
                     cfg["lxc_id"] = lxc          # Portal-Container fuer 1-Klick-Update (global)
                 save_config(cfg)
+                session.pop("pw_reset_ok", None)
+                _sessions_revoke_others()
                 if aid in profs:
                     profs[aid]["name"] = name
                     profs[aid]["paperless_url"] = url
@@ -937,7 +1172,7 @@ def wizard():
     return render_template("wizard.html", name=(prof.get("name") or "Standard"),
                            url=prof.get("paperless_url", ""), err=err or request.args.get("err"),
                            msg=request.args.get("msg"), have_conn=have_conn,
-                           prof_count=len(profs),
+                           prof_count=len(profs), need_current=need_current,
                            lxc_id=str(cfg.get("lxc_id") or ""),
                            notify_email=(prof.get("generator_config") or {}).get("notifyEmail", ""))
 
@@ -954,7 +1189,7 @@ def settings():
         rep = request.form.get("repeat", "")
         if not new:
             return _back(err="Bitte ein neues Passwort eingeben.")
-        if not check_password_hash(cfg["admin_pw_hash"], cur):
+        if not session.get("pw_reset_ok") and not check_password_hash(cfg["admin_pw_hash"], cur):
             return _back(err="Aktuelles Passwort ist falsch.")
         if len(new) < 4:
             return _back(err="Neues Passwort muss mindestens 4 Zeichen haben.")
@@ -963,11 +1198,21 @@ def settings():
         cfg["admin_pw_hash"] = generate_password_hash(new)
         cfg["is_default_pw"] = False
         save_config(cfg)
-        return _back(msg="Passwort geändert.")
-    return render_template("settings.html", is_default_pw=cfg.get("is_default_pw", False),
-                           recovery_remaining=_recovery_remaining(cfg),
-                           recovery_at=cfg.get("recovery_generated_at"),
+        session.pop("pw_reset_ok", None)
+        _sessions_revoke_others()  # gestohlene/vergessene Sitzungen enden mit dem alten Passwort
+        _log_activity("login", "Passwort geändert", level="ok",
+                      detail="Alle anderen Sitzungen wurden beendet.")
+        return _back(msg="Passwort geändert. Andere angemeldete Geräte wurden abgemeldet.")
+    return render_template("settings.html", **_settings_ctx(cfg),
                            msg=request.args.get("msg"), err=request.args.get("err"))
+
+
+def _settings_ctx(cfg):
+    return {"is_default_pw": cfg.get("is_default_pw", False),
+            "recovery_remaining": _recovery_remaining(cfg),
+            "recovery_at": cfg.get("recovery_generated_at"),
+            "pw_reset_ok": bool(session.get("pw_reset_ok")),
+            "api_token": _api_token_info(cfg)}
 
 
 @app.route("/verwaltung/recovery/generate", methods=["POST"])
@@ -984,12 +1229,51 @@ def recovery_generate():
     _log_activity("recovery", "Recovery-Codes neu erzeugt (%d)" % len(codes), level="warn",
                   detail="Alle vorher erzeugten Codes sind jetzt ungültig.")
     # Klartext nur dieses eine Mal — Seite direkt rendern (kein Redirect, sonst weg).
-    return render_template("settings.html", is_default_pw=cfg.get("is_default_pw", False),
-                           recovery_remaining=len(codes),
-                           recovery_at=cfg.get("recovery_generated_at"),
+    return render_template("settings.html", **_settings_ctx(cfg),
                            new_codes=codes,
                            msg="10 Recovery-Codes erzeugt — jetzt sichern! Sie werden nur "
                                "dieses eine Mal angezeigt.", err=None)
+
+
+@app.after_request
+def _api_token_no_cookie(resp):
+    """Token-Requests sind zustandslos: keine Session schreiben (sonst bekaeme der
+    Aufrufer ein Cookie, z. B. mit dem aktiven Profil eines Profilwechsels)."""
+    if g.get("api_token"):
+        session.modified = False
+    return resp
+
+
+@app.route("/verwaltung/api-token/generate", methods=["POST"])
+def api_token_generate():
+    """Neues Portal-API-Token erzeugen (Re-Auth mit Passwort). Klartext nur dieses eine Mal;
+    ein vorhandenes Token wird dadurch ungueltig."""
+    cfg = load_config()
+    if not check_password_hash(cfg["admin_pw_hash"], request.form.get("current", "")):
+        return redirect(url_for("verwaltung", tab="konto",
+                                err="Aktuelles Passwort ist falsch — kein Token erzeugt."))
+    tok = API_TOKEN_PREFIX + secrets.token_urlsafe(32)
+    cfg["api_token"] = {"hash": _api_token_hash(tok), "hint": tok[-4:],
+                        "created": datetime.now().isoformat(timespec="seconds")}
+    save_config(cfg)
+    try:
+        os.remove(API_TOKEN_USED_PATH)
+    except OSError:
+        pass
+    _log_activity("api", "API-Token erzeugt", level="warn",
+                  detail="Ein vorher vorhandenes Token ist jetzt ungültig.")
+    return render_template("settings.html", **_settings_ctx(cfg), new_api_token=tok,
+                           msg="API-Token erzeugt — jetzt sichern! Es wird nur dieses eine "
+                               "Mal angezeigt.", err=None)
+
+
+@app.route("/verwaltung/api-token/revoke", methods=["POST"])
+def api_token_revoke():
+    cfg = load_config()
+    if cfg.pop("api_token", None):
+        save_config(cfg)
+        _log_activity("api", "API-Token widerrufen", level="warn")
+    return redirect(url_for("verwaltung", tab="konto", msg="API-Token widerrufen."))
 
 
 @app.route("/")
@@ -1140,7 +1424,9 @@ def update_trigger():
                                 % ("Rollback" if action == "rollback" else "Update")))
 
 
-_BACKUP_SKIP = {"watcher.lock"}  # transiente Dateien nicht mitsichern
+# transiente Dateien nicht mitsichern; Sitzungen/Fehlversuche gehoeren zur laufenden
+# Instanz und duerfen beim Restore nicht aus einem alten Stand zurueckkommen
+_BACKUP_SKIP = {"watcher.lock", "sessions.json", "login-fails.json", "api-token-used.json"}
 
 
 def _recovery_redirect(tab, msg=None, err=None):
@@ -1162,7 +1448,7 @@ def config_backup():
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for root, _dirs, files in os.walk(CONFIG_DIR):
             for f in files:
-                if f in _BACKUP_SKIP or f.endswith(".tmp"):
+                if f in _BACKUP_SKIP or f.endswith((".tmp", ".lock")):
                     continue
                 full = os.path.join(root, f)
                 arc = os.path.relpath(full, CONFIG_DIR)
@@ -1194,11 +1480,15 @@ def config_restore():
     base = os.path.abspath(CONFIG_DIR)
     restored = 0
     for name in zf.namelist():
-        if name.endswith("/") or name in _BACKUP_SKIP:
+        if name.endswith("/"):
             continue
         dest = os.path.abspath(os.path.join(CONFIG_DIR, name))
         # Pfad-Traversal-Schutz: Ziel MUSS unter CONFIG_DIR liegen
         if not (dest == base or dest.startswith(base + os.sep)):
+            continue
+        # Ausnahmen am ZIEL pruefen, nicht am Namen im ZIP ('./sessions.json' landet sonst doch)
+        rel = os.path.relpath(dest, base)
+        if rel in _BACKUP_SKIP or rel.endswith((".lock", ".tmp")):
             continue
         try:
             os.makedirs(os.path.dirname(dest), exist_ok=True)
@@ -1207,6 +1497,7 @@ def config_restore():
             restored += 1
         except OSError:
             pass
+    _sessions_revoke_others()  # Backup kann einen anderen Zugang mitbringen
     _log_activity("restore", "Voll-Backup eingespielt (%d Dateien)" % restored)
     return _recovery_redirect("version",
                               msg="Backup eingespielt (%d Dateien). Bitte neu anmelden, falls die Sitzung endet."
@@ -1753,7 +2044,9 @@ def _chk_drift(url, token, gc):
                 "detail": "Keine gespeicherte Profil-Config."}
     missing, parts, unreachable = 0, [], False
     for label, key, ep in _DRIFT_CATS:
-        cfg_n = len(gc.get(key) or [])
+        # wie im Dashboard: deaktivierte Eintraege werden nicht angelegt, zaehlen also
+        # nicht mit — sonst meldet der Waechter Drift, die es nicht gibt
+        cfg_n = _count_active(gc, key)
         inst_n = _api_count(url, token, ep + "?page_size=1")
         if inst_n is None:
             unreachable = True
@@ -2730,7 +3023,7 @@ def _metrics_token(val):
 def _metrics_auth_ok(tok):
     """Zugriff, wenn ein gueltiges Bearer-Token kommt (Prometheus) ODER die Sitzung
     eingeloggt ist (Mensch schaut im Browser nach). Vergleich zeitkonstant."""
-    if session.get("logged_in"):
+    if _logged_in():
         return True
     hdr = request.headers.get("Authorization") or ""
     if hdr[:7].lower() != "bearer ":
@@ -4045,8 +4338,26 @@ def portal_profiles_list():
     })
 
 
-_DELETE_METHODS = ("delete", "delete_documents")
+_DELETE_METHODS = ("delete", "delete_documents", "delete_pages")
+# Methoden, die mit einem Parameter die Ausgangs-Dokumente loeschen (Paperless-ngx:
+# merge/split -> delete_originals, edit_pdf -> delete_original). Ohne lesbare, eindeutig
+# ausgeschaltete Parameter wird gesperrt.
+_DELETE_PARAM_METHODS = ("merge", "split", "edit_pdf")
+_DELETE_PARAMS = ("delete_originals", "delete_original")
 _BULK_EDIT_PATH = "/api/documents/bulk_edit"
+_TRASH_PATH = "/api/trash"
+
+
+def _req_body():
+    """Rumpf als dict — egal, wie der Client ihn kodiert. None = unlesbar."""
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        raw = request.get_data(as_text=True) or ""
+        try:
+            body = json.loads(raw)          # JSON, nur falsch deklariert
+        except ValueError:
+            body = dict(parse_qsl(raw))     # formular-kodiert
+    return body if isinstance(body, dict) else None
 
 
 def _bulk_method():
@@ -4057,18 +4368,23 @@ def _bulk_method():
     application/json liefert es None, der Proxy schickt den Rumpf aber unveraendert weiter
     (data=request.get_data()). Riegel und Paperless muessen denselben Byte-Strom beurteilen,
     sonst laesst sich der Riegel durch das blosse Umdeklarieren des Content-Type umgehen."""
-    body = request.get_json(silent=True)
-    if not isinstance(body, dict):
-        raw = request.get_data(as_text=True) or ""
-        try:
-            body = json.loads(raw)          # JSON, nur falsch deklariert
-        except ValueError:
-            body = dict(parse_qsl(raw))     # formular-kodiert
-    if not isinstance(body, dict):
-        return None
-    if "method" not in body:
+    body = _req_body()
+    if body is None or "method" not in body:
         return None
     return str(body.get("method") or "").strip().lower()
+
+
+def _deletes_originals():
+    """True, wenn merge/split/edit_pdf die Ausgangs-Dokumente loeschen wuerde — oder die
+    Parameter nicht eindeutig lesbar sind (dann lieber sperren)."""
+    params = (_req_body() or {}).get("parameters", {})
+    if not isinstance(params, dict):
+        return True
+    for k in _DELETE_PARAMS:
+        v = params.get(k)
+        if v not in (None, False, 0, "", "false", "False", "0"):
+            return True
+    return False
 
 
 def _is_document_delete():
@@ -4080,6 +4396,14 @@ def _is_document_delete():
         # Unlesbarer Rumpf -> sperren. Ein ehrlicher Client schickt hier immer lesbares
         # JSON; wer das nicht tut, bekommt keinen Freifahrtschein am Riegel vorbei.
         if m is None or m in _DELETE_METHODS:
+            return True
+        if m in _DELETE_PARAM_METHODS and _deletes_originals():
+            return True
+    # Papierkorb endgueltig leeren loescht Dokumente unwiderruflich (Wiederherstellen bleibt).
+    if request.path.rstrip("/") == _TRASH_PATH and request.method in WRITE_METHODS:
+        body = _req_body()
+        action = str((body or {}).get("action") or "").strip().lower()
+        if body is None or action != "restore":
             return True
     return False
 
