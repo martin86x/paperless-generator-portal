@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Paperless-ngx Setup Generator v3.97</title>
+<title>Paperless-ngx Setup Generator v3.98</title>
 <!-- Schriften inline (offline, kein Google-Fonts-CDN mehr; v3.78) -->
 <style>/* Google Fonts inline (v3.78) - Sora + JetBrains Mono (400/600/700), latin-Subset, base64. Ersetzt den @import; voll offline. */
 /* latin */
@@ -65,7 +65,7 @@
   /* Schriften werden inline via src/vendor/fonts.css eingebettet (v3.78, kein CDN) */
   :root{--bg:#0f1117;--bg2:#161b27;--bg3:#1e2536;--border:#2a3148;--accent:#4f8ef7;--accent2:#38d9a9;--text:#dde3f0;--text-muted:#7a8aaa;--code-bg:#111827;--warn:#f7c948;--danger:#f76f6f;--green:#22c55e;--sidebar-w:270px;}
   *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
-  html{scroll-behavior:smooth;}
+  html{scroll-behavior:auto;}
   body{font-family:Sora,sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.7;min-height:100vh;}
   #app{display:flex;min-height:100vh;}
   #sidebar{width:var(--sidebar-w);min-width:var(--sidebar-w);background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow-y:auto;}
@@ -352,14 +352,14 @@ input.valid{border-color:var(--accent2)!important;}
   <button id="hamburger-btn" onclick="toggleSidebar()" aria-label="Navigation">
     <span></span><span></span><span></span>
   </button>
-  <span id="topbar-title">Setup Generator v3.97</span>
+  <span id="topbar-title">Setup Generator v3.98</span>
   <span id="topbar-conn-dot" class="sticky-conn-dot" title="Verbindungsstatus"></span>
-  <span id="topbar-badge">v3.97</span>
+  <span id="topbar-badge">v3.98</span>
 </div>
 <aside id="sidebar">
   <div class="sb-header">
     <div class="sb-logo">Paperless-ngx</div>
-    <div class="sb-title">Setup Generator v3.97</div>
+    <div class="sb-title">Setup Generator v3.98</div>
   </div>
   <nav class="sb-nav">
     <span class="sb-label">Konfiguration</span>
@@ -387,7 +387,7 @@ input.valid{border-color:var(--accent2)!important;}
 <main id="content">
 
   <div class="hero">
-    <div class="badge" id="hdr-badge">v3.97 &middot; Bash + Direkt &middot; REST API &middot; Stand: <span id="badge-date">17.07.2026</span></div>
+    <div class="badge" id="hdr-badge">v3.98 &middot; Bash + Direkt &middot; REST API &middot; Stand: <span id="badge-date">03.10.2026</span></div>
     <h1>Paperless-ngx<br>Setup Generator</h1>
     <p>Richtet eine frische Paperless-ngx-Instanz vollautomatisch ein &ndash; Tags, Dokumenttypen, Felder, Korrespondenten, Speicherpfade und Arbeitsabl&auml;ufe &ndash; per Bash-Skript oder direkt aus dem Browser via REST API.</p>
     <div style="margin-top:.6rem">
@@ -2838,7 +2838,7 @@ function goTo(id){
   const targetId = allToolIds.includes(id) ? 's-tools' : id;
   const el=document.getElementById(targetId);
   if(!el) return;
-  el.scrollIntoView({behavior:"smooth"});
+  el.scrollIntoView({behavior:"auto"});
   // Sofort active setzen (nicht auf Observer warten)
   if(window._setActiveSidebarLink) window._setActiveSidebarLink(targetId);
   closeSidebar();
@@ -2937,7 +2937,7 @@ function openToolAcc(tab, titleText) {
           h.classList.add('open');
           body.classList.add('open');
         }
-        h.scrollIntoView({behavior:'smooth', block:'nearest'});
+        h.scrollIntoView({behavior:'auto', block:'nearest'});
       } else {
         // Alle anderen schließen
         h.classList.remove('open');
@@ -3212,7 +3212,7 @@ function addTagRuleForChild(childName){
       const grpHdr=grp.querySelector("div");
       const grpBody=grp.children[1];
       if(grpBody&&grpBody.style.display==="none"&&grpHdr) grpHdr.click();
-      grp.scrollIntoView({behavior:"smooth",block:"nearest"});
+      grp.scrollIntoView({behavior:"auto",block:"nearest"});
     });
   },50);
   if(typeof showToast==="function") showToast('Matching-Regel für "'+childName+'" hinzugefügt ✓');
@@ -4212,7 +4212,7 @@ const AN_HINTS=[
   "Unscharfe Suche – toleriert Tippfehler",
   "Automatisch trainiert aus manuell beschrifteten Dokumenten"
 ];
-const GENERATOR_VERSION = "3.97";
+const GENERATOR_VERSION = "3.98";
 
 function updateVersionWarnings(){
   const v=document.getElementById("inp-plx-version");
@@ -5489,7 +5489,7 @@ function generate() {
   runHealthCheck();
   // Health-Check-Ergebnis ins Sichtfeld scrollen
   const hcEl = document.getElementById("health-results");
-  if(hcEl) hcEl.scrollIntoView({behavior:"smooth", block:"nearest"});
+  if(hcEl) hcEl.scrollIntoView({behavior:"auto", block:"nearest"});
 
   if(errors.length) {
     alert("Fehler – bitte beheben:\n\n" + errors.map(e=>"• "+e).join("\n")+"\n\nDetails im Health-Check oben in dieser Sektion.");
@@ -6211,7 +6211,7 @@ function _generateScript() {
   sout.textContent=gScript;
   sout.scrollTop=0;
   document.getElementById("s-out").style.display="block";
-  document.getElementById("s-out").scrollIntoView({behavior:"smooth"});
+  document.getElementById("s-out").scrollIntoView({behavior:"auto"});
   // Sidebar-Link 13 einblenden
   const sbOut = document.getElementById("sb-link-out");
   if(sbOut) sbOut.style.display="flex";
@@ -7212,7 +7212,7 @@ function addFristConfig() {
   renderFristWorkflows();
   setTimeout(function(){
     var cards = document.querySelectorAll('#frist-wf-preview [id^="frist-card-"]');
-    if(cards.length) cards[cards.length-1].scrollIntoView({behavior:'smooth', block:'nearest'});
+    if(cards.length) cards[cards.length-1].scrollIntoView({behavior:'auto', block:'nearest'});
   }, 80);
 }
 
@@ -7453,7 +7453,7 @@ function addFristFromField(fieldName) {
   renderFristWorkflows();
   // Zu Frist-Sektion scrollen
   var el = document.querySelector('#s-edit-workflows');
-  if(el) { el.scrollIntoView({behavior:'smooth'}); }
+  if(el) { el.scrollIntoView({behavior:'auto'}); }
   if(typeof autoSave === 'function') autoSave();
   if(typeof showToast === 'function') showToast('Frist-Workflow für "' + fieldName + '" angelegt ✓');
 }
@@ -9598,7 +9598,7 @@ function exportDockerEnv() {
   ];
   pre.textContent = lines.join('\n');
   panel.style.display = 'block';
-  panel.scrollIntoView({behavior:'smooth', block:'nearest'});
+  panel.scrollIntoView({behavior:'auto', block:'nearest'});
 }
 
 function copyEnvSnippet() {
@@ -12550,7 +12550,7 @@ async function runAllTools() {
   panel.innerHTML = '<div style="font-weight:700;color:#fff;margin-bottom:.5rem">🚀 Tool-Durchlauf</div>'
     +'<div>'+rows+'</div>'
     +'<div id="sweep-foot" style="margin-top:.6rem;font-size:.78rem;color:var(--text-muted)">0 / '+TOOLS.length+' fertig…</div>';
-  panel.scrollIntoView({behavior:'smooth',block:'nearest'});
+  panel.scrollIntoView({behavior:'auto',block:'nearest'});
 
   var done=0, problems=0;
   for(var i=0;i<TOOLS.length;i++){
@@ -12591,7 +12591,7 @@ function _sweepJump(resId){
   if(typeof switchToolsTab==='function') switchToolsTab('online');
   var acc=el.closest('.acc');
   if(acc){ var b=acc.querySelector('.acc-b'); var h=acc.querySelector('.acc-h'); if(b && !b.classList.contains('open') && h && typeof tacc==='function') tacc(h); }
-  setTimeout(function(){ el.scrollIntoView({behavior:'smooth',block:'center'}); }, 60);
+  setTimeout(function(){ el.scrollIntoView({behavior:'auto',block:'center'}); }, 60);
 }
 
 // ════════════════════════════════════════════════════════════

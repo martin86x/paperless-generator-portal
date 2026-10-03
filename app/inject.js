@@ -46,7 +46,7 @@
       toast(emVal ? 'E-Mail-Format ungültig – Profil nicht gespeichert' :
                     'Benachrichtigungs-E-Mail fehlt (Pflichtfeld) – Profil nicht gespeichert', 4000);
       if (emEl) {
-        try { emEl.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {}
+        try { emEl.scrollIntoView({ behavior: 'auto', block: 'center' }); } catch (e) {}
         try { emEl.focus(); } catch (e) {}
         emEl.style.outline = '2px solid var(--danger)';
         setTimeout(function () { emEl.style.outline = ''; }, 2600);
@@ -187,7 +187,7 @@
     hb.addEventListener('click', function () {
       try { if (typeof goTo === 'function') goTo('s-gen'); } catch (e) {}
       var hr = document.getElementById('health-results');
-      if (hr) { try { hr.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {} }
+      if (hr) { try { hr.scrollIntoView({ behavior: 'auto', block: 'center' }); } catch (e) {} }
       try { if (typeof runFullHealthCheck === 'function') runFullHealthCheck(); } catch (e) {}
     });
     n.appendChild(hb);
