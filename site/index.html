@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Paperless-ngx Setup Generator v4.00</title>
+<title>Paperless-ngx Setup Generator v4.01</title>
 <!-- Schriften inline (offline, kein Google-Fonts-CDN mehr; v3.78) -->
 <style>/* Google Fonts inline (v3.78) - Sora + JetBrains Mono (400/600/700), latin-Subset, base64. Ersetzt den @import; voll offline. */
 /* latin */
@@ -380,14 +380,14 @@ input.valid{border-color:var(--accent2)!important;}
   <button id="hamburger-btn" onclick="toggleSidebar()" aria-label="Navigation">
     <span></span><span></span><span></span>
   </button>
-  <span id="topbar-title">Setup Generator v4.00</span>
+  <span id="topbar-title">Setup Generator v4.01</span>
   <span id="topbar-conn-dot" class="sticky-conn-dot" title="Verbindungsstatus"></span>
-  <span id="topbar-badge">v4.00</span>
+  <span id="topbar-badge">v4.01</span>
 </div>
 <aside id="sidebar">
   <div class="sb-header">
     <div class="sb-logo">Paperless-ngx</div>
-    <div class="sb-title">Setup Generator v4.00</div>
+    <div class="sb-title">Setup Generator v4.01</div>
   </div>
   <nav class="sb-nav">
     <span class="sb-label">Konfiguration</span>
@@ -415,7 +415,7 @@ input.valid{border-color:var(--accent2)!important;}
 <main id="content">
 
   <div class="hero">
-    <div class="badge" id="hdr-badge">v4.00 &middot; Bash + Direkt &middot; REST API &middot; Stand: <span id="badge-date">03.10.2026</span></div>
+    <div class="badge" id="hdr-badge">v4.01 &middot; Bash + Direkt &middot; REST API &middot; Stand: <span id="badge-date">04.10.2026</span></div>
     <h1>Paperless-ngx<br>Setup Generator</h1>
     <p>Richtet eine frische Paperless-ngx-Instanz vollautomatisch ein &ndash; Tags, Dokumenttypen, Felder, Korrespondenten, Speicherpfade und Arbeitsabl&auml;ufe &ndash; per Bash-Skript oder direkt aus dem Browser via REST API.</p>
     <div style="margin-top:.6rem">
@@ -4160,7 +4160,7 @@ const AN_HINTS=[
   "Unscharfe Suche – toleriert Tippfehler",
   "Automatisch trainiert aus manuell beschrifteten Dokumenten"
 ];
-const GENERATOR_VERSION = "4.00";
+const GENERATOR_VERSION = "4.01";
 
 function updateVersionWarnings(){
   const v=document.getElementById("inp-plx-version");
@@ -8294,6 +8294,12 @@ async function runTypenTagsReset() {
   const logEl = document.getElementById('reset-log');
   const btn   = document.getElementById('btn-reset-start');
   if(!url||!token){alert('URL und Token in Sektion 01 eintragen.');return;}
+  if(window.__plxBlank){alert('Im Blanko-Profil gesperrt: Der Reset löscht ALLE Tags und Dokumenttypen der Instanz und ist für bestehende, gewachsene Instanzen nicht erlaubt.');return;}
+  if(!confirm('ACHTUNG: Der Reset löscht ALLE Dokumenttypen und ALLE Tags dieser Instanz (nicht nur die vom Generator angelegten).
+
+Die Dokumente bleiben erhalten, verlieren aber ihre Typ- und Tag-Zuordnung. Das lässt sich nicht rückgängig machen.
+
+Wirklich fortfahren?')) return;
   btn.disabled = true;
 
   function log(msg, color) {
@@ -12228,6 +12234,34 @@ async function runBulkAsnCheck() {
   } catch(e){_toolError('asn-bulk-results','Fehler: '+e.message);}
 }
 
+// ── Zusammenführen: sichere Hilfsfunktionen ──
+// Holt ALLE Dokumente zu einem Filter seitenweise (Paperless liefert pro Seite begrenzt).
+// Wirft einen Fehler, wenn eine Seite fehlschlägt oder die Zahl nicht zur gemeldeten Gesamtzahl passt
+// — dann darf die Quelle nicht gelöscht werden.
+async function _mergeCollectDocs(url,headers,query) {
+  var out=[], total=null;
+  for(var page=1; page<=2000; page++) {
+    var r=await fetch(url+'/api/documents/?'+query+'&page_size=100&page='+page,{headers,signal:AbortSignal.timeout(15000)});
+    if(!r.ok) throw new Error('Dokumente konnten nicht vollständig geladen werden (HTTP '+r.status+'). Es wurde nichts gelöscht.');
+    var j=await r.json();
+    if(total===null) total=j.count;
+    out=out.concat(j.results||[]);
+    if(!j.next) break;
+  }
+  if(total!==null && out.length!==total) throw new Error('Nur '+out.length+' von '+total+' Dokumenten erfasst. Es wurde nichts gelöscht.');
+  return out;
+}
+async function _mergeCollectDocIds(url,headers,query) {
+  var docs=await _mergeCollectDocs(url,headers,query);
+  return docs.map(function(d){return d.id;});
+}
+async function _mergeCountDocs(url,headers,query) {
+  var r=await fetch(url+'/api/documents/?'+query+'&page_size=1',{headers,signal:AbortSignal.timeout(15000)});
+  if(!r.ok) throw new Error('Gegenprobe fehlgeschlagen (HTTP '+r.status+'). Es wurde nichts gelöscht.');
+  var j=await r.json();
+  return j.count||0;
+}
+
 // ── Korrespondenten-Merge ──
 async function runCorrMergePreview() {
   var src=(document.getElementById('cm-source')||{value:''}).value.trim();
@@ -12256,14 +12290,19 @@ async function runCorrMerge() {
   var {url,token}=_getApiConn();
   var headers={Authorization:'Token '+token,Accept:'application/json','Content-Type':'application/json'};
   try {
-    // Bulk-Edit: alle Dokumente der Quelle auf Ziel setzen
-    var docsR=await fetch(url+'/api/documents/?correspondent__id='+window._cmSrcId+'&page_size=1000',{headers,signal:AbortSignal.timeout(10000)}).then(r=>r.json());
-    var ids=(docsR.results||[]).map(function(d){return d.id;});
-    if(ids.length) {
-      await fetch(url+'/api/documents/bulk_edit/',{method:'POST',headers,body:JSON.stringify({documents:ids,method:'set_correspondent',parameters:{correspondent:window._cmTgtId}}),signal:AbortSignal.timeout(15000)});
+    // Alle Dokumente der Quelle seitenweise holen (kein Limit); vollständig oder Abbruch
+    var ids=await _mergeCollectDocIds(url,headers,'correspondent__id='+window._cmSrcId);
+    // Bulk-Edit in Blöcken; jede Antwort muss ok sein, sonst bleibt die Quelle bestehen
+    for(var i=0;i<ids.length;i+=100) {
+      var rr=await fetch(url+'/api/documents/bulk_edit/',{method:'POST',headers,body:JSON.stringify({documents:ids.slice(i,i+100),method:'set_correspondent',parameters:{correspondent:window._cmTgtId}}),signal:AbortSignal.timeout(30000)});
+      if(!rr.ok) throw new Error('Umhängen fehlgeschlagen (HTTP '+rr.status+', '+i+' von '+ids.length+' erledigt). Die Quelle wurde NICHT gelöscht.');
     }
-    // Quelle löschen
-    await fetch(url+'/api/correspondents/'+window._cmSrcId+'/',{method:'DELETE',headers,signal:AbortSignal.timeout(5000)});
+    // Gegenprobe: es darf kein Dokument mehr an der Quelle hängen
+    var left=await _mergeCountDocs(url,headers,'correspondent__id='+window._cmSrcId);
+    if(left>0) throw new Error(left+' Dokument(e) hängen noch an der Quelle. Die Quelle wurde NICHT gelöscht.');
+    // Erst jetzt die (leere) Quelle löschen
+    var dr=await fetch(url+'/api/correspondents/'+window._cmSrcId+'/',{method:'DELETE',headers,signal:AbortSignal.timeout(10000)});
+    if(!dr.ok) throw new Error('Dokumente sind umgehängt, aber die Quelle ließ sich nicht löschen (HTTP '+dr.status+(dr.status===403?' – vom Portal gesperrt, z. B. Blanko-Profil':'')+').');
     _toolResult('cm-results','<div class="callout tip">&#10003; '+ids.length+' Dokumente verschoben, Quelle "'+escH(document.getElementById('cm-source').value)+'" gelöscht.</div>');
     window._cmSrcId=null; window._cmTgtId=null;
     loadQuickStats();
@@ -12319,20 +12358,24 @@ async function runTagMerge() {
   var {url,token}=_getApiConn();
   var headers={Authorization:'Token '+token,Accept:'application/json','Content-Type':'application/json'};
   try {
-    // Alle Dokumente mit Quell-Tag laden
-    var docsR=await fetch(url+'/api/documents/?tags__id='+window._tmSrcId+'&page_size=1000',{headers,signal:AbortSignal.timeout(10000)}).then(r=>r.json());
-    var docs=docsR.results||[];
+    // Alle Dokumente mit Quell-Tag seitenweise laden (kein Limit); vollständig oder Abbruch
+    var docs=await _mergeCollectDocs(url,headers,'tags__id='+window._tmSrcId);
     var moved=0;
-    // Jeden Dok: Quell-Tag durch Ziel-Tag ersetzen (Patch)
+    // Jeden Dok: Quell-Tag durch Ziel-Tag ersetzen (Patch); jede Antwort muss ok sein
     for(var i=0;i<docs.length;i++) {
       var d=docs[i];
       var newTags=d.tags.filter(function(id){return id!==window._tmSrcId;});
       if(!newTags.includes(window._tmTgtId)) newTags.push(window._tmTgtId);
-      await fetch(url+'/api/documents/'+d.id+'/',{method:'PATCH',headers,body:JSON.stringify({tags:newTags}),signal:AbortSignal.timeout(5000)});
+      var pr=await fetch(url+'/api/documents/'+d.id+'/',{method:'PATCH',headers,body:JSON.stringify({tags:newTags}),signal:AbortSignal.timeout(10000)});
+      if(!pr.ok) throw new Error('Umhängen fehlgeschlagen bei Dokument #'+d.id+' (HTTP '+pr.status+', '+moved+' von '+docs.length+' erledigt). Der Quell-Tag wurde NICHT gelöscht.');
       moved++;
     }
-    // Quell-Tag löschen
-    await fetch(url+'/api/tags/'+window._tmSrcId+'/',{method:'DELETE',headers,signal:AbortSignal.timeout(5000)});
+    // Gegenprobe: es darf kein Dokument mehr den Quell-Tag tragen
+    var left=await _mergeCountDocs(url,headers,'tags__id='+window._tmSrcId);
+    if(left>0) throw new Error(left+' Dokument(e) tragen den Quell-Tag noch. Der Quell-Tag wurde NICHT gelöscht.');
+    // Erst jetzt den (unbenutzten) Quell-Tag löschen
+    var dr=await fetch(url+'/api/tags/'+window._tmSrcId+'/',{method:'DELETE',headers,signal:AbortSignal.timeout(10000)});
+    if(!dr.ok) throw new Error('Dokumente sind umgehängt, aber der Quell-Tag ließ sich nicht löschen (HTTP '+dr.status+(dr.status===403?' – vom Portal gesperrt, z. B. Blanko-Profil':'')+').');
     _toolResult('tm-results','<div class="callout tip">&#10003; '+moved+' Dokumente aktualisiert, Tag "'+escH(window._tmSrcName)+'" gelöscht.</div>');
     window._tmSrcId=null; window._tmTgtId=null;
     loadQuickStats();

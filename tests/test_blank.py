@@ -55,6 +55,7 @@ def _stub(*a, **kw):
 A.requests.get = _stub
 A.requests.post = _stub
 A.requests.delete = _stub
+A.requests.request = _stub
 
 PID = "9d5a263844e6fb1c"
 PW = "geheim123"
@@ -107,11 +108,63 @@ c = client()
 origin(c, "/profiles/%s/flags" % PID, data={"blank": "1"})
 p = A.load_profiles()[PID]
 check("Einschalten setzt readonly automatisch", p["blank"] is True and p["readonly"] is True)
-origin(c, "/profiles/%s/flags" % PID, data={"blank": "1"})
+origin(c, "/profiles/%s/flags" % PID, data={"blank": "1", "password": PW})
 check("(readonly war nicht angehakt, aber Blanko war schon an -> frei schaltbar)",
       A.load_profiles()[PID]["readonly"] is False)
-origin(c, "/profiles/%s/flags" % PID, data={})
+origin(c, "/profiles/%s/flags" % PID, data={"password": PW})
 check("Ausschalten möglich", not A.load_profiles()[PID].get("blank"))
+
+print("Nur lesen abschalten braucht das Passwort")
+reset(readonly=True)
+c = client()
+origin(c, "/profiles/%s/flags" % PID, data={})
+check("ohne Passwort bleibt nur lesen an", A.load_profiles()[PID]["readonly"] is True)
+origin(c, "/profiles/%s/flags" % PID, data={"password": "falsch"})
+check("mit falschem Passwort ebenso", A.load_profiles()[PID]["readonly"] is True)
+origin(c, "/profiles/%s/flags" % PID, data={"readonly": "1", "productive": "1"})
+check("nur lesen anlassen braucht kein Passwort (andere Flags änderbar)",
+      A.load_profiles()[PID]["readonly"] is True and A.load_profiles()[PID]["productive"] is True)
+origin(c, "/profiles/%s/flags" % PID, data={"password": PW})
+check("mit richtigem Passwort abschaltbar", A.load_profiles()[PID]["readonly"] is False)
+reset(readonly=False)
+origin(c, "/profiles/%s/flags" % PID, data={"productive": "1"})
+check("war es schon aus: kein Passwort nötig", A.load_profiles()[PID]["productive"] is True)
+
+print("Blanko: Objekte löschen gesperrt (auch ohne nur lesen)")
+reset(blank=True, readonly=False)
+c = client()
+for path in ("/api/tags/5/", "/api/correspondents/5/", "/api/document_types/5/", "/api/storage_paths/5/",
+             "/api/custom_fields/5/", "/api/workflows/5/", "/api/mail_accounts/5/", "/api/mail_rules/5/",
+             "/api/saved_views/5/", "/api/tags/5"):
+    NET.clear()
+    eq("DELETE %s -> 403" % path, c.delete(path).status_code, 403)
+    eq("  nichts weitergeleitet", NET, [])
+for body in ({"objects": [1], "object_type": "tags", "operation": "delete"},
+             {"objects": [1], "object_type": "tags", "operation": " DELETE "}):
+    NET.clear()
+    eq("bulk_edit_objects delete -> 403", c.post("/api/bulk_edit_objects/", json=body).status_code, 403)
+    eq("  nichts weitergeleitet", NET, [])
+eq("bulk_edit_objects unlesbar -> 403",
+   c.post("/api/bulk_edit_objects/", data="kaputt", content_type="text/plain").status_code, 403)
+eq("Dokument-Löschung bleibt gesperrt", c.delete("/api/documents/5/").status_code, 403)
+NET.clear()
+check("Lesen bleibt erlaubt", c.get("/api/tags/").status_code == 200 and NET)
+check("Anlegen (POST) bleibt erlaubt", c.post("/api/tags/", json={"name": "x"},
+                                              headers={"Origin": "http://localhost"}).status_code == 200)
+reset(blank=True, readonly=False)
+c = client()
+for path in ("/api/tags/../documents/5/", "/api/tags/../bulk_edit_objects/", "/api/./tags/5/", "/api/%2e%2e/tags/5/"):
+    NET.clear()
+    check("Pfad-Trick %s abgewiesen" % path, c.delete(path).status_code in (400, 403, 404) and not NET)
+origin(c, "/profiles/%s/flags" % PID, data={"readonly": "1"})
+check("Blanko abschalten ohne Passwort geht nicht", A.load_profiles()[PID].get("blank") is True)
+origin(c, "/profiles/%s/flags" % PID, data={"readonly": "1", "password": PW})
+check("mit Passwort geht es", not A.load_profiles()[PID].get("blank"))
+reset(blank=False, readonly=False)
+c = client()
+NET.clear()
+check("normales Profil darf weiter Objekte löschen (Rollback/Zusammenführen)",
+      c.delete("/api/tags/5/").status_code == 200 and NET)
 
 print("Setup-Gate")
 reset(blank=True, readonly=True, paperless_url="", paperless_token="")
@@ -163,6 +216,7 @@ check("im Blanko-Profil gespeicherte Config wird erkannt", "plxBlank" in js)
 check("Sprungmarken auf ausgeblendete Bereiche führen zu den Werkzeugen", "_plxBlank" in js and "id = 's-tools'" in js)
 check("Blanko: E-Mail beim Speichern optional", "_blank ? emVal : true" in js)
 check("Import-Button vorhanden und ruft den Instanz-Import", "Eigene Instanz importieren" in js and "runInstanzImport()" in js)
+check("Blanko-Flag für den Generator (Reset gesperrt)", "window.__plxBlank = _blank" in js)
 check("Import-Button prüft die Verbindung zuerst", "active_has_connection" in js)
 
 

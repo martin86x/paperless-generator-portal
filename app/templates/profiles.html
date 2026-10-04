@@ -131,7 +131,11 @@
         <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);margin:8px 0">
           <input type="checkbox" name="blank" value="1" {% if p.blank %}checked{% endif %} style="width:auto"> Blanko-Profil — bestehende Instanz nur verwalten/auswerten, ohne Generator-Vorschläge
         </label>
-        <p class="hint">Beim Einschalten wird „Nur lesen“ automatisch gesetzt. Drift-Abgleich und „Anwenden“ sind im Blanko-Profil aus.</p>
+        <p class="hint">Beim Einschalten wird „Nur lesen“ automatisch gesetzt. Drift-Abgleich und „Anwenden“ sind im Blanko-Profil aus. Im Blanko-Profil ist das Löschen von Tags, Korrespondenten, Typen und anderen Objekten gesperrt (auch ohne „Nur lesen“).</p>
+        {% if p.readonly or p.blank %}
+        <label>Passwort (nötig, um „Nur lesen“ oder „Blanko“ abzuschalten)</label>
+        <input type="password" name="password" autocomplete="current-password">
+        {% endif %}
         <label>Farbe des Warnbalkens (optional)</label>
         <input type="text" name="color" value="{{ p.color }}" placeholder="#b91c1c">
         <button type="submit">Sicherheits-Einstellungen speichern</button>

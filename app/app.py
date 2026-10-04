@@ -4829,6 +4829,14 @@ def profiles_flags(pid):
     profs = load_profiles()
     if pid not in profs:
         return redirect(url_for("verwaltung", tab="profiles", err="Profil nicht gefunden."))
+    # „Nur lesen“ ist der Schutz gegen versehentliches Schreiben: wer ihn abschaltet, muss das
+    # Passwort eingeben (vorher reichte das blosse Speichern des Formulars ohne Haekchen).
+    if (profs[pid].get("readonly") and not request.form.get("readonly")) or \
+            (profs[pid].get("blank") and not request.form.get("blank")):
+        if not check_password_hash(load_config()["admin_pw_hash"], request.form.get("password", "")):
+            return redirect(url_for("verwaltung", tab="profiles",
+                                    err="„Nur lesen“ oder „Blanko“ abschalten braucht das Passwort — nichts geändert."))
+        _log_activity("profile", "„Nur lesen“/„Blanko“ abgeschaltet (%s)" % (profs[pid].get("name") or pid), level="warn")
     profs[pid]["productive"] = bool(request.form.get("productive"))
     was_blank = bool(profs[pid].get("blank"))
     profs[pid]["blank"] = bool(request.form.get("blank"))
@@ -4997,15 +5005,47 @@ def _is_document_delete():
     return False
 
 
+_BULK_OBJECTS_PATH = "/api/bulk_edit_objects"
+
+
+def _is_object_delete():
+    """True, wenn der Request ein Paperless-OBJEKT loeschen wuerde (Tag, Korrespondent, Typ,
+    Speicherpfad, Feld, Workflow, Mail-Konto/-Regel, Ansicht ...) — also alles ausser den
+    Dokumenten, die _is_document_delete() ohnehin immer sperrt.
+
+    Beim Loeschen eines Tags oder Korrespondenten bleiben die Dokumente erhalten, verlieren
+    aber die Zuordnung. Gesperrt wird fuer Blanko-Profile (fremde, gewachsene Instanz) und fuer
+    das Konnektor-Token; ein normales Profil darf es weiter (Rollback, Zusammenfuehren)."""
+    path = re.sub(r"/+", "/", request.path)
+    if request.method == "DELETE" and path.startswith("/api/"):
+        return True
+    if request.method in WRITE_METHODS and path.rstrip("/") == _BULK_OBJECTS_PATH:
+        body = _req_body()
+        # Unlesbarer Rumpf -> sperren (wie beim Dokument-Riegel)
+        if body is None or "operation" not in body or                 str(body.get("operation") or "").strip().lower() == "delete":
+            return True
+    return False
+
+
 @app.route("/api/", defaults={"path": ""}, methods=PROXY_METHODS)
 @app.route("/api/<path:path>", methods=PROXY_METHODS)
 def proxy(path):  # noqa: ARG001 (path steckt schon in request.path)
     prof = active_profile()
+    # Punkt-Segmente koennen die Riegel unterlaufen: der Riegel liest den Pfad woertlich, Paperless/
+    # urllib3 loest "/api/tags/../documents/1/" auf. Solche Pfade gibt es in der Paperless-API nicht.
+    if any(seg in ("..", ".") for seg in request.path.split("/")):
+        return Response("Ungueltiger Pfad.", status=400)
     # ── Sicherheits-Riegel (unabhaengig vom Client) ──
     if _is_document_delete():
         _log_activity("blocked", "Dokument-Löschung geblockt", level="warn",
                       detail="%s %s" % (request.method, request.path))
         return Response("Gesperrt: Dokument-Loeschung ist im Portal nicht erlaubt.", status=403)
+    if (prof.get("blank") or g.get("api_token")) and _is_object_delete():
+        _log_activity("blocked", "Löschen in Paperless geblockt", level="warn",
+                      detail="%s %s (%s)" % (request.method, request.path,
+                                             "Konnektor" if g.get("api_token") else "Blanko-Profil"))
+        return Response("Gesperrt: Löschen ist für " + (
+            "den Konnektor" if g.get("api_token") else "ein Blanko-Profil") + " nicht erlaubt.", status=403)
     if prof.get("readonly") and request.method in WRITE_METHODS:
         return Response("Profil ist auf 'nur lesen' gesetzt — Schreibzugriff gesperrt.", status=403)
     base = prof.get("paperless_url")

@@ -409,6 +409,7 @@
           });
         }
         _blank = !!d.active_blank;
+        window.__plxBlank = _blank;   // Generator: gefährliche Werkzeuge (Reset) im Blanko-Profil sperren
         if (_blank) applyBlankMode();
         if (d.active_productive) showProductiveBanner(d.active_name, d.active_color, d.active_readonly);
         else removeProductiveBanner();

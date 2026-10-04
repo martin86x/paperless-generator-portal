@@ -7,7 +7,7 @@ code{background:#222833;color:#c8d6ee;padding:1px 5px;border-radius:3px;font-siz
 blockquote{margin:1em 0;padding:8px 14px;background:#222018;color:#e3d3a8;border-left:4px solid #b7862a}hr{border:none;border-top:1px solid #2d333d;margin:1.5em 0}
 @media print{body{background:#fff;color:#1a1a1a;margin:0;padding:0;max-width:none;font-size:11pt}h1,h2,h3,strong,th{color:#000}h1{border-color:#3b82f6}h2{border-color:#ccc}th,td{border-color:#bbb}th{background:#eef2f8}tr:nth-child(even) td{background:#fff}code,pre{background:#f0f2f5;color:#000;border-color:#ddd}blockquote{background:#fff7e6;color:#1a1a1a;border-color:#f59e0b}hr{border-color:#ddd}a{color:inherit}}</style></head><body>
 <h1>Anleitung: Paperless Generator Portal</h1>
-<p>Stand: Portal v1.14.8 · für Anwender (kein Entwickler-Wissen nötig)</p>
+<p>Stand: Portal v1.14.9 · für Anwender (kein Entwickler-Wissen nötig)</p>
 <p>Diese Anleitung beschreibt nur, was es im Portal wirklich gibt. Stellen, bei denen ich mir nach dem Lesen des Codes nicht sicher bin, sind mit <strong>(unsicher)</strong> oder <strong>Hinweis</strong> gekennzeichnet. Zugangsdaten, Tokens und IP-Adressen stehen hier bewusst nicht drin; wo sie gebraucht werden, steht ein Platzhalter wie <code>&lt;Portal-Adresse&gt;</code>.</p>
 <hr>
 <h2>1. Was ist das Portal?</h2>
@@ -64,7 +64,7 @@ blockquote{margin:1em 0;padding:8px 14px;background:#222018;color:#e3d3a8;border
 <li>Beide Schalter lassen sich <strong>nur in deinem angemeldeten Browser</strong> umlegen, ohne Passwortabfrage. Das Token selbst kann sie nicht umlegen.</li>
 <li>Jede Änderung steht im <strong>Protokoll</strong> (Verwaltung → System).</li>
 <li>Ein neu erzeugtes oder widerrufenes Token setzt „Paperless“ auf AUS.</li>
-<li><strong>Dokumente löschen bleibt immer gesperrt</strong>, auch bei Paperless: AN (Abschnitt 8).</li>
+<li><strong>Dokumente löschen bleibt immer gesperrt</strong>, auch bei Paperless: AN (Abschnitt 8). Ebenso das <strong>Löschen aller anderen Paperless-Objekte</strong> (Tags, Korrespondenten, Typen, Speicherpfade, Felder, Arbeitsabläufe, Mail-Konten und -Regeln, Ansichten): mit dem Token gibt es in Paperless gar kein Löschen mehr.</li>
 <li>Mit dem Token sind außerdem gesperrt: Passwort ändern, Recovery-Codes, Token erzeugen/widerrufen, Voll-Backup und Wiederherstellen, Profile exportieren/importieren/anlegen/duplizieren/wechseln/löschen, Paperless-Adresse und „nur lesen“ ändern, „Anwenden/Rückgängig“, Kalender-Einstellungen. Benachrichtigungen und Wächter darf es <strong>nur ansehen</strong>, nicht speichern.</li>
 </ul>
 <p>Die Einrichtung des Konnektors auf dem PC (Token-Datei, <code>claude mcp add</code>) steht in <code>tools/portal-mcp/README.md</code> im Portal-Ordner.</p>
@@ -96,7 +96,7 @@ blockquote{margin:1em 0;padding:8px 14px;background:#222018;color:#e3d3a8;border
 <li><strong>Umbenennen:</strong> nur der Anzeigename.</li>
 <li><strong>Sicherheits-Einstellungen:</strong></li>
 <li style="margin-left:1.2em"><em>Produktivsystem</em>: dauerhafter Warnbalken (Farbe frei wählbar).</li>
-<li style="margin-left:1.2em"><em>Nur lesen</em>: das Portal blockt <strong>jeden</strong> Schreibzugriff (POST/PUT/PATCH/DELETE) auf diese Instanz. Das ist der härteste Schutz.</li>
+<li style="margin-left:1.2em"><em>Nur lesen</em>: das Portal blockt <strong>jeden</strong> Schreibzugriff (POST/PUT/PATCH/DELETE) auf diese Instanz. Das ist der härteste Schutz. Wer „Nur lesen“ wieder abschalten will, muss dafür das Portal-Passwort eingeben.</li>
 <li><strong>⧉ Duplizieren</strong> (direkt auf der Karte): kopiert Generator-Konfiguration, Schutz-Schalter und Farbe unter neuem Namen (leer = „Name (Kopie)“). Die Kopie startet <strong>inaktiv</strong> und immer auf <strong>„nur lesen“</strong>. Adresse und Token nimmt sie nur mit, wenn du den Haken <strong>„Adresse &amp; Token mitnehmen“</strong> setzt; der Token bleibt dabei verschlüsselt und wird nie angezeigt. Benachrichtigungs-Kanäle und Wächter-Einstellungen werden nicht mitkopiert, sonst kämen Meldungen doppelt.</li>
 <li><strong>🗑 Profil löschen</strong> (direkt auf der Karte): fragt mit dem Profilnamen nach und entfernt dann das Profil samt gespeicherter Konfiguration. Das letzte Profil lässt sich nicht löschen (der Knopf ist dann grau). Dokumente und Daten in Paperless bleiben unberührt, die vorige Fassung bleibt in der automatischen Profil-Sicherung (<code>profiles.json.bak.1</code>) erhalten.</li>
 <li><strong>Überwachung (Wächter):</strong> Instanz überwachen ja/nein und welche Checks laufen (Erreichbarkeit/Token, Konfig-Drift, ASN-Lücken, Duplikate). Überschreibt die globale Vorgabe.</li>
@@ -229,7 +229,13 @@ blockquote{margin:1em 0;padding:8px 14px;background:#222018;color:#e3d3a8;border
 <li>das endgültige Leeren des Papierkorbs (nur „Wiederherstellen“ aus dem Papierkorb bleibt möglich).</li>
 </ul>
 <p>Die Antwort des Portals lautet dann „Gesperrt: Dokument-Loeschung ist im Portal nicht erlaubt“ (HTTP 403). Löschen musst du direkt in Paperless selbst, mit deinem eigenen Zugang.</p>
-<p>Ist ein Profil auf <strong>Nur lesen</strong> gestellt, sind außerdem <strong>alle</strong> Schreibzugriffe auf diese Instanz gesperrt.</p>
+<p>Ist ein Profil auf <strong>Nur lesen</strong> gestellt, sind außerdem <strong>alle</strong> Schreibzugriffe auf diese Instanz gesperrt. „Nur lesen“ und „Blanko“ lassen sich nur mit dem Portal-Passwort wieder abschalten.</p>
+<p><strong>Zusätzlich gesperrt:</strong> Löschen von Tags, Korrespondenten, Dokumenttypen, Speicherpfaden, Feldern, Arbeitsabläufen, Mail-Konten/-Regeln und Ansichten (einzeln oder per Sammelaktion)</p>
+<ul>
+<li>für den <strong>Konnektor</strong> (Token) immer,</li>
+<li>in einem <strong>Blanko-Profil</strong> immer, auch wenn „Nur lesen“ aus ist. Damit sind dort auch „Zusammenführen“ und „Reset Typen/Tags“ im Generator gesperrt.</li>
+</ul>
+<p>In einem normalen Profil bleibt das Löschen im Generator möglich (Rollback, Zusammenführen), jeweils mit Rückfrage. Beim Zusammenführen von Tags und Korrespondenten wird die Quelle nur gelöscht, wenn alle Dokumente vollständig umgehängt wurden. Die Dokumente selbst bleiben dabei immer erhalten.</p>
 <hr>
 <h2>9. Sicherung und Wiederherstellung</h2>
 <p>Es gibt zwei Arten, und beide sind wichtig:</p>

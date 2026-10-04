@@ -142,6 +142,20 @@ for meth, path, body in [
        c.open(path, method=meth, json=body, headers=bearer(TOK)).status_code, 403)
     check("  nichts ging an Paperless", not FWD)
 
+print("Löschen von Objekten für das Token gesperrt")
+for path in ("/api/tags/5/", "/api/correspondents/5/", "/api/document_types/5/", "/api/storage_paths/5/",
+             "/api/custom_fields/5/", "/api/workflows/5/", "/api/mail_accounts/5/", "/api/mail_rules/5/",
+             "/api/saved_views/5/", "/api/users/2/"):
+    del FWD[:]
+    eq("DELETE %s -> 403" % path, c.delete(path, headers=bearer(TOK)).status_code, 403)
+    check("  nichts ging an Paperless", not FWD)
+del FWD[:]
+eq("bulk_edit_objects delete -> 403",
+   c.post("/api/bulk_edit_objects/", json={"objects": [1], "object_type": "tags", "operation": "delete"},
+          headers=bearer(TOK)).status_code, 403)
+check("  nichts ging an Paperless", not FWD)
+eq("Token darf weiter lesen und anlegen", c.post("/api/tags/", json={"name": "t"}, headers=bearer(TOK)).status_code, 200)
+
 print("Nur-lesen-Profil")
 profs = A.load_profiles(); profs["p1"]["readonly"] = True; A.save_profiles(profs)
 eq("Schreiben -> 403", c.post("/api/tags/", json={"name": "t"}, headers=bearer(TOK)).status_code, 403)
@@ -326,6 +340,8 @@ check("  ging an Paperless", FWD)
 del FWD[:]
 txt, err = call(6, "paperless_request", {"method": "DELETE", "path": "documents/5/"})
 check("Löschen über MCP -> 403", err and "403" in txt and not FWD)
+txt, err = call(20, "paperless_request", {"method": "DELETE", "path": "tags/5/"})
+check("Tag löschen über MCP -> 403", err and "403" in txt and not FWD)
 txt, err = call(7, "portal_request", {"path": "/api/documents/"})
 check("portal_request lässt /api nicht durch", err)
 txt, err = call(8, "portal_request", {"method": "POST", "path": "/portal/connector/paperless",

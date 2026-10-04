@@ -1,6 +1,6 @@
 # Anleitung: Paperless Generator Portal
 
-Stand: Portal v1.14.8 · für Anwender (kein Entwickler-Wissen nötig)
+Stand: Portal v1.14.9 · für Anwender (kein Entwickler-Wissen nötig)
 
 Diese Anleitung beschreibt nur, was es im Portal wirklich gibt. Stellen, bei denen ich mir nach dem Lesen des Codes nicht sicher bin, sind mit **(unsicher)** oder **Hinweis** gekennzeichnet. Zugangsdaten, Tokens und IP-Adressen stehen hier bewusst nicht drin; wo sie gebraucht werden, steht ein Platzhalter wie `<Portal-Adresse>`.
 
@@ -101,7 +101,7 @@ Weitere Regeln:
 - Beide Schalter lassen sich **nur in deinem angemeldeten Browser** umlegen, ohne Passwortabfrage. Das Token selbst kann sie nicht umlegen.
 - Jede Änderung steht im **Protokoll** (Verwaltung → System).
 - Ein neu erzeugtes oder widerrufenes Token setzt „Paperless“ auf AUS.
-- **Dokumente löschen bleibt immer gesperrt**, auch bei Paperless: AN (Abschnitt 8).
+- **Dokumente löschen bleibt immer gesperrt**, auch bei Paperless: AN (Abschnitt 8). Ebenso das **Löschen aller anderen Paperless-Objekte** (Tags, Korrespondenten, Typen, Speicherpfade, Felder, Arbeitsabläufe, Mail-Konten und -Regeln, Ansichten): mit dem Token gibt es in Paperless gar kein Löschen mehr.
 - Mit dem Token sind außerdem gesperrt: Passwort ändern, Recovery-Codes, Token erzeugen/widerrufen, Voll-Backup und Wiederherstellen, Profile exportieren/importieren/anlegen/duplizieren/wechseln/löschen, Paperless-Adresse und „nur lesen“ ändern, „Anwenden/Rückgängig“, Kalender-Einstellungen. Benachrichtigungen und Wächter darf es **nur ansehen**, nicht speichern.
 
 Die Einrichtung des Konnektors auf dem PC (Token-Datei, `claude mcp add`) steht in `tools/portal-mcp/README.md` im Portal-Ordner.
@@ -142,7 +142,7 @@ Je Profil:
 - **Umbenennen:** nur der Anzeigename.
 - **Sicherheits-Einstellungen:**
   - *Produktivsystem*: dauerhafter Warnbalken (Farbe frei wählbar).
-  - *Nur lesen*: das Portal blockt **jeden** Schreibzugriff (POST/PUT/PATCH/DELETE) auf diese Instanz. Das ist der härteste Schutz.
+  - *Nur lesen*: das Portal blockt **jeden** Schreibzugriff (POST/PUT/PATCH/DELETE) auf diese Instanz. Das ist der härteste Schutz. Wer „Nur lesen“ wieder abschalten will, muss dafür das Portal-Passwort eingeben.
 - **⧉ Duplizieren** (direkt auf der Karte): kopiert Generator-Konfiguration, Schutz-Schalter und Farbe unter neuem Namen (leer = „Name (Kopie)“). Die Kopie startet **inaktiv** und immer auf **„nur lesen“**. Adresse und Token nimmt sie nur mit, wenn du den Haken **„Adresse & Token mitnehmen“** setzt; der Token bleibt dabei verschlüsselt und wird nie angezeigt. Benachrichtigungs-Kanäle und Wächter-Einstellungen werden nicht mitkopiert, sonst kämen Meldungen doppelt.
 - **🗑 Profil löschen** (direkt auf der Karte): fragt mit dem Profilnamen nach und entfernt dann das Profil samt gespeicherter Konfiguration. Das letzte Profil lässt sich nicht löschen (der Knopf ist dann grau). Dokumente und Daten in Paperless bleiben unberührt, die vorige Fassung bleibt in der automatischen Profil-Sicherung (`profiles.json.bak.1`) erhalten.
 - **Überwachung (Wächter):** Instanz überwachen ja/nein und welche Checks laufen (Erreichbarkeit/Token, Konfig-Drift, ASN-Lücken, Duplikate). Überschreibt die globale Vorgabe.
@@ -308,7 +308,14 @@ Das Portal blockt über seinen Paperless-Zugang jede Aktion, die Dokumente lösc
 
 Die Antwort des Portals lautet dann „Gesperrt: Dokument-Loeschung ist im Portal nicht erlaubt“ (HTTP 403). Löschen musst du direkt in Paperless selbst, mit deinem eigenen Zugang.
 
-Ist ein Profil auf **Nur lesen** gestellt, sind außerdem **alle** Schreibzugriffe auf diese Instanz gesperrt.
+Ist ein Profil auf **Nur lesen** gestellt, sind außerdem **alle** Schreibzugriffe auf diese Instanz gesperrt. „Nur lesen“ und „Blanko“ lassen sich nur mit dem Portal-Passwort wieder abschalten.
+
+**Zusätzlich gesperrt:** Löschen von Tags, Korrespondenten, Dokumenttypen, Speicherpfaden, Feldern, Arbeitsabläufen, Mail-Konten/-Regeln und Ansichten (einzeln oder per Sammelaktion)
+
+- für den **Konnektor** (Token) immer,
+- in einem **Blanko-Profil** immer, auch wenn „Nur lesen“ aus ist. Damit sind dort auch „Zusammenführen“ und „Reset Typen/Tags“ im Generator gesperrt.
+
+In einem normalen Profil bleibt das Löschen im Generator möglich (Rollback, Zusammenführen), jeweils mit Rückfrage. Beim Zusammenführen von Tags und Korrespondenten wird die Quelle nur gelöscht, wenn alle Dokumente vollständig umgehängt wurden. Die Dokumente selbst bleiben dabei immer erhalten.
 
 ---
 
