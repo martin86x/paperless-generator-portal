@@ -122,6 +122,38 @@ reset_limit()
 r = login(client())
 eq("richtige Daten -> Weiterleitung", r.status_code, 302)
 check("und die Sitzung greift", not r.headers["Location"].endswith("/login"))
+reset_limit()
+eq("Leerzeichen um den Benutzernamen (Autofill) -> trotzdem Login",
+   login(client(), user=" admin ").status_code, 302)
+
+print("Login-Seite für Passwort-Manager")
+reset_limit()
+page = client().get("/login").get_data(as_text=True)
+check("Formular schaltet Autofill nicht ab", 'method="post" autocomplete="off"' not in page)
+check("Benutzerfeld ist als username markiert", 'autocomplete="username"' in page)
+check("Passwortfeld ist als current-password markiert", 'autocomplete="current-password"' in page)
+page = client().get("/login/recovery").get_data(as_text=True)
+check("Recovery: Benutzerfeld als username markiert", 'autocomplete="username"' in page)
+
+print("Grund des Fehlversuchs im Protokoll")
+_logged = []
+_orig_log = A._log_activity
+A._log_activity = lambda *a, **k: _logged.append(k.get("detail") or "")
+for _u, _p, _why in (("root", PW, "Benutzer unbekannt"), ("admin", "", "Passwort leer"),
+                     ("admin", "x9Q!zz", "Passwort falsch")):
+    reset_limit()
+    del _logged[:]
+    login(client(), user=_u, pw=_p)
+    check("Protokoll nennt '%s'" % _why, any(_why in d for d in _logged))
+    check("Protokoll enthält kein Passwort (%s)" % _why,
+          not any(_p and _p in d for d in _logged))
+reset_limit()
+del _logged[:]
+login(client(), user="GeheimesPasswort", pw="")
+check("fremder Benutzername (evtl. Passwort) steht nicht im Protokoll",
+      _logged and not any("GeheimesPasswort" in d for d in _logged))
+A._log_activity = _orig_log
+reset_limit()
 
 print("Abmelden")
 c = client()
