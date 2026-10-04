@@ -1007,6 +1007,14 @@ def healthz():
     return "ok"
 
 
+def _log_user(user, cfg):
+    """Benutzernamen fuers Protokoll: nur der echte Admin-Name im Klartext. Ein fremder
+    Wert kann ein vertauscht eingefuelltes Passwort sein (Autofill) -> nur seine Laenge."""
+    if user == cfg.get("admin_user"):
+        return "'%s'" % user
+    return "abweichend (%d Zeichen)" % len(user) if user else "leer"
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     error = None
@@ -1016,7 +1024,8 @@ def login():
             error = "Zu viele Fehlversuche. Bitte einige Minuten warten."
             return render_template("login.html", error=error), 429
         cfg = load_config()
-        user = request.form.get("username", "")
+        # Leerzeichen am Benutzernamen (Autofill, Kopieren) sind kein Grund fuer "falsch"
+        user = request.form.get("username", "").strip()
         pw = request.form.get("password", "")
         if user == cfg.get("admin_user") and check_password_hash(cfg["admin_pw_hash"], pw):
             _login_fails_reset(ip)
@@ -1027,8 +1036,12 @@ def login():
                 return redirect(url_for("wizard"))
             return redirect(url_for("index"))
         _login_note_fail(ip)
+        # Grund nur ins Protokoll (nur angemeldet sichtbar), nie in die Login-Seite.
+        # So laesst sich ein Autofill-Problem (leeres/falsches Feld) erkennen.
+        why = ("Benutzer unbekannt" if user != cfg.get("admin_user")
+               else "Passwort leer" if not pw else "Passwort falsch")
         _log_activity("login", "Fehlgeschlagene Anmeldung", level="warn",
-                      detail="Benutzer '%s', IP %s" % (user, ip))
+                      detail="Benutzer %s, IP %s, %s" % (_log_user(user, cfg), ip, why))
         error = "Falscher Benutzername oder falsches Passwort."
     return render_template("login.html", error=error)
 
@@ -1050,7 +1063,7 @@ def login_recovery():
             return render_template("login_recovery.html",
                                    error="Zu viele Fehlversuche. Bitte einige Minuten warten."), 429
         cfg = load_config()
-        user = request.form.get("username", "")
+        user = request.form.get("username", "").strip()
         code = request.form.get("code", "")
         if user == cfg.get("admin_user") and _consume_recovery_code(cfg, code):
             save_config(cfg)
@@ -1066,7 +1079,7 @@ def login_recovery():
                                         "Passwort setzen. (%d Codes übrig)" % remaining))
         _login_note_fail(ip)
         _log_activity("recovery", "Recovery-Code abgelehnt", level="warn",
-                      detail="Benutzer '%s', IP %s" % (user, ip))
+                      detail="Benutzer %s, IP %s" % (_log_user(user, cfg), ip))
         error = "Benutzername oder Code ist falsch."
     return render_template("login_recovery.html", error=error)
 
