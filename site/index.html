@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Paperless-ngx Setup Generator v4.01</title>
+<title>Paperless-ngx Setup Generator v4.02</title>
 <!-- Schriften inline (offline, kein Google-Fonts-CDN mehr; v3.78) -->
 <style>/* Google Fonts inline (v3.78) - Sora + JetBrains Mono (400/600/700), latin-Subset, base64. Ersetzt den @import; voll offline. */
 /* latin */
@@ -380,14 +380,14 @@ input.valid{border-color:var(--accent2)!important;}
   <button id="hamburger-btn" onclick="toggleSidebar()" aria-label="Navigation">
     <span></span><span></span><span></span>
   </button>
-  <span id="topbar-title">Setup Generator v4.01</span>
+  <span id="topbar-title">Setup Generator v4.02</span>
   <span id="topbar-conn-dot" class="sticky-conn-dot" title="Verbindungsstatus"></span>
-  <span id="topbar-badge">v4.01</span>
+  <span id="topbar-badge">v4.02</span>
 </div>
 <aside id="sidebar">
   <div class="sb-header">
     <div class="sb-logo">Paperless-ngx</div>
-    <div class="sb-title">Setup Generator v4.01</div>
+    <div class="sb-title">Setup Generator v4.02</div>
   </div>
   <nav class="sb-nav">
     <span class="sb-label">Konfiguration</span>
@@ -415,7 +415,7 @@ input.valid{border-color:var(--accent2)!important;}
 <main id="content">
 
   <div class="hero">
-    <div class="badge" id="hdr-badge">v4.01 &middot; Bash + Direkt &middot; REST API &middot; Stand: <span id="badge-date">04.10.2026</span></div>
+    <div class="badge" id="hdr-badge">v4.02 &middot; Bash + Direkt &middot; REST API &middot; Stand: <span id="badge-date">05.10.2026</span></div>
     <h1>Paperless-ngx<br>Setup Generator</h1>
     <p>Richtet eine frische Paperless-ngx-Instanz vollautomatisch ein &ndash; Tags, Dokumenttypen, Felder, Korrespondenten, Speicherpfade und Arbeitsabl&auml;ufe &ndash; per Bash-Skript oder direkt aus dem Browser via REST API.</p>
     <div style="margin-top:.6rem">
@@ -4160,7 +4160,7 @@ const AN_HINTS=[
   "Unscharfe Suche – toleriert Tippfehler",
   "Automatisch trainiert aus manuell beschrifteten Dokumenten"
 ];
-const GENERATOR_VERSION = "4.01";
+const GENERATOR_VERSION = "4.02";
 
 function updateVersionWarnings(){
   const v=document.getElementById("inp-plx-version");
@@ -8295,11 +8295,7 @@ async function runTypenTagsReset() {
   const btn   = document.getElementById('btn-reset-start');
   if(!url||!token){alert('URL und Token in Sektion 01 eintragen.');return;}
   if(window.__plxBlank){alert('Im Blanko-Profil gesperrt: Der Reset löscht ALLE Tags und Dokumenttypen der Instanz und ist für bestehende, gewachsene Instanzen nicht erlaubt.');return;}
-  if(!confirm('ACHTUNG: Der Reset löscht ALLE Dokumenttypen und ALLE Tags dieser Instanz (nicht nur die vom Generator angelegten).
-
-Die Dokumente bleiben erhalten, verlieren aber ihre Typ- und Tag-Zuordnung. Das lässt sich nicht rückgängig machen.
-
-Wirklich fortfahren?')) return;
+  if(!confirm('ACHTUNG: Der Reset löscht ALLE Dokumenttypen und ALLE Tags dieser Instanz (nicht nur die vom Generator angelegten).\n\nDie Dokumente bleiben erhalten, verlieren aber ihre Typ- und Tag-Zuordnung. Das lässt sich nicht rückgängig machen.\n\nWirklich fortfahren?')) return;
   btn.disabled = true;
 
   function log(msg, color) {
